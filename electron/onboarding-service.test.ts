@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import type { OnboardingEvent } from '../shared/onboarding.js'
+import type { NewSessionChoice } from '../shared/agent-contract.js'
+import type { AgentAvailability } from '../shared/terminal-ipc.js'
 import type { CommandResult } from './environment-check.js'
 import {
   OnboardingService,
@@ -17,12 +19,16 @@ interface Mac {
   done?: boolean
   loginScript?: string
   reconnectError?: string
+  /** What new sessions open; GJC unless a test says otherwise (null: not chosen yet). */
+  choice?: NewSessionChoice | null
+  agents?: AgentAvailability[]
 }
 
 function service(mac: Mac) {
   const calls: string[] = []
   let done = mac.done ?? false
   let gjc = mac.gjc
+  let choice: NewSessionChoice | undefined = mac.choice === null ? undefined : (mac.choice ?? { agentKind: 'gjc', surface: 'chat' })
   const options: OnboardingServiceOptions = {
     enabled: true,
     isDone: () => done,
@@ -55,11 +61,18 @@ function service(mac: Mac) {
       spawn('/bin/sh', ['-c', mac.loginScript ?? 'exit 0'], {
         stdio: ['pipe', 'pipe', 'pipe'],
       }),
+    newSession: () => choice,
+    chooseNewSession: (next) => {
+      choice = next
+      calls.push(`choose ${next.agentKind} ${next.surface}`)
+    },
+    listAgents: async () => mac.agents ?? [],
   }
   return {
     onboarding: new OnboardingService(options),
     calls,
     isDone: () => done,
+    choice: () => choice,
   }
 }
 
@@ -126,6 +139,40 @@ describe('provider availability', () => {
 })
 
 describe('OnboardingService', () => {
+  const AGENTS: AgentAvailability[] = [
+    { id: 'claude', name: 'Claude Code', installed: true, binary: '/bin/claude', version: '2.1.331' },
+    { id: 'omp', name: 'Oh My Pi', installed: false, reason: 'not installed' },
+    { id: 'gjc', name: 'GJC', installed: false, reason: 'not installed' },
+    { id: 'shell', name: 'Shell', installed: true },
+  ]
+
+  it('asks for an agent first, and needs nothing more for one that is installed: GJC is not required', async () => {
+    const { onboarding, calls, isDone, choice } = service({ choice: null, agents: AGENTS })
+    await expect(onboarding.pendingStep()).resolves.toBe('agent')
+    await expect(onboarding.listAgents()).resolves.toEqual(AGENTS)
+    await expect(onboarding.chooseAgent('claude')).resolves.toBeNull()
+    expect(choice()).toEqual({ agentKind: 'claude', surface: 'terminal' })
+    expect(isDone()).toBe(true)
+    expect(calls).toEqual(['choose claude terminal', 'done'])
+    // GJC was never looked for
+    await expect(onboarding.pendingStep()).resolves.toBeNull()
+  })
+
+  it('refuses an agent that is not installed, and goes on to install GJC when GJC is chosen', async () => {
+    const { onboarding, choice } = service({ choice: null, agents: AGENTS })
+    await expect(onboarding.chooseAgent('omp')).rejects.toThrow(/not installed/)
+    await expect(onboarding.chooseAgent('vim')).rejects.toThrow(/Unknown agent/)
+    expect(choice()).toBeUndefined()
+    await expect(onboarding.chooseAgent('gjc')).resolves.toBe('install')
+    expect(choice()).toEqual({ agentKind: 'gjc', surface: 'chat' })
+  })
+
+  it('finishes setup for a user whose new sessions already open another agent', async () => {
+    const { onboarding, isDone } = service({ choice: { agentKind: 'shell', surface: 'terminal' } })
+    await expect(onboarding.pendingStep()).resolves.toBeNull()
+    expect(isDone()).toBe(true)
+  })
+
   it('starts by installing GJC on a Mac without it, then reconnects to it', async () => {
     const { onboarding, calls } = service({})
     await expect(onboarding.pendingStep()).resolves.toBe('install')

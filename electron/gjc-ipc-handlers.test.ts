@@ -528,6 +528,24 @@ describe("explicit compaction action", () => {
 });
 
 describe("session creation IPC validation", () => {
+  it("creates a herdr session for a terminal agent, reading the pre-P5 name \"terminal\" as herdr", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "gajae-create-input-"));
+    try {
+      expect(createSessionInput({ runtime: "terminal", workspace })).toEqual({ runtime: "herdr", workspace, isolation: "workspace", agentKind: "shell" });
+      expect(
+        createSessionInput({ runtime: "herdr", workspace, agentKind: "claude", surface: "chat", title: "리뷰", launch: { permissionMode: "plan" } }),
+      ).toEqual({ runtime: "herdr", workspace, isolation: "workspace", agentKind: "claude", surface: "chat", title: "리뷰", launch: { permissionMode: "plan" } });
+      expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "gjc" })).toThrow("agent is invalid");
+      expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "codex", surface: "chat" })).toThrow("screen is invalid");
+      expect(() => createSessionInput({ runtime: "herdr", workspace: "relative" })).toThrow("absolute");
+      expect(() => createSessionInput({ runtime: "herdr", workspace, isolation: "worktree" })).toThrow("as it is");
+      expect(() => createSessionInput({ runtime: "herdr", workspace: path.join(workspace, "missing") })).toThrow("existing directory");
+      expect(() => createSessionInput({ runtime: "hermes", workspace })).toThrow("Only GJC and terminal");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("passes a work link and an existing-branch requirement through, and refuses malformed ones", async () => {
     const workspace = await mkdtemp(path.join(tmpdir(), "gajae-create-input-"));
     try {

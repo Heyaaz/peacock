@@ -91,6 +91,18 @@ async function rows(
 }
 
 describe("checkEnvironment", () => {
+  it("requires GJC, bun and a GJC sign-in only while GJC is the chosen agent", async () => {
+    const empty: Machine = { executables: {}, answers: {} };
+    const gjcChosen = await checkEnvironment(context(empty), () => 7);
+    expect(gjcChosen.ready).toBe(false);
+    const otherAgent = await checkEnvironment({ ...context(empty), gjcRequired: false }, () => 7);
+    expect(otherAgent.ready).toBe(true);
+    expect(launchCheckSatisfied(otherAgent.rows)).toBe(true);
+    const byId = Object.fromEntries(otherAgent.rows.map((row) => [row.id, row]));
+    expect(byId.gjc).toMatchObject({ required: false, status: "warning", problem: "not-found" });
+    expect(byId["provider-login"]?.required ?? false).toBe(false);
+  });
+
   it("reports a prepared Mac as ready, with what it found", async () => {
     const report = await checkEnvironment(context(ready), () => 7);
     expect(report.ready).toBe(true);

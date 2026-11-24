@@ -1,5 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, ChevronRight, CircleHelp, ExternalLink, Globe, KeyRound } from "lucide-react";
+import { Check, ChevronRight, CircleHelp, ExternalLink, Globe, KeyRound, SquareTerminal } from "lucide-react";
+import type { AgentKindId } from "../../shared/agent-contract";
+import type { AgentAvailability } from "../../shared/terminal-ipc";
+import { initialAgent } from "./agent-choice";
 import {
   RECOMMENDED_SIGN_IN_PROVIDER_ID,
   SIGN_IN_PROVIDERS,
@@ -11,6 +14,7 @@ import { t } from "../i18n";
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 
 type Stage =
+  | { stage: "agent"; agents: AgentAvailability[] | null; selected?: AgentKindId; busy: boolean; error?: string }
   | {
       stage: "install";
       running: boolean;
@@ -32,6 +36,7 @@ type Stage =
   | { stage: "ready"; provider: SignInProvider; switchedModel: boolean };
 
 function initialStage(step: OnboardingStep): Stage {
+  if (step === "agent") return { stage: "agent", agents: null, busy: false };
   return step === "install" ? { stage: "install", running: false } : { stage: "choose" };
 }
 
@@ -47,8 +52,10 @@ const RECOMMENDED_PROVIDER =
 const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(0);
 
 /**
- * First-run setup for someone who has never used GJC: install it, sign in to one
- * provider, start a conversation. Nothing here needs a terminal.
+ * First-run setup: choose the agent new sessions open from the ones found on this
+ * Mac (P5: GJC is one choice, not a requirement). For GJC, install it and sign in to
+ * one provider; any other installed agent is ready as it is. Nothing here needs a
+ * terminal.
  *
  * `reentry` opens the same provider list and sign-in later, from settings, `/login`
  * or the sidebar, to add a provider or renew a token. It is not setup, so closing
@@ -69,6 +76,37 @@ export function OnboardingView({
 }) {
   const [stage, setStage] = useState<Stage>(() => initialStage(step));
   const [answer, setAnswer] = useState("");
+
+  useEffect(() => {
+    if (stage.stage !== "agent" || stage.agents !== null) return;
+    let current = true;
+    bridge.listAgents().then(
+      (agents) => {
+        if (current) setStage((now) => (now.stage === "agent" ? { ...now, agents, selected: initialAgent(agents, undefined) } : now));
+      },
+      (cause: unknown) => {
+        if (current) setStage((now) => (now.stage === "agent" ? { ...now, agents: [], error: errorText(cause) } : now));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [bridge, stage]);
+
+  function chooseAgent(agentKind: AgentKindId): void {
+    if (stage.stage !== "agent") return;
+    setStage({ ...stage, busy: true, error: undefined });
+    bridge.chooseAgent(agentKind).then(
+      (next) => {
+        if (next === null) {
+          onClose();
+          onStartConversation();
+        } else setStage(initialStage(next));
+      },
+      (cause: unknown) =>
+        setStage((now) => (now.stage === "agent" ? { ...now, busy: false, error: errorText(cause) } : now)),
+    );
+  }
 
   useEffect(
     () =>
@@ -138,6 +176,63 @@ export function OnboardingView({
         <span className="workspace-empty__mark">
           <img src={gajaeIconUrl} alt="" />
         </span>
+        {stage.stage === "agent" && (
+          <>
+            <h1 id="onboarding-title">{t("어떤 에이전트로 시작할까요?")}</h1>
+            <p className="onboarding-lead">
+              {t("이 Mac에서 찾은 에이전트입니다. 고른 에이전트로 새 세션이 열리고, 설정에서 언제든 바꿀 수 있습니다.")}
+            </p>
+            {stage.agents === null ? (
+              <p className="onboarding-hint" role="status">
+                <span className="mini-spinner" /> {t("에이전트를 찾는 중…")}
+              </p>
+            ) : (
+              <ul className="onboarding-providers onboarding-agents">
+                {stage.agents.map((agent) => {
+                  // GJC can be installed from here; any other agent has to be on this Mac already
+                  const selectable = agent.installed || agent.id === "gjc";
+                  return (
+                    <li key={agent.id}>
+                      <button
+                        type="button"
+                        aria-pressed={stage.selected === agent.id}
+                        disabled={!selectable || stage.busy}
+                        onClick={() => setStage({ ...stage, selected: agent.id })}
+                      >
+                        <SquareTerminal size={15} aria-hidden="true" />
+                        <span>
+                          <strong>{agent.id === "shell" ? t("셸") : agent.name}</strong>
+                          <small>
+                            {agent.installed
+                              ? (agent.version ?? t("설치됨"))
+                              : agent.id === "gjc"
+                                ? t("설치되어 있지 않습니다 · 고르면 설치합니다")
+                                : (agent.reason ?? t("사용할 수 없음"))}
+                          </small>
+                        </span>
+                        {stage.selected === agent.id && <Check size={15} aria-hidden="true" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {stage.error && (
+              <p className="onboarding-error" role="alert">
+                {stage.error}
+              </p>
+            )}
+            <button
+              className="button-primary onboarding-primary"
+              type="button"
+              disabled={!stage.selected || stage.busy}
+              onClick={() => stage.selected && chooseAgent(stage.selected)}
+            >
+              {stage.busy ? t("확인 중…") : t("이 에이전트로 시작")}
+            </button>
+          </>
+        )}
+
         {stage.stage === "install" && (
           <>
             <h1 id="onboarding-title">{t("가재를 쓰려면 GJC가 필요합니다")}</h1>

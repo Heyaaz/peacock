@@ -4,6 +4,9 @@ import {
   type OnboardingStep,
   type SignInResult,
 } from '../shared/onboarding.js'
+import { isAgentKindId, type AgentKindId, type NewSessionChoice } from '../shared/agent-contract.js'
+import { agentCatalogEntry } from '../shared/agent-catalog.js'
+import type { AgentAvailability } from '../shared/terminal-ipc.js'
 import type { CommandRunner } from './environment-check.js'
 import type { GjcInstallProgress, GjcInstallResult } from './gjc-installer.js'
 import { GjcSignIn, type SpawnSignIn } from './gjc-sign-in.js'
@@ -26,12 +29,20 @@ export interface OnboardingServiceOptions {
   applyModelPreset(preset: string): Promise<void>
   openExternal(url: string): Promise<void>
   spawn?: SpawnSignIn
+  /** The agent new sessions open, once one is chosen (settings `newSession`). */
+  newSession(): NewSessionChoice | undefined
+  /** Saves the agent first-run setup chose as what new sessions open. */
+  chooseNewSession(choice: NewSessionChoice): void
+  /** Every agent and whether it is installed here (GJC included). */
+  listAgents(): Promise<AgentAvailability[]>
 }
 
 /**
- * First-run setup: install GJC, then sign in to one provider, all through GJC's
- * own release binary and its own login command. Done once, it stays done, so a
- * Mac already set up from the terminal never sees it.
+ * First-run setup: choose the agent new sessions open, from the ones installed
+ * here (P5: GJC is one choice, not a requirement). Only GJC goes on: install it,
+ * then sign in to one provider, all through GJC's own release binary and its own
+ * login command. Done once, it stays done, so a Mac already set up from the
+ * terminal never sees it.
  */
 export class OnboardingService {
   private signIn: GjcSignIn | undefined
@@ -43,6 +54,37 @@ export class OnboardingService {
 
   async pendingStep(): Promise<OnboardingStep | null> {
     if (!this.options.enabled || this.options.isDone()) return null
+    const choice = this.options.newSession()
+    if (!choice) return 'agent'
+    return this.gjcStep(choice.agentKind)
+  }
+
+  /** The agents first-run setup offers, each with whether it is installed. */
+  listAgents(): Promise<AgentAvailability[]> {
+    return this.options.listAgents()
+  }
+
+  /**
+   * Makes `agentKind` what new sessions open, on its first screen, and answers what
+   * setup still has to do: nothing for an agent that is installed, GJC's install or
+   * sign-in for GJC.
+   */
+  async chooseAgent(agentKind: unknown): Promise<OnboardingStep | null> {
+    if (!isAgentKindId(agentKind)) throw new Error('Unknown agent')
+    if (agentKind !== 'gjc') {
+      const agent = (await this.options.listAgents()).find((candidate) => candidate.id === agentKind)
+      if (!agent?.installed) throw new Error(`${agent?.name ?? agentKind} is not installed`)
+    }
+    this.options.chooseNewSession({ agentKind, surface: agentCatalogEntry(agentKind).defaultSurface })
+    return this.gjcStep(agentKind)
+  }
+
+  /** What GJC still needs when it is the chosen agent; any other agent needs nothing more. */
+  private async gjcStep(agentKind: AgentKindId): Promise<OnboardingStep | null> {
+    if (agentKind !== 'gjc') {
+      this.options.markDone()
+      return null
+    }
     const gjc = await this.options.locateGjc()
     if (!gjc) return 'install'
     const noModels = await hasNoAvailableModels(this.options.run, gjc)

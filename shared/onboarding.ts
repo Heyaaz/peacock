@@ -1,3 +1,6 @@
+import type { AgentKindId } from "./agent-contract.js";
+import type { AgentAvailability } from "./terminal-ipc.js";
+
 /** How the user proves who they are to a provider during GJC's own login. */
 export type SignInMethod = "browser" | "api-key";
 
@@ -79,8 +82,11 @@ export const SIGN_IN_PROVIDERS: readonly SignInProvider[] = [
   },
 ];
 
-/** What first-run setup still has to do, or null when nothing is left. */
-export type OnboardingStep = "install" | "sign-in";
+/**
+ * What first-run setup still has to do, or null when nothing is left: choose the
+ * agent new sessions open (`agent`), then, for GJC only, install it and sign in.
+ */
+export type OnboardingStep = "agent" | "install" | "sign-in";
 
 export type OnboardingEvent =
   | { type: "install-progress"; receivedBytes: number; totalBytes?: number }
@@ -95,6 +101,8 @@ export interface SignInResult {
 
 export const ONBOARDING_IPC = {
   pendingStep: "agent-control:onboarding:pending-step",
+  listAgents: "agent-control:onboarding:list-agents",
+  chooseAgent: "agent-control:onboarding:choose-agent",
   needsSignIn: "agent-control:onboarding:needs-sign-in",
   installGjc: "agent-control:onboarding:install-gjc",
   signIn: "agent-control:onboarding:sign-in",
@@ -106,6 +114,10 @@ export const ONBOARDING_IPC = {
 
 export interface OnboardingDesktopBridge {
   pendingStep(): Promise<OnboardingStep | null>;
+  /** Every agent and whether it is installed here, GJC included. */
+  listAgents(): Promise<AgentAvailability[]>;
+  /** Makes the agent what new sessions open; resolves what setup still has to do for it. */
+  chooseAgent(agentKind: AgentKindId): Promise<OnboardingStep | null>;
   /** GJC has no available provider connection, including credentialless routes, even after setup was dismissed. */
   needsSignIn(): Promise<boolean>;
   /** Resolves with the installed version once the runtime has reconnected to it. */

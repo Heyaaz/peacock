@@ -5,6 +5,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OnboardingDesktopBridge, OnboardingEvent, OnboardingStep, SignInResult } from "../../shared/onboarding";
+import type { AgentKindId } from "../../shared/agent-contract";
+import type { AgentAvailability } from "../../shared/terminal-ipc";
 import { OnboardingView } from "./onboarding-view";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,6 +35,13 @@ function fakeBridge() {
   let signIn = deferred<SignInResult>();
   const bridge = {
     pendingStep: vi.fn(async () => null),
+    listAgents: vi.fn(async (): Promise<AgentAvailability[]> => [
+      { id: "claude", name: "Claude Code", installed: true, binary: "/bin/claude", version: "2.1.331" },
+      { id: "omp", name: "Oh My Pi", installed: false, reason: "설치되어 있지 않습니다" },
+      { id: "gjc", name: "GJC", installed: false, reason: "설치되어 있지 않습니다" },
+      { id: "shell", name: "Shell", installed: true },
+    ]),
+    chooseAgent: vi.fn(async (agentKind: AgentKindId): Promise<OnboardingStep | null> => (agentKind === "gjc" ? "install" : null)),
     needsSignIn: vi.fn(async () => false),
     installGjc: vi.fn(() => install.promise),
     signIn: vi.fn(() => {
@@ -85,6 +94,42 @@ async function type(input: HTMLInputElement, value: string): Promise<void> {
 }
 
 describe("OnboardingView", () => {
+  it("starts a Mac without GJC on the first installed agent and opens a new session with it", async () => {
+    const fake = fakeBridge();
+    const { container, onClose, onStartConversation } = await render(fake.bridge, "agent");
+    expect(container.textContent).toContain("어떤 에이전트로 시작할까요?");
+    const choices = [...container.querySelectorAll<HTMLButtonElement>(".onboarding-agents button")];
+    expect(choices.map((button) => button.querySelector("strong")?.textContent)).toEqual(["Claude Code", "Oh My Pi", "GJC", "셸"]);
+    expect(choices.find((button) => button.textContent?.includes("Claude Code"))!.getAttribute("aria-pressed")).toBe("true");
+    // a missing agent cannot be chosen, but GJC can: choosing it installs it
+    expect(choices.find((button) => button.textContent?.includes("Oh My Pi"))!.disabled).toBe(true);
+    expect(choices.find((button) => button.textContent?.includes("GJC"))!.disabled).toBe(false);
+
+    await click(container, "이 에이전트로 시작");
+    expect(fake.bridge.chooseAgent).toHaveBeenCalledExactlyOnceWith("claude");
+    expect(onClose).toHaveBeenCalled();
+    expect(onStartConversation).toHaveBeenCalled();
+  });
+
+  it("goes on to install GJC when GJC is the agent chosen", async () => {
+    const fake = fakeBridge();
+    const { container, onClose } = await render(fake.bridge, "agent");
+    await click(container, "GJC");
+    await click(container, "이 에이전트로 시작");
+    expect(fake.bridge.chooseAgent).toHaveBeenCalledExactlyOnceWith("gjc");
+    expect(container.textContent).toContain("가재를 쓰려면 GJC가 필요합니다");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows why an agent could not be chosen and stays on the list", async () => {
+    const fake = fakeBridge();
+    fake.bridge.chooseAgent.mockRejectedValueOnce(new Error("Claude Code is not installed"));
+    const { container, onClose } = await render(fake.bridge, "agent");
+    await click(container, "이 에이전트로 시작");
+    expect(container.querySelector(".onboarding-error")?.textContent).toContain("Claude Code is not installed");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("takes a Mac without GJC from install through an API-key sign-in to the first conversation", async () => {
     const fake = fakeBridge();
     const { container, onClose, onStartConversation } = await render(fake.bridge, "install");

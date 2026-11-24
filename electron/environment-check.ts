@@ -43,6 +43,11 @@ export interface EnvironmentProbeContext {
   modelPreset: string;
   /** models.yml text, or undefined when there is none. */
   readModelsFile(): Promise<string | undefined>;
+  /**
+   * Whether GJC is the agent the user chose (P5): only then are GJC and what it
+   * needs required. Unset reads as required, as before agents were chosen.
+   */
+  gjcRequired?: boolean;
 }
 
 interface Finding<P extends EnvironmentProblem> {
@@ -58,7 +63,8 @@ interface Finding<P extends EnvironmentProblem> {
  */
 interface EnvironmentCheckDefinition<P extends EnvironmentProblem> {
   id: EnvironmentCheckId;
-  required: boolean;
+  /** `gjc`: required only while GJC is the chosen agent. */
+  required: boolean | "gjc";
   /** When this resolves false the row is left out of the report. */
   applies?(context: EnvironmentProbeContext): Promise<boolean>;
   probe(context: EnvironmentProbeContext): Promise<Finding<P>>;
@@ -80,17 +86,18 @@ function defineCheck<P extends EnvironmentProblem>(
     check: async (context) =>
       definition.applies && !(await definition.applies(context))
         ? undefined
-        : row(definition, await definition.probe(context)),
+        : row(definition, await definition.probe(context), definition.required === "gjc" ? context.gjcRequired !== false : definition.required),
   };
 }
 
 function row<P extends EnvironmentProblem>(
   definition: EnvironmentCheckDefinition<P>,
   finding: Finding<P>,
+  required: boolean,
 ): EnvironmentCheckRow {
   const base = {
     id: definition.id,
-    required: definition.required,
+    required,
     ...(finding.detail ? { detail: finding.detail } : {}),
     ...(finding.providerAuthentication
       ? { providerAuthentication: finding.providerAuthentication }
@@ -100,7 +107,7 @@ function row<P extends EnvironmentProblem>(
   return {
     ...base,
     status:
-      definition.required && finding.problem === "not-found"
+      required && finding.problem === "not-found"
         ? "missing"
         : "warning",
     problem: finding.problem,
@@ -155,7 +162,7 @@ export function configuredProfileIds(source: string): string[] {
 export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   defineCheck({
     id: "bun",
-    required: true,
+    required: "gjc",
     // The release binary embeds its runtime. Only a `#!/usr/bin/env bun` launcher
     // (a Bun global or source install) needs Bun, and a missing GJC is installed
     // as the binary.
@@ -173,7 +180,7 @@ export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   }),
   defineCheck({
     id: "gjc",
-    required: true,
+    required: "gjc",
     probe: async (context) =>
       versionFinding(context, "gjc", await context.locateGjc()),
     fixes: {
@@ -185,7 +192,7 @@ export const ENVIRONMENT_CHECKS: readonly EnvironmentCheck[] = [
   defineCheck({
     id: "provider-login",
     // A model catalog can include credentialless proxies; it proves no login state.
-    required: true,
+    required: "gjc",
     applies: async (context) => Boolean(await context.locateGjc()),
     probe: async (
       context,
@@ -335,8 +342,10 @@ export async function isScript(executable: string): Promise<boolean> {
 export function hostEnvironmentContext(settings: {
   gjcExecutable: string | undefined;
   modelPreset: string;
+  gjcRequired?: boolean;
 }): EnvironmentProbeContext {
   return {
+    ...(settings.gjcRequired !== undefined ? { gjcRequired: settings.gjcRequired } : {}),
     locate: async (name, extraCandidates = []) =>
       (await findExecutable(name)) ?? (await firstExecutable(extraCandidates)),
     locateGjc: () => resolveGjcExecutable(settings.gjcExecutable),

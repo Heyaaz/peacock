@@ -1,6 +1,12 @@
 /**
  * Walks first-run setup through the real app on a Mac that has never seen GJC: a
- * throwaway HOME (so no gjc on any lookup path), userData and GJC agent dir.
+ * throwaway HOME (so no gjc on any lookup path), userData and GJC agent dir. Setup
+ * opens on the agent choice (P5); GJC is one of the agents, not a requirement.
+ *
+ * `--agent=claude`: chooses Claude Code instead (the installed `claude`, linked
+ * into a directory first on PATH) and creates its first session: no GJC install, no
+ * sign-in, and the session's terminal starts in this run's own herdr-core. Claude
+ * Code only starts; nothing is sent to a model.
  *
  * Default: the release download is served from here, as a stand-in `gjc` that
  * speaks GJC's install, `models` and `auth-broker login` contracts. The app's own
@@ -28,8 +34,23 @@ else setImmediate(drive)
 function launch() {
   const appPath = path.resolve(__dirname, '..')
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gajae-onboarding-smoke-'))
-  const home = path.join(root, 'home')
-  fs.mkdirSync(home, { recursive: true })
+  // herdr-core keeps its sockets under HOME (~/.local/state/herdr-core); a HOME inside
+  // TMPDIR makes them longer than a socket path may be, so HOME gets a short folder.
+  const home = fs.mkdtempSync('/tmp/goh-')
+  const agent = process.argv.find((argument) => argument.startsWith('--agent='))?.slice('--agent='.length) ?? 'gjc'
+  if (agent !== 'gjc' && agent !== 'claude') throw new Error(`unknown --agent=${agent}`)
+  // Agents come first on PATH from here: only the one this run chooses, linked in.
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(bin)
+  if (agent === 'claude') {
+    const claude = (process.env.PATH ?? '')
+      .split(path.delimiter)
+      .map((directory) => path.join(directory, 'claude'))
+      .find((candidate) => path.isAbsolute(candidate) && fs.existsSync(candidate))
+    if (!claude) throw new Error('--agent=claude needs claude on PATH')
+    fs.symlinkSync(claude, path.join(bin, 'claude'))
+  }
+
   const electron = require(path.join(appPath, 'node_modules/electron'))
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(
@@ -42,12 +63,13 @@ function launch() {
     env: {
       ...environment,
       HOME: home,
-      PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+      PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
       NODE_OPTIONS: `--require ${__filename}`,
       GAJAE_USER_DATA_DIR: path.join(root, 'user-data'),
       GJC_CODING_AGENT_DIR: path.join(root, 'gjc-agent'),
       ONBOARDING_SMOKE_ROOT: root,
       ONBOARDING_SMOKE_REAL: process.argv.includes('--real-gjc') ? '1' : '',
+      ONBOARDING_SMOKE_AGENT: agent,
     },
   })
   let report
@@ -64,16 +86,21 @@ function launch() {
   child.on('exit', (code) => {
     clearTimeout(timer)
     // The installed GJC starts its own broker and SDK helpers, which outlive the
-    // app. Every one of them runs from this run's throwaway HOME.
-    try {
-      require('node:child_process').execFileSync('/usr/bin/pkill', ['-f', root])
-    } catch {
-      // pkill exits 1 when nothing matched.
-    }
+    // app, as does herdr-core with the agent in it. Every one of them runs from this
+    // run's throwaway folders: GJC from its HOME, hc from its userData, the agent from
+    // its PATH link.
+    for (const folder of [root, home])
+      try {
+        require('node:child_process').execFileSync('/usr/bin/pkill', ['-f', folder])
+      } catch {
+        // pkill exits 1 when nothing matched.
+      }
+
     console.log(JSON.stringify(report ?? { error: 'no report' }, null, 2))
-    if (report?.passed && !process.argv.includes('--keep'))
+    if (report?.passed && !process.argv.includes('--keep')) {
       fs.rmSync(root, { recursive: true, force: true })
-    else console.log(`kept ${root}`)
+      fs.rmSync(home, { recursive: true, force: true })
+    } else console.log(`kept ${root} and ${home}`)
     process.exit(code === 0 && report?.passed ? 0 : 1)
   })
 }
@@ -112,6 +139,7 @@ function drive() {
   const { app, BrowserWindow, shell } = require('electron')
   const root = process.env.ONBOARDING_SMOKE_ROOT
   const real = process.env.ONBOARDING_SMOKE_REAL === '1'
+  const agent = process.env.ONBOARDING_SMOKE_AGENT
   const home = process.env.HOME
   const steps = []
   const step = (name, value) => {
@@ -137,6 +165,11 @@ function drive() {
   shell.openExternal = async (url) => {
     opened.push(url)
   }
+  // the folder picker answers with this run's project instead of a native dialog
+  const project = path.join(root, 'project')
+  fs.mkdirSync(project, { recursive: true })
+  const { dialog } = require('electron')
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] })
 
   const requested = []
   if (!real) {
@@ -180,6 +213,84 @@ function drive() {
     fs.writeFileSync(path.join(root, `${name}.png`), image.toPNG())
   }
   const installed = path.join(home, '.local/bin/gjc')
+  const pass = () => {
+    process.stdout.write(
+      `${REPORT_PREFIX}${JSON.stringify({ passed: true, real, agent, steps, screenshots: root })}\n`,
+    )
+    app.exit(0)
+  }
+  const readJson = (name) =>
+    JSON.parse(fs.readFileSync(path.join(process.env.GAJAE_USER_DATA_DIR, name), 'utf8'))
+
+  // Claude Code chosen on a Mac without GJC: setup ends at once and the first session
+  // opens on Claude Code's terminal, in this run's project folder.
+  async function claudeSession(agents, pick) {
+    const claudeRow = agents.find((candidate) => candidate.name === 'Claude Code')
+    assert(claudeRow && !claudeRow.disabled, 'Claude Code found')
+    assert(claudeRow.chosen, 'the first installed agent comes chosen')
+    assert(await pick('Claude Code'), 'choose Claude Code')
+    assert(await click('이 에이전트로 시작'), 'start with Claude Code')
+    await until(
+      () => run('!document.querySelector(".onboarding") && Boolean(document.querySelector(".new-session-dialog"))'),
+      'new session dialog after the choice',
+    )
+    const settings = readJson('agent-control-settings.json')
+    assert(settings.newSession?.agentKind === 'claude', `choice saved, got ${JSON.stringify(settings.newSession)}`)
+    step('choice saved', settings.newSession)
+    assert(readJson('agent-control-desktop-state.json').onboarded === true, 'setup remembered as done')
+    assert(!fs.existsSync(installed), 'GJC was not installed')
+    await until(
+      () => run('document.querySelector(\'.new-session-dialog input[name="session-agent"]:checked\')?.value === "claude"'),
+      'dialog starts on Claude Code',
+    )
+    step('dialog', await run(`({
+      agent: document.querySelector('.new-session-dialog input[name="session-agent"]:checked').value,
+      screen: document.querySelector('.new-session-dialog .session-kind-switch [aria-pressed="true"]')?.textContent,
+      permissionMode: document.querySelector('.new-session-dialog select[aria-label="권한 모드"]')?.value,
+    })`))
+    const report = await run('window.agentControlDesktop.settings.checkEnvironment()')
+    const gjcRows = report.rows.filter((row) => ['bun', 'gjc', 'provider-login', 'model-preset'].includes(row.id))
+    assert(gjcRows.every((row) => !row.required), `GJC's checks are not required: ${JSON.stringify(gjcRows)}`)
+    step('environment', { ready: report.ready, rows: report.rows.map((row) => `${row.id}:${row.status}${row.required ? '' : ' (optional)'}`) })
+    assert(report.ready, 'environment ready without GJC')
+    // the project folder comes from the stubbed picker
+    assert(
+      await run('(() => { const b = [...document.querySelectorAll(".new-session-dialog button")].find((x) => x.textContent.includes("선택…")); b?.click(); return Boolean(b); })()'),
+      'folder picker',
+    )
+    await until(
+      () => run(`document.querySelector(".new-session-dialog .project-location-field code")?.textContent === ${JSON.stringify(project)}`),
+      'project folder chosen',
+    )
+    await shot('1-new-session')
+    assert(
+      await run('(() => { const b = document.querySelector(\'.new-session-dialog button[type="submit"]\'); b?.click(); return Boolean(b); })()'),
+      'create session',
+    )
+    const session = await until(
+      async () =>
+        (await run('window.agentControlDesktop.terminal.listSessions()')).find(
+          (row) => row.agentKind === 'claude' && row.workspace === project,
+        ),
+      'Claude Code session created',
+    )
+    step('session', { id: session.id.replace(/^(terminal-).*/u, '$1…'), runtime: session.runtime, agentKind: session.agentKind, title: session.title, status: session.status })
+    assert(session.runtime === 'herdr', `herdr runtime, got ${session.runtime}`)
+    const screen = await until(
+      async () => {
+        const rows = await run('document.querySelector(".xterm-rows")?.textContent ?? ""')
+        return rows.trim() ? rows : undefined
+      },
+      "Claude Code's terminal drew its first screen",
+      60_000,
+    )
+    step('terminal', screen.replace(/\s+/gu, ' ').trim().slice(0, 160))
+    await shot('2-claude-terminal')
+    const again = await run('window.agentControlDesktop.onboarding.pendingStep()')
+    assert(again === null, 'setup does not open again')
+    step('pending step afterwards', again)
+    pass()
+  }
 
   app.whenReady().then(async () => {
     try {
@@ -189,8 +300,35 @@ function drive() {
         30_000,
       )
       await until(
-        async () => (await text()).includes('GJC'),
-        'first-run setup opened on the install step',
+        () => run('document.querySelectorAll(".onboarding-agents button").length > 0'),
+        'first-run setup opened on the agent choice',
+      )
+      const agents = await run(`[...document.querySelectorAll(".onboarding-agents button")].map((button) => ({
+        name: button.querySelector("strong").textContent,
+        detail: button.querySelector("small").textContent,
+        chosen: button.getAttribute("aria-pressed") === "true",
+        disabled: button.disabled,
+      }))`)
+      step('agent choice shown', agents)
+      await shot('0-agent')
+      const gjcRow = agents.find((candidate) => candidate.name === 'GJC')
+      assert(gjcRow && !gjcRow.disabled && gjcRow.detail.includes('고르면 설치합니다'), 'GJC offered, not installed')
+      const pick = (name) =>
+        run(`(() => {
+          const button = [...document.querySelectorAll(".onboarding-agents button")].find((b) => b.querySelector("strong").textContent === ${JSON.stringify(name)});
+          if (!button || button.disabled) return false;
+          button.click();
+          return true;
+        })()`)
+      if (agent === 'claude') {
+        await claudeSession(agents, pick)
+        return
+      }
+      assert(await pick('GJC'), 'choose GJC')
+      assert(await click('이 에이전트로 시작'), 'start with GJC')
+      await until(
+        async () => (await text()).includes('가재를 쓰려면 GJC가 필요합니다'),
+        'install step after choosing GJC',
       )
       step('install step shown', await text())
       await shot('1-install')
@@ -322,7 +460,11 @@ function drive() {
             ),
           'new conversation dialog',
         )
-        step('new conversation dialog opened')
+        await until(
+          () => run('document.querySelector(\'.new-session-dialog input[name="session-agent"]:checked\')?.value === "gjc"'),
+          'the dialog starts on GJC, the agent chosen',
+        )
+        step('new conversation dialog opened on GJC')
         await shot('5-new-conversation')
         const again = await run(
           'window.agentControlDesktop.onboarding.pendingStep()',
@@ -330,10 +472,7 @@ function drive() {
         assert(again === null, 'setup does not open again')
         step('pending step afterwards', again)
       }
-      process.stdout.write(
-        `${REPORT_PREFIX}${JSON.stringify({ passed: true, real, steps, screenshots: root })}\n`,
-      )
-      app.exit(0)
+      pass()
     } catch (error) {
       await shot('failure').catch(() => undefined)
       process.stdout.write(
