@@ -92,6 +92,13 @@ Portions of the agent runtime are adapted from
   model-name rule, in `shared/agent-launch.ts`
 - `server/agent-catalog-detect.ts` — finding an agent's executable on PATH,
   then where its installer puts it, in `electron/herdr-core/agent-detect.ts`
+- `server/transcript-records.ts` and `server/claude-transcript.ts` — reading
+  Claude Code and omp transcripts into chat rows, in
+  `electron/herdr-core/transcript/transcript-records.ts`,
+  `electron/herdr-core/transcript/claude-transcript.ts` and
+  `electron/herdr-core/transcript/omp-transcript.ts`
+- `server/session-history.ts` and `server/omp.ts` — omp's session folder
+  names and its terminal breadcrumb, in `electron/herdr-core/omp-session.ts`
 
 ```
 MIT License

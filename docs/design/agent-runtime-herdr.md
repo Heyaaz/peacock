@@ -108,6 +108,15 @@ Main
 - 감시: 250ms stat 폴링 → `transcript.synced`/`appended`.
 - 입력: **hc `terminal.send`** 사용(붙여넣기+Enter, 사용자 입력 ~3초 대기, 차단 상태 거부). 호출 타임아웃 30초. hc `reported=false`면 `capabilities.send=false`. Gajae 자체 대기열은 두지 않음. 첨부 불가 → `attachments=false`.
 - 취소: `terminal.keys`(Esc) 또는 hc stop/interrupt(버전 확인).
+- **P3 결과(실측·구현)**:
+  - 구현 위치: `electron/herdr-core/transcript/`(`transcript-records.ts` 공통 판독, `claude-transcript.ts`, `omp-transcript.ts` 이식 파서, `transcripts.ts` 파일 추종·250ms 폴링·이벤트), `electron/herdr-core/omp-session.ts`(omp 기록 위치). 파서는 Ovis의 turn 대신 Gajae `TranscriptItem`을 바로 만든다. 행은 교체만 하고 제자리 변경은 하지 않는다(이전 목록과 비교해 바뀐 행만 보냄).
+  - id: `<sessionId>:<call_id>`, `<sessionId>:<uuid>:<idx>`, `<sessionId>:<uuid>`(omp는 entry id). 파일 중간부터 읽어도, 한 줄씩 읽어도 같은 id(단위 테스트).
+  - 첫 읽기는 파일 끝 16MiB만(Claude Code 2.1.33x는 턴마다 수십 KB의 요청 shape·prompt snapshot을 기록). 그보다 앞의 기록은 채팅에서 볼 수 없다(`hasMoreBefore`는 창 안 기준). 관련 없는 타입의 줄은 JSON 파싱 전에 건너뛴다.
+  - 이벤트: 창이 페이지를 읽은 세션만, 바뀐 행 16개 이하면 `transcript.appended`(행 단위 upsert), 그보다 많으면 `transcript.synced`(창이 가진 행부터의 꼬리), 행이 사라지거나 순서가 바뀌면(다른 파일, `/clear`) `transcript.invalidated`.
+  - `/clear`: SessionStart 훅이 새 `transcript_path`를 보고하면 추종 파일이 바뀌고 채팅은 새 기록만 보인다(스모크 2단계 실측). 앱 재시작 뒤에도 같은 파일에서 같은 id로 다시 읽는다(스모크 2단계).
+  - 보내기: `terminal.send`(타임아웃 30초). blocked 거부는 `{kind:"not_executed", detail:<7501 msg>}`로 돌려주고 입력창에 이유를 보인다. 대기(waiting) 중엔 입력창에 "터미널 열기" 안내. 낙관적 표시 없음(기록에 나타날 때 행이 생김). `/compact` 등 기존 위험 명령 확인 대화는 GJC와 같은 경로를 탄다.
+  - capabilities: 카탈로그 상한에서 `send = reported && live`, `approvals=false`(P4), `git=false`(GJC git 패널 미연결), `attachments/streaming=false`. 렌더러는 Claude Code·omp 세션에 GJC Composer 대신 전용 입력창(텍스트·보내기·중단만)을 쓰고, 헤더의 사이드 채팅·변경 파일·세션 정보 버튼과 goal/subagent/git/명령 목록 조회를 끈다. 세션마다 채팅/터미널 선택을 기억하고 처음엔 카탈로그 `defaultSurface`(터미널)로 연다.
+  - omp: **omp 19.1.1은 hc 아래에서 7501을 보고한다**(`reported=true`, idle→running 실측) → `send` 허용. 기록 위치는 ① 터미널 breadcrumb(`~/.omp/agent/terminal-sessions/<tty>`, 터미널 pid의 tty를 `ps`로, 터미널 시작 이후에 쓰였고 cwd가 같을 때만) ② 레코드에 저장한 경로 ③ cwd 폴더(`-<home 상대>`/`-tmp-<상대>`/`--<경로>--`)의 터미널 시작 이후 최신 파일. 실측은 ①로 찾음. 찾은 경로와 omp 세션 id는 레코드에 저장하고, 새 터미널은 `omp --resume <파일>`로 이어 간다. Gajae가 띄우는 omp에는 profile 관련 env가 전달되지 않으므로(허용 목록) 기본 store만 본다.
 
 ### 5.6 승인 / 질문 (P4)
 - PermissionRequest 훅 → `ToolActivity{approval-required}`, `permissionOptions`는 **allow_once / reject_once만**.
@@ -150,7 +159,7 @@ Main
 | **P0.5 스파이크** (버리는 코드, **완료** → [spike-results.md](spike-results.md)) | ① 패키지 빌드에서 hc 시작→앱 종료→재접속, FD/env 확인(lsof, ps -E) ② launchd/TCC·백그라운드 항목 알림(ad-hoc·공증 서명 양쪽) ③ `--session-id`+훅으로 `transcript_path` 수신, 앱 재시작 후에도 ④ 셸 릴레이 동작 ⑤ hc 아래 Claude Code의 7501 보고와 승인 대화상자 중 send 거부 ⑥ hc 버전(0.1.17 vs 0.1.18) 확정 | 각 항목 결과 기록, 설계 확정 |
 | P1 | hc 수명주기 + 셸 터미널(detach/kill/restart, 고아 정리, node-pty 폴백) | 앱 재시작 후 셸 터미널과 출력 유지 (**완료**: `npm run desktop:hc-terminal-smoke`가 앱 재시작 뒤 같은 pid·출력 유지를 실측) |
 | P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 (**완료**: `npm run desktop:hc-agent-smoke`가 실제 Claude Code로 사이드바 waiting→running→idle, 승인·완료 알림 요청, 앱 재시작 뒤 훅 수신을 실측. 단 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 거부됨) |
-| P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 |
+| P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 (**완료**: `GAJAE_AGENT_SMOKE_PHASES=3,4 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku)와 omp(작은 모델)로 창에서 세션을 열고 채팅으로 전환해 보낸 메시지가 터미널 화면에 나타나고 답이 채팅에 나타남을, 전환 뒤에도 같은 id임을 실측. 2단계는 재시작 뒤 같은 기록과 `/clear` 뒤 새 기록 추종을 실측) |
 | P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 |
 | P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 |
 | P6 | 검색 색인·병렬 실행의 herdr 세션 지원 | — |
