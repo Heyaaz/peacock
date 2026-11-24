@@ -33,6 +33,7 @@ docs/*
 !docs/remote-access.md
 !docs/development.md
 !docs/media/
+!docs/design/
 .gjc
 
 # Editor directories and files
