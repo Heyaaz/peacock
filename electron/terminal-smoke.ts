@@ -9,10 +9,13 @@ import { TERMINAL_IPC } from "../shared/terminal-ipc.js";
  * Opens the mock chat, switches to Terminal, and checks that a real login
  * shell echoed a marker. Saves a screenshot either way.
  */
-export function attachTerminalSmoke(window: BrowserWindow): void {
+export function attachTerminalSmoke(
+  window: BrowserWindow,
+  exit: (code: number) => void = (code) => app.exit(code),
+): void {
   const timeout = setTimeout(() => {
     console.error("Terminal view smoke timed out");
-    app.exit(1);
+    exit(1);
   }, 45_000);
 
   window.webContents.once("did-finish-load", () => {
@@ -117,6 +120,7 @@ export function attachTerminalSmoke(window: BrowserWindow): void {
           const remaining = (await bridge.listSessions()).some((session) => session.id === created.id);
           offOutput();
           return {
+            backend: first.backend ?? null,
             runtime: listed?.runtime ?? null,
             sameShell: again.id === first.id,
             replayed: (again.replay ?? "").includes("gajae-session-ok"),
@@ -191,15 +195,15 @@ export function attachTerminalSmoke(window: BrowserWindow): void {
         if (!report.echoed) failures.push("Login shell did not echo gajae-pty-ok");
         if (failures.length > 0) {
           for (const failure of failures) console.error(`FAIL: ${failure}`);
-          app.exit(1);
+          exit(1);
           return;
         }
         console.log("Terminal view smoke passed");
-        app.exit(0);
+        exit(0);
       } catch (error) {
         clearTimeout(timeout);
         console.error("Terminal view smoke failed to run", error);
-        app.exit(1);
+        exit(1);
       }
     })();
   });

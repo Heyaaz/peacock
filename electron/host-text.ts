@@ -19,6 +19,12 @@ export function endWorkflowMessage(skill: string): string {
 const ENGLISH: Readonly<Record<string, string>> = {
   "세션을 삭제할까요?": "Delete this session?",
   "터미널 세션을 삭제할까요?": "Delete this terminal session?",
+  "백그라운드 터미널을 모두 종료할까요?": "End all background terminals?",
+  "앱을 닫아도 계속 실행되던 터미널 세션의 셸과 그 안의 프로그램을 모두 종료합니다.":
+    "Ends every terminal session's shell that kept running after the app closed, and every program in them.",
+  "모두 종료": "End all",
+  "herdr-core를 쓸 수 없어 앱 안에서 셸을 열었습니다. 앱을 닫으면 이 셸은 종료됩니다.":
+    "herdr-core is unavailable, so this shell runs inside the app and ends when the app quits.",
   "이 세션에서 실행 중인 셸과 프로그램을 종료합니다.":
     "Ends the shell and any program running in this session.",
   "이 세션을 목록에서 숨길까요? GJC의 기록은 삭제되지 않습니다.":

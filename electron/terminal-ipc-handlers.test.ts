@@ -7,6 +7,7 @@ import type { AgentSession } from "../shared/agent-contract.js";
 import type { IpcSecurity } from "./ipc-security.js";
 import { registerTerminalIpcHandlers, terminalStartRequest } from "./terminal-ipc-handlers.js";
 import type { LoginShellOptions, LoginShellSession } from "./terminal-session.js";
+import type { SessionTerminalProvider, SessionTerminalRequest, TerminalHandle } from "./terminal-backend.js";
 import { TerminalSessionStore } from "./terminal-session-store.js";
 import { TERMINAL_IPC, type TerminalSessionInfo } from "../shared/terminal-ipc.js";
 
@@ -328,5 +329,154 @@ describe("terminal sessions", () => {
     expect(new TerminalSessionStore(directory).list()).toEqual([
       expect.objectContaining({ id: session.id, title: "새 이름", workspace: directory }),
     ]);
+  });
+});
+
+describe("terminal sessions in herdr-core", () => {
+  type Opened = { request: SessionTerminalRequest; handle: TerminalHandle & Record<string, ReturnType<typeof vi.fn>> };
+
+  function setup(options: { failOpen?: boolean } = {}) {
+    const directory = mkdtempSync(path.join(tmpdir(), "terminal-hc-sessions-"));
+    const store = new TerminalSessionStore(directory);
+    const opened: Opened[] = [];
+    const ptys: { options: LoginShellOptions; dispose: ReturnType<typeof vi.fn> }[] = [];
+    const provider: SessionTerminalProvider & Record<string, ReturnType<typeof vi.fn>> = {
+      open: vi.fn(async (request: SessionTerminalRequest) => {
+        if (options.failOpen) throw new Error("hc connect ended: socket path too long");
+        const handle = { handle: vi.fn(), detach: vi.fn(), kill: vi.fn() };
+        opened.push({ request, handle });
+        return handle;
+      }),
+      kill: vi.fn(async () => undefined),
+      killAll: vi.fn(async () => 2),
+    };
+    const open = (sessionOptions: LoginShellOptions) => {
+      const entry = { options: sessionOptions, dispose: vi.fn() };
+      ptys.push(entry);
+      return { handle: vi.fn(), dispose: entry.dispose } as unknown as LoginShellSession;
+    };
+    const ipcSecurity = {
+      ...security(true),
+      preauthorize: vi.fn(async () => true),
+      authorizeDestructive: vi.fn(async () => undefined),
+    } as unknown as IpcSecurity;
+    const registration = registerTerminalIpcHandlers(ipcSecurity, { store, open, provider });
+    const sender = { id: 31, isDestroyed: () => false, send: vi.fn() };
+    const event = { sender } as unknown as IpcMainInvokeEvent;
+    const call = (channel: string, ...args: unknown[]) => handled.get(channel)!(event, ...args);
+    return { directory, store, opened, ptys, provider, registration, sender, call, ipcSecurity };
+  }
+
+  const create = async (call: (channel: string, ...args: unknown[]) => unknown, directory: string) =>
+    (await call(TERMINAL_IPC.createSession, { title: "hc", workspace: directory })) as AgentSession;
+
+  it("opens a session's shell in herdr-core and replays it to the next view in the window", async () => {
+    const { directory, opened, call } = setup();
+    const session = await create(call, directory);
+    const first = (await call(TERMINAL_IPC.start, { token: 1, session: session.id, cols: 90, rows: 30 })) as TerminalSessionInfo;
+    expect(first).toMatchObject({ backend: "hc" });
+    expect(opened[0]!.request).toMatchObject({ cols: 90, rows: 30, restart: false });
+    opened[0]!.request.onData("\x1b[3Jhistory\r\n");
+    await call(TERMINAL_IPC.dispose, 1);
+    expect(opened[0]!.handle.detach).not.toHaveBeenCalled();
+    const again = (await call(TERMINAL_IPC.start, { token: 2, session: session.id })) as TerminalSessionInfo;
+    expect(again).toMatchObject({ id: first.id, replay: "\x1b[3Jhistory\r\n", backend: "hc" });
+    expect(opened).toHaveLength(1);
+  });
+
+  it("shares one herdr-core attach between two views that start at once", async () => {
+    const { directory, opened, call } = setup();
+    const session = await create(call, directory);
+    const [left, right] = (await Promise.all([
+      call(TERMINAL_IPC.start, { token: 1, session: session.id }),
+      call(TERMINAL_IPC.start, { token: 2, session: session.id }),
+    ])) as TerminalSessionInfo[];
+    expect(left!.id).toBe(right!.id);
+    expect(opened).toHaveLength(1);
+  });
+
+  it("detaches when the window closes or the app quits, and kills when the session is deleted", async () => {
+    const { directory, opened, provider, registration, store, call } = setup();
+    const kept = await create(call, directory);
+    await call(TERMINAL_IPC.start, { token: 1, session: kept.id });
+    const listeners = new Map<string, () => void>();
+    registration.bindWindow({
+      webContents: { id: 31, once: (event: string, callback: () => void) => listeners.set(event, callback) },
+      on: (event: string, callback: () => void) => listeners.set(event, callback),
+    } as never);
+    listeners.get("closed")!();
+    expect(opened[0]!.handle.detach).toHaveBeenCalled();
+    expect(opened[0]!.handle.kill).not.toHaveBeenCalled();
+
+    const quitting = await create(call, directory);
+    await call(TERMINAL_IPC.start, { token: 2, session: quitting.id });
+    registration.disposeAll();
+    expect(opened[1]!.handle.detach).toHaveBeenCalled();
+    expect(opened[1]!.handle.kill).not.toHaveBeenCalled();
+
+    await call(TERMINAL_IPC.start, { token: 3, session: kept.id });
+    await call(TERMINAL_IPC.deleteSession, kept.id);
+    expect(opened[2]!.handle.detach).toHaveBeenCalled();
+    expect(provider.kill).toHaveBeenCalledWith(expect.objectContaining({ id: kept.id }));
+    expect(store.get(kept.id)).toBeUndefined();
+  });
+
+  it("ends a session's background shell on delete even when no view holds it", async () => {
+    const { directory, provider, call } = setup();
+    const session = await create(call, directory);
+    await call(TERMINAL_IPC.deleteSession, session.id);
+    expect(provider.kill).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
+  });
+
+  it("restarts by asking herdr-core for a fresh shell after ending the old view", async () => {
+    const { directory, opened, call } = setup();
+    const session = await create(call, directory);
+    const first = (await call(TERMINAL_IPC.start, { token: 1, session: session.id })) as TerminalSessionInfo;
+    const restarted = (await call(TERMINAL_IPC.start, { token: 2, session: session.id, restart: true })) as TerminalSessionInfo;
+    expect(opened[0]!.handle.kill).toHaveBeenCalled();
+    expect(opened[1]!.request.restart).toBe(true);
+    expect(restarted.id).not.toBe(first.id);
+  });
+
+  it("tells the view a dropped connection, and attaches again on the next start", async () => {
+    const { directory, opened, sender, call } = setup();
+    const session = await create(call, directory);
+    const first = (await call(TERMINAL_IPC.start, { token: 1, session: session.id })) as TerminalSessionInfo;
+    opened[0]!.request.onExit({ exitCode: 0, disconnected: true });
+    expect(sender.send).toHaveBeenLastCalledWith(TERMINAL_IPC.exit, {
+      id: first.id,
+      exitCode: 0,
+      signal: undefined,
+      disconnected: true,
+    });
+    const again = (await call(TERMINAL_IPC.start, { token: 2, session: session.id })) as TerminalSessionInfo;
+    expect(again.id).not.toBe(first.id);
+    expect(opened).toHaveLength(2);
+    expect(opened[1]!.request.restart).toBe(false);
+  });
+
+  it("falls back to an in-app shell and says why when herdr-core cannot open", async () => {
+    const { directory, ptys, call } = setup({ failOpen: true });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const session = await create(call, directory);
+    const started = (await call(TERMINAL_IPC.start, { token: 1, session: session.id })) as TerminalSessionInfo;
+    expect(started.backend).toBe("pty");
+    expect(started.notice).toMatch(/socket path too long/u);
+    expect(ptys).toHaveLength(1);
+    expect(ptys[0]!.options.cwd).toBe(directory);
+  });
+
+  it("keeps the chat surface's shell an in-app pty", async () => {
+    const { provider, ptys, call } = setup();
+    await call(TERMINAL_IPC.start, { token: 1, cwd: "/tmp" });
+    expect(provider.open).not.toHaveBeenCalled();
+    expect(ptys).toHaveLength(1);
+  });
+
+  it("ends every background shell after the user confirms", async () => {
+    const { provider, ipcSecurity, call } = setup();
+    expect(await call(TERMINAL_IPC.killBackground)).toBe(2);
+    expect(ipcSecurity.authorizeDestructive).toHaveBeenCalled();
+    expect(provider.killAll).toHaveBeenCalled();
   });
 });

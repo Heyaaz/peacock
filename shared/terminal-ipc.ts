@@ -5,7 +5,7 @@
  * and this channel set only carries bytes, size, and flow control.
  */
 
-import type { AgentSession } from "./agent-contract.js";
+import type { AgentKindId, AgentSession } from "./agent-contract.js";
 
 export const TERMINAL_IPC = {
   start: "agent-control:terminal:start",
@@ -20,6 +20,7 @@ export const TERMINAL_IPC = {
   renameSession: "agent-control:terminal:rename-session",
   confirmSessionRemoval: "agent-control:terminal:confirm-session-removal",
   deleteSession: "agent-control:terminal:delete-session",
+  killBackground: "agent-control:terminal:kill-background",
 } as const;
 
 /** Terminal session ids carry this prefix, so a session row says which runtime owns it. */
@@ -30,14 +31,21 @@ export function isTerminalSessionId(sessionId: string): boolean {
 }
 
 /**
- * A terminal session as the app stores it. GJC's broker never sees these; the
- * shell behind one lives only while the window that opened it does.
+ * A terminal session as the app stores it. GJC's broker never sees these. The
+ * shell behind one runs in herdr-core and outlives the app; when herdr-core is
+ * not available it runs in the app instead and lives only while its window does.
  */
 export interface TerminalSessionRecord {
   id: string;
   title: string;
   workspace: string;
   createdAt: string;
+  /** The agent the session runs. Every terminal session so far is a shell. */
+  agentKind?: AgentKindId;
+  /** The herdr-core whose terminal this is: an address means something only on its own core. */
+  coreId?: string;
+  /** The session's terminal on that core (`t7`), while it has one. */
+  terminalAddress?: string;
 }
 
 export interface TerminalSessionCreateInput {
@@ -74,6 +82,10 @@ export interface TerminalSessionInfo {
   replay?: string;
   /** Set when the session's shell has already exited. */
   exitCode?: number;
+  /** Where the shell runs: in herdr-core (kept when the app quits), or in the app (`pty`). */
+  backend?: "hc" | "pty";
+  /** Why the shell runs in the app although it should have run in herdr-core. */
+  notice?: string;
 }
 
 export interface TerminalOutputEvent {
@@ -85,6 +97,11 @@ export interface TerminalExitEvent {
   id: string;
   exitCode: number;
   signal?: number;
+  /**
+   * The view lost its connection to the terminal, which may still be running: starting the
+   * session again attaches to it. Nothing exited, so `exitCode` means nothing here.
+   */
+  disconnected?: boolean;
 }
 
 export interface TerminalDesktopBridge {
@@ -99,6 +116,8 @@ export interface TerminalDesktopBridge {
   /** Asks the user, in the host's own dialog, before the session and its shell go away. */
   confirmSessionRemoval(sessionId: string): Promise<boolean>;
   deleteSession(sessionId: string): Promise<void>;
+  /** Ends every terminal session's shell that keeps running in herdr-core; resolves how many. */
+  killBackground(): Promise<number>;
   onOutput(listener: (event: TerminalOutputEvent) => void): () => void;
   onExit(listener: (event: TerminalExitEvent) => void): () => void;
 }

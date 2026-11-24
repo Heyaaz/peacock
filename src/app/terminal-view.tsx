@@ -28,7 +28,7 @@ interface TerminalViewProps {
   session?: string;
 }
 
-type TerminalPhase = "starting" | "running" | "exited" | "error";
+type TerminalPhase = "starting" | "running" | "exited" | "disconnected" | "error";
 
 let nextTerminalToken = 1;
 
@@ -42,6 +42,7 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
   const [epoch, setEpoch] = useState(0);
   const restartRef = useRef(false);
   const [shellId, setShellId] = useState("");
+  const [notice, setNotice] = useState("");
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -55,6 +56,7 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
     setPhase("starting");
     setDetail("");
     setShellId("");
+    setNotice("");
     const token = nextTerminalToken++;
     const restart = restartRef.current;
     restartRef.current = false;
@@ -146,6 +148,7 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
         if (disposed) return;
         liveId = started.id;
         setShellId(started.id);
+        setNotice(started.notice ?? "");
         if (started.replay) term.write(started.replay);
         const accept = (event: { id: string }): boolean => event.id === started.id;
         removeOutput = bridge.onOutput((event: TerminalOutputEvent) => {
@@ -155,6 +158,12 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
         });
         removeExit = bridge.onExit((event: TerminalExitEvent) => {
           if (!accept(event)) return;
+          // the shell may still run in herdr-core: attaching again finds it
+          if (event.disconnected) {
+            setPhase("disconnected");
+            setDetail("");
+            return;
+          }
           setPhase("exited");
           setDetail(String(event.exitCode));
         });
@@ -213,7 +222,9 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
       ? detail || t("터미널을 열지 못했습니다")
       : phase === "exited"
         ? t("셸이 종료되었습니다")
-        : "";
+        : phase === "disconnected"
+          ? t("터미널 연결이 끊겼습니다")
+          : "";
 
   return (
     <section
@@ -223,6 +234,11 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
       data-terminal-id={shellId || undefined}
       aria-label={t("터미널")}
     >
+      {notice ? (
+        <p className="terminal-pane__notice" role="status">
+          {notice}
+        </p>
+      ) : null}
       <div className="terminal-pane__host" ref={hostRef} />
       {status ? (
         <footer className="terminal-pane__bar">
@@ -233,11 +249,12 @@ export function TerminalView({ cwd, active, hidden, session }: TerminalViewProps
           <button
             type="button"
             onClick={() => {
-              restartRef.current = true;
+              // reconnecting attaches to the same shell; restarting ends it and starts a new one
+              restartRef.current = phase !== "disconnected";
               setEpoch((value) => value + 1);
             }}
           >
-            {t("터미널 다시 시작")}
+            {phase === "disconnected" ? t("다시 연결") : t("터미널 다시 시작")}
           </button>
         </footer>
       ) : null}

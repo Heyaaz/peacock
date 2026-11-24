@@ -1,11 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { isAgentKindId } from "../shared/agent-contract.js";
 import {
   TERMINAL_SESSION_PREFIX,
   type TerminalSessionCreateInput,
   type TerminalSessionRecord,
 } from "../shared/terminal-ipc.js";
+
+/** Where a session's shell runs in herdr-core. */
+export interface TerminalBinding {
+  coreId: string;
+  terminalAddress: string;
+}
+
+const TERMINAL_ADDRESS = /^[A-Za-z0-9_./-]{1,128}$/u;
 
 const TITLE_LIMIT = 200;
 
@@ -22,7 +31,10 @@ export class TerminalSessionStore {
     private readonly now: () => Date = () => new Date(),
   ) {
     this.filePath = path.join(userDataDirectory, "terminal-sessions.json");
-    this.sessions = this.read();
+    const { sessions, migrated } = this.read();
+    this.sessions = sessions;
+    // Records from before herdr-core name no agent; they were all shells.
+    if (migrated) this.write();
   }
 
   list(): TerminalSessionRecord[] {
@@ -40,6 +52,7 @@ export class TerminalSessionStore {
       title: sessionTitle(input.title),
       workspace: path.resolve(input.workspace),
       createdAt: this.now().toISOString(),
+      agentKind: "shell",
     };
     this.sessions = [session, ...this.sessions];
     this.write();
@@ -53,6 +66,25 @@ export class TerminalSessionStore {
     this.write();
   }
 
+  /** Records where the session's shell runs in herdr-core, or forgets it. */
+  bindTerminal(sessionId: string, binding: TerminalBinding | undefined): void {
+    const session = this.sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return;
+    if (
+      session.coreId === binding?.coreId &&
+      session.terminalAddress === binding?.terminalAddress
+    )
+      return;
+    if (binding) {
+      session.coreId = binding.coreId;
+      session.terminalAddress = binding.terminalAddress;
+    } else {
+      delete session.coreId;
+      delete session.terminalAddress;
+    }
+    this.write();
+  }
+
   delete(sessionId: string): void {
     const remaining = this.sessions.filter((session) => session.id !== sessionId);
     if (remaining.length === this.sessions.length) return;
@@ -60,12 +92,17 @@ export class TerminalSessionStore {
     this.write();
   }
 
-  private read(): TerminalSessionRecord[] {
+  private read(): { sessions: TerminalSessionRecord[]; migrated: boolean } {
     try {
       const value = JSON.parse(readFileSync(this.filePath, "utf8")) as { sessions?: unknown };
-      return Array.isArray(value?.sessions) ? value.sessions.flatMap(parseRecord) : [];
+      if (!Array.isArray(value?.sessions)) return { sessions: [], migrated: false };
+      const sessions = value.sessions.flatMap(parseRecord);
+      const migrated = value.sessions.some(
+        (raw) => raw && typeof raw === "object" && !isAgentKindId((raw as Record<string, unknown>).agentKind),
+      );
+      return { sessions, migrated: migrated && sessions.length > 0 };
     } catch {
-      return [];
+      return { sessions: [], migrated: false };
     }
   }
 
@@ -98,12 +135,21 @@ function parseRecord(raw: unknown): TerminalSessionRecord[] {
     typeof value.createdAt !== "string"
   )
     return [];
+  const bound =
+    typeof value.coreId === "string" &&
+    /^[A-Za-z0-9]{1,128}$/u.test(value.coreId) &&
+    typeof value.terminalAddress === "string" &&
+    TERMINAL_ADDRESS.test(value.terminalAddress);
   return [
     {
       id: value.id,
       title: value.title,
       workspace: value.workspace,
       createdAt: value.createdAt,
+      agentKind: isAgentKindId(value.agentKind) ? value.agentKind : "shell",
+      ...(bound
+        ? { coreId: value.coreId as string, terminalAddress: value.terminalAddress as string }
+        : {}),
     },
   ];
 }

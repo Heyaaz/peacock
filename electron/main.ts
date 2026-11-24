@@ -62,6 +62,12 @@ import { registerParallelIpcHandlers } from "./parallel-ipc-handlers.js";
 import { PARALLEL_IPC } from "../shared/parallel-ipc.js";
 import { registerTerminalIpcHandlers } from "./terminal-ipc-handlers.js";
 import { attachTerminalSmoke } from "./terminal-smoke.js";
+import { attachHcTerminalSmoke } from "./hc-terminal-smoke.js";
+import { HcCore, hcSessionName } from "./herdr-core/core.js";
+import { HcSessionTerminals } from "./herdr-core/terminals.js";
+import { installHerdrCore, readHcVersion } from "./herdr-core/install.js";
+import { coreEnvironment, corePath } from "./herdr-core/env.js";
+import { HC_BUNDLE, HC_VERSION } from "./herdr-core/version.js";
 import {
   DesktopIntegration,
   type DesktopIntegrationState,
@@ -621,9 +627,53 @@ const unregisterOnboardingIpc = registerOnboardingIpcHandlers(
   }),
   ipcSecurity,
 );
+const terminalSessions = new TerminalSessionStore(userDataDirectory);
+/** `--hc-terminal-smoke=<phase>`: one run of scripts/hc-terminal-smoke.mjs, next to --terminal-smoke. */
+const hcTerminalSmokePhase = app.isPackaged
+  ? undefined
+  : process.argv
+      .find((argument) => argument.startsWith("--hc-terminal-smoke="))
+      ?.slice("--hc-terminal-smoke=".length);
+const hcSmokeRun = !app.isPackaged && (smokeMode || terminalSmokeMode || deepLinkSmokeMode);
+const hcSession = hcSessionName(
+  app.isPackaged ? "packaged" : hcSmokeRun ? "smoke" : "development",
+  process.pid,
+  process.env.GAJAE_HC_SESSION,
+);
+let hcEnvironment: Promise<Record<string, string>> | undefined;
+// Terminal sessions' shells run in herdr-core, which outlives the app. Without it (another
+// platform, no bundle, a core that fails) a session falls back to an in-app shell.
+const hcCore =
+  process.platform === "darwin"
+    ? new HcCore({
+        session: hcSession,
+        // a smoke core this run named is its own to stop; one the caller named is the caller's
+        disposable: hcSmokeRun && !process.env.GAJAE_HC_SESSION?.trim(),
+        locate: async () => {
+          const override = process.env.GAJAE_HC_BIN?.trim();
+          if (override) return { binary: override, version: await readHcVersion(override) };
+          const source = app.isPackaged
+            ? path.join(process.resourcesPath, HC_BUNDLE)
+            : path.join(app.getAppPath(), "build", "herdr-core", HC_VERSION, HC_BUNDLE);
+          return installHerdrCore({ source, root: path.join(userDataDirectory, "bin", "herdr-core") });
+        },
+        environment: () =>
+          (hcEnvironment ??= corePath(process.env).then((corePathValue) =>
+            coreEnvironment(process.env, { session: hcSession, path: corePathValue }),
+          )),
+      })
+    : undefined;
+const hcTerminals = hcCore ? new HcSessionTerminals(hcCore, terminalSessions) : undefined;
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
-  store: new TerminalSessionStore(userDataDirectory),
+  store: terminalSessions,
+  provider: hcTerminals,
 });
+/** Quits from a smoke: views let go of their shells first, and a smoke's own core stops. */
+function exitWithTerminals(code: number): void {
+  terminalIpc.disposeAll();
+  hcCore?.dispose();
+  app.exit(code);
+}
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -1429,13 +1479,28 @@ function createWindow(): BrowserWindow {
     });
   }
 
-  if (terminalSmokeMode) attachTerminalSmoke(window);
+  if (hcTerminalSmokePhase)
+    attachHcTerminalSmoke(window, {
+      phase: hcTerminalSmokePhase,
+      resultPath: path.join(userDataDirectory, "hc-terminal-smoke.json"),
+      exit: exitWithTerminals,
+    });
+  else if (terminalSmokeMode) attachTerminalSmoke(window, exitWithTerminals);
 
   return window;
 }
 
 app.whenReady().then(() => {
   void remoteAccess?.start();
+  // only a core that already runs is checked: connecting would start one
+  if (hcCore?.isRunning())
+    void hcTerminals
+      ?.reconcile()
+      .then(({ orphans, forgotten }) => {
+        if (orphans || forgotten)
+          console.log(`herdr-core: ended ${orphans} orphan terminal(s), forgot ${forgotten} gone one(s)`);
+      })
+      .catch((error: unknown) => console.error("herdr-core: could not reconcile terminals", error));
   void automationService
     .initialize()
     .catch((error) =>
@@ -1495,6 +1560,8 @@ app.on("before-quit", () => {
   unregisterOnboardingIpc();
   terminalIpc.disposeAll();
   terminalIpc.unregister();
+  // the core and its shells keep running; only a smoke run's own core stops
+  hcCore?.dispose();
   unregisterEventStreamIpc();
   void desktopEvents.close();
   void remoteAccess?.dispose();

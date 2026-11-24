@@ -582,6 +582,7 @@ const terminal: TerminalDesktopBridge = Object.freeze({
     ipcRenderer.invoke(TERMINAL_IPC.confirmSessionRemoval, sessionId),
   deleteSession: (sessionId: string) =>
     ipcRenderer.invoke(TERMINAL_IPC.deleteSession, sessionId),
+  killBackground: () => ipcRenderer.invoke(TERMINAL_IPC.killBackground),
   onOutput: (listener: (event: TerminalOutputEvent) => void) => {
     const wrapped = (
       _event: Electron.IpcRendererEvent,

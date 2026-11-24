@@ -1420,6 +1420,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.terminal-pane__notice {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 6px 14px;
+  color: #e7c547;
+  font-size: 12px;
+  line-height: 1.4;
+  background: #1d2025;
+  border-bottom: 1px solid #353941;
+}
 .terminal-pane__bar button {
   flex: 0 0 auto;
   height: 26px;

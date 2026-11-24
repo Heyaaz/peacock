@@ -1138,4 +1138,13 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "즐겨찾기에 추가": "Add to favorites",
   "모델 {0}개 중에서 이름이나 provider로 찾으세요.":
     "Search {0} models by name or provider.",
+  "터미널 연결이 끊겼습니다": "Lost the connection to the terminal",
+  "백그라운드 터미널": "Background terminals",
+  "터미널 세션의 셸은 앱을 닫아도 계속 실행됩니다. 여기서 모두 종료할 수 있습니다.":
+    "Terminal session shells keep running after the app closes. End them all here.",
+  "종료하는 중…": "Ending…",
+  "모두 종료": "End all",
+  "터미널 {0}개를 종료했습니다": "Ended {0} terminals",
+  "실행 중인 백그라운드 터미널이 없습니다": "No background terminals are running",
+  "터미널을 종료하지 못했습니다": "Could not end the terminals",
 };

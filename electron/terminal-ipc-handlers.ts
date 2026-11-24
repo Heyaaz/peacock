@@ -11,6 +11,8 @@ import {
   type LoginShellOptions,
   type LoginShellSession,
 } from "./terminal-session.js";
+import type { SessionTerminalProvider, TerminalEnd, TerminalHandle } from "./terminal-backend.js";
+import { hostText } from "./host-text.js";
 import { ReplayBuffer, createOutputBatcher, type OutputBatcher } from "./terminal-output.js";
 import type { TerminalSessionStore } from "./terminal-session-store.js";
 import {
@@ -29,7 +31,7 @@ interface TerminalSender {
   send(channel: string, payload: unknown): void;
 }
 
-/** The chat surface's shell, which lives only while its view does. */
+/** The chat surface's shell, which stays an in-app pty and lives only while its view does. */
 const SURFACE_KEY = "";
 /** What a terminal session replays to a view that attaches to it again. */
 export const TERMINAL_REPLAY_LIMIT = 512 * 1024;
@@ -42,7 +44,11 @@ interface LiveTerminal {
   key: string;
   token: number;
   cwd: string;
-  session: LoginShellSession;
+  handle: TerminalHandle;
+  /** Where the shell runs: herdr-core keeps it when the app quits, the app's own pty does not. */
+  backend: "pty" | "hc";
+  /** Why a session's shell runs in the app instead of herdr-core. */
+  notice?: string;
   replay: ReplayBuffer;
   outgoing: OutputBatcher;
   /** The views showing this shell, by start token. With none, output only goes to the replay. */
@@ -51,114 +57,87 @@ interface LiveTerminal {
   exited: Promise<void>;
 }
 
+/** An in-app shell, which ends whichever way a view lets go of it. */
+function ptyHandle(session: LoginShellSession): TerminalHandle {
+  return {
+    handle: (frame) => session.handle(frame),
+    detach: () => session.dispose(),
+    kill: () => session.dispose(),
+  };
+}
+
+function fallbackNotice(error: unknown): string {
+  const reason = error instanceof Error ? error.message : String(error);
+  return `${hostText("herdr-core를 쓸 수 없어 앱 안에서 셸을 열었습니다. 앱을 닫으면 이 셸은 종료됩니다.")} (${reason})`;
+}
+
 /**
- * Shells per renderer. The chat surface keeps one shell that dies with its view;
- * each terminal session keeps its own, which outlives the view so switching
- * sessions and coming back finds it still running. Closing the window kills
- * every shell it opened.
+ * Shells per renderer. The chat surface keeps one in-app shell that dies with its view.
+ * Each terminal session's shell runs in herdr-core when a provider is given: it outlives the
+ * view, the window and the app, and every window attaches to the same one. Without herdr-core
+ * a session falls back to an in-app shell per window, which outlives only its view.
+ *
+ * Letting go and ending are different: a window closing or the app quitting detaches (an
+ * herdr-core shell keeps running), deleting or restarting a session kills.
  */
 export class TerminalHost {
   private readonly windows = new Map<number, Map<string, LiveTerminal>>();
   private readonly cancelled = new Map<number, Set<number>>();
+  /** Session starts waiting on herdr-core, by window and session, so two views share one. */
+  private readonly pending = new Map<string, Promise<LiveTerminal>>();
 
   constructor(
     private readonly openShell: (options: LoginShellOptions) => LoginShellSession = openLoginShell,
     private readonly lookup: (sessionId: string) => TerminalSessionRecord | undefined = () =>
       undefined,
+    private readonly provider?: SessionTerminalProvider,
+    private readonly log: (message: string, error?: unknown) => void = (message, error) =>
+      console.error(message, error),
   ) {}
 
-  start(sender: TerminalSender, request: TerminalStartRequest): TerminalSessionInfo {
+  start(
+    sender: TerminalSender,
+    request: TerminalStartRequest,
+  ): TerminalSessionInfo | Promise<TerminalSessionInfo> {
     const key = request.session ?? SURFACE_KEY;
     const token = request.token;
     if (this.takeCancel(sender.id, token)) throw new Error("Terminal start was cancelled");
     const stored = key === SURFACE_KEY ? undefined : this.lookup(key);
     if (key !== SURFACE_KEY && !stored) throw new Error("Terminal session not found");
     const current = this.windows.get(sender.id)?.get(key);
-    if (current && key !== SURFACE_KEY && !request.restart) {
-      current.session.handle({ t: "r", c: request.cols, r: request.rows });
-      // The replay covers anything still waiting, and this view is not listening yet.
-      current.outgoing.flush();
-      current.views.add(token);
-      return {
-        id: current.id,
-        cwd: current.cwd,
-        replay: current.replay.read(),
-        ...(current.exitCode === undefined ? {} : { exitCode: current.exitCode }),
-      };
-    }
+    if (current && key !== SURFACE_KEY && !request.restart) return this.rejoin(current, request);
+    if (stored && this.provider) return this.startProvided(sender, request, stored);
     this.kill(sender.id, key);
-    const id = randomUUID();
     const cwd = resolveShellCwd(stored?.workspace ?? request.cwd);
-    let markExited = (): void => undefined;
-    const isCurrent = (): boolean => this.windows.get(sender.id)?.get(key) === terminal;
-    const terminal: LiveTerminal = {
-      id,
-      key,
-      token,
-      cwd,
-      session: undefined as unknown as LoginShellSession,
-      replay: new ReplayBuffer(TERMINAL_REPLAY_LIMIT),
-      outgoing: createOutputBatcher((data) => {
-        if (!isCurrent() || sender.isDestroyed()) return;
-        const payload: TerminalOutputEvent = { id, data };
-        sender.send(TERMINAL_IPC.output, payload);
-      }),
-      views: new Set([token]),
-      exited: new Promise<void>((resolve) => {
-        markExited = resolve;
-      }),
-    };
-    const options: LoginShellOptions = {
+    const { terminal, onData, onExit } = this.createLive(sender, key, token, cwd);
+    const session = this.openShell({
       cwd,
       cols: request.cols,
       rows: request.rows,
-      onData: (data) => {
-        if (!isCurrent()) return;
-        if (key !== SURFACE_KEY) terminal.replay.push(data);
-        if (terminal.views.size > 0) terminal.outgoing.push(data);
-      },
-      onExit: (status) => {
-        markExited();
-        if (!isCurrent()) return;
-        terminal.outgoing.flush();
-        if (key === SURFACE_KEY) this.windows.get(sender.id)?.delete(key);
-        else terminal.exitCode = status.exitCode;
-        if (sender.isDestroyed()) return;
-        const payload: TerminalExitEvent = {
-          id,
-          exitCode: status.exitCode,
-          signal: status.signal,
-        };
-        sender.send(TERMINAL_IPC.exit, payload);
-      },
-    };
-    const session = this.openShell(options);
+      onData,
+      onExit: (status) => onExit({ exitCode: status.exitCode, signal: status.signal }),
+    });
     if (this.takeCancel(sender.id, token)) {
       session.dispose();
       throw new Error("Terminal start was cancelled");
     }
-    terminal.session = session;
-    let terminals = this.windows.get(sender.id);
-    if (!terminals) {
-      terminals = new Map();
-      this.windows.set(sender.id, terminals);
-    }
-    terminals.set(key, terminal);
-    return { id, cwd };
+    terminal.handle = ptyHandle(session);
+    this.register(sender.id, key, terminal);
+    return { id: terminal.id, cwd };
   }
 
   write(senderId: number, id: unknown, data: unknown): void {
     if (typeof data !== "string") return;
-    this.find(senderId, id)?.session.handle({ t: "i", d: data });
+    this.find(senderId, id)?.handle.handle({ t: "i", d: data });
   }
 
   resize(senderId: number, id: unknown, cols: unknown, rows: unknown): void {
-    this.find(senderId, id)?.session.handle({ t: "r", c: cols, r: rows });
+    this.find(senderId, id)?.handle.handle({ t: "r", c: cols, r: rows });
   }
 
   setPaused(senderId: number, id: unknown, paused: unknown): void {
     if (typeof paused !== "boolean") return;
-    this.find(senderId, id)?.session.handle({ t: "p", paused });
+    this.find(senderId, id)?.handle.handle({ t: "p", paused });
   }
 
   /**
@@ -173,21 +152,26 @@ export class TerminalHost {
     this.kill(senderId, SURFACE_KEY);
   }
 
+  /** The window closed: herdr-core shells keep running, in-app shells end. */
   disposeWindow(senderId: number): void {
-    for (const key of [...(this.windows.get(senderId)?.keys() ?? [])]) this.kill(senderId, key);
+    for (const key of [...(this.windows.get(senderId)?.keys() ?? [])]) this.detach(senderId, key);
     this.windows.delete(senderId);
     this.cancelled.delete(senderId);
   }
 
   /**
-   * Closes a terminal session's shells in every window the way closing a
-   * terminal window does, and waits for them to exit.
+   * Ends a terminal session's shell everywhere: every window's view lets go, the session's
+   * herdr-core terminal ends whether or not a view held it, and in-app shells are waited for.
    */
-  async closeSession(sessionId: string): Promise<void> {
+  async closeSession(sessionId: string, record?: TerminalSessionRecord): Promise<void> {
     const closing: Promise<unknown>[] = [];
     for (const [senderId, terminals] of this.windows) {
       const terminal = terminals.get(sessionId);
       if (!terminal) continue;
+      if (terminal.backend === "hc") {
+        this.detach(senderId, sessionId);
+        continue;
+      }
       this.kill(senderId, sessionId);
       if (terminal.exitCode === undefined)
         closing.push(
@@ -197,14 +181,170 @@ export class TerminalHost {
           ]),
         );
     }
+    if (this.provider && record)
+      closing.push(
+        this.provider.kill(record).catch((error: unknown) =>
+          this.log(`Could not end the herdr-core terminal of ${sessionId}`, error),
+        ),
+      );
     await Promise.all(closing);
   }
 
+  /** Ends every session shell that keeps running in herdr-core; resolves how many. */
+  async killBackground(): Promise<number> {
+    if (!this.provider) return 0;
+    return this.provider.killAll();
+  }
+
+  /** The app quits: every view lets go, and herdr-core shells keep running for the next launch. */
   disposeAll(): void {
     for (const senderId of [...this.windows.keys()]) this.disposeWindow(senderId);
     this.cancelled.clear();
   }
 
+  private startProvided(
+    sender: TerminalSender,
+    request: TerminalStartRequest,
+    stored: TerminalSessionRecord,
+  ): Promise<TerminalSessionInfo> {
+    const key = stored.id;
+    const pendingKey = `${sender.id}\0${key}`;
+    const inFlight = this.pending.get(pendingKey);
+    if (inFlight && !request.restart) return inFlight.then((terminal) => this.rejoin(terminal, request));
+    const replacing = this.windows.get(sender.id)?.has(key) === true;
+    this.kill(sender.id, key);
+    const opening = this.openProvided(sender, request, stored, replacing);
+    this.pending.set(pendingKey, opening);
+    const settle = (): void => {
+      if (this.pending.get(pendingKey) === opening) this.pending.delete(pendingKey);
+    };
+    opening.then(settle, settle);
+    return opening.then((terminal) => ({
+      id: terminal.id,
+      cwd: terminal.cwd,
+      backend: terminal.backend,
+      ...(terminal.notice ? { notice: terminal.notice } : {}),
+    }));
+  }
+
+  private async openProvided(
+    sender: TerminalSender,
+    request: TerminalStartRequest,
+    stored: TerminalSessionRecord,
+    replacing: boolean,
+  ): Promise<LiveTerminal> {
+    const key = stored.id;
+    const token = request.token;
+    const cwd = resolveShellCwd(stored.workspace);
+    const { terminal, onData, onExit } = this.createLive(sender, key, token, cwd);
+    let handle: TerminalHandle;
+    try {
+      handle = await this.provider!.open({
+        record: stored,
+        cols: request.cols,
+        rows: request.rows,
+        restart: request.restart === true || replacing,
+        onData,
+        onExit,
+      });
+      terminal.backend = "hc";
+    } catch (error) {
+      this.log(`herdr-core could not open terminal session ${key}; using an in-app shell`, error);
+      terminal.notice = fallbackNotice(error);
+      handle = ptyHandle(
+        this.openShell({
+          cwd,
+          cols: request.cols,
+          rows: request.rows,
+          onData,
+          onExit: (status) => onExit({ exitCode: status.exitCode, signal: status.signal }),
+        }),
+      );
+    }
+    if (this.takeCancel(sender.id, token) || sender.isDestroyed()) {
+      handle.detach();
+      throw new Error("Terminal start was cancelled");
+    }
+    terminal.handle = handle;
+    this.register(sender.id, key, terminal);
+    return terminal;
+  }
+
+  /** A live shell and the callbacks its backend reports to, before it is registered. */
+  private createLive(
+    sender: TerminalSender,
+    key: string,
+    token: number,
+    cwd: string,
+  ): { terminal: LiveTerminal; onData: (data: string) => void; onExit: (end: TerminalEnd) => void } {
+    const id = randomUUID();
+    let markExited = (): void => undefined;
+    const isCurrent = (): boolean => this.windows.get(sender.id)?.get(key) === terminal;
+    const terminal: LiveTerminal = {
+      id,
+      key,
+      token,
+      cwd,
+      handle: undefined as unknown as TerminalHandle,
+      backend: "pty",
+      replay: new ReplayBuffer(TERMINAL_REPLAY_LIMIT),
+      outgoing: createOutputBatcher((data) => {
+        if (!isCurrent() || sender.isDestroyed()) return;
+        const payload: TerminalOutputEvent = { id, data };
+        sender.send(TERMINAL_IPC.output, payload);
+      }),
+      views: new Set([token]),
+      exited: new Promise<void>((resolve) => {
+        markExited = resolve;
+      }),
+    };
+    const onData = (data: string): void => {
+      if (!isCurrent()) return;
+      if (key !== SURFACE_KEY) terminal.replay.push(data);
+      if (terminal.views.size > 0) terminal.outgoing.push(data);
+    };
+    const onExit = (end: TerminalEnd): void => {
+      markExited();
+      if (!isCurrent()) return;
+      terminal.outgoing.flush();
+      // a lost connection leaves the shell running: the next start attaches again
+      if (key === SURFACE_KEY || end.disconnected) this.windows.get(sender.id)?.delete(key);
+      else terminal.exitCode = end.exitCode;
+      if (sender.isDestroyed()) return;
+      const payload: TerminalExitEvent = {
+        id,
+        exitCode: end.exitCode,
+        signal: end.signal,
+        ...(end.disconnected ? { disconnected: true } : {}),
+      };
+      sender.send(TERMINAL_IPC.exit, payload);
+    };
+    return { terminal, onData, onExit };
+  }
+
+  private register(senderId: number, key: string, terminal: LiveTerminal): void {
+    let terminals = this.windows.get(senderId);
+    if (!terminals) {
+      terminals = new Map();
+      this.windows.set(senderId, terminals);
+    }
+    terminals.set(key, terminal);
+  }
+
+  private rejoin(current: LiveTerminal, request: TerminalStartRequest): TerminalSessionInfo {
+    current.handle.handle({ t: "r", c: request.cols, r: request.rows });
+    // The replay covers anything still waiting, and this view is not listening yet.
+    current.outgoing.flush();
+    current.views.add(request.token);
+    return {
+      id: current.id,
+      cwd: current.cwd,
+      replay: current.replay.read(),
+      ...(current.exitCode === undefined ? {} : { exitCode: current.exitCode }),
+      ...(this.provider ? { backend: current.backend } : {}),
+      ...(current.notice ? { notice: current.notice } : {}),
+    };
+  }
 
   private leaveSession(senderId: number, token: number): boolean {
     for (const terminal of this.windows.get(senderId)?.values() ?? []) {
@@ -247,7 +387,15 @@ export class TerminalHost {
     const current = terminals?.get(key);
     terminals?.delete(key);
     current?.outgoing.discard();
-    current?.session.dispose();
+    current?.handle.kill();
+  }
+
+  private detach(senderId: number, key: string): void {
+    const terminals = this.windows.get(senderId);
+    const current = terminals?.get(key);
+    terminals?.delete(key);
+    current?.outgoing.discard();
+    current?.handle.detach();
   }
 }
 
@@ -286,6 +434,7 @@ export function terminalAgentSession(record: TerminalSessionRecord): AgentSessio
     accent: "#56d4dd",
     ownership: "gajae",
     attachment: "attached",
+    agentKind: record.agentKind ?? "shell",
   };
 }
 
@@ -306,15 +455,32 @@ function removalConfirmation(record: TerminalSessionRecord | undefined) {
   };
 }
 
+const KILL_BACKGROUND_CONFIRMATION = {
+  message: "백그라운드 터미널을 모두 종료할까요?",
+  detail: "앱을 닫아도 계속 실행되던 터미널 세션의 셸과 그 안의 프로그램을 모두 종료합니다.",
+  confirmLabel: "모두 종료",
+  danger: true,
+};
+
 export function registerTerminalIpcHandlers(
   security: IpcSecurity,
   options?: {
     open?: (sessionOptions: LoginShellOptions) => LoginShellSession;
     store?: TerminalSessionStore;
+    /** Where terminal sessions' shells live past the app (herdr-core); without it, in-app ptys. */
+    provider?: SessionTerminalProvider;
   },
-): { unregister(): void; bindWindow(window: BrowserWindow): void; disposeAll(): void } {
+): {
+  unregister(): void;
+  bindWindow(window: BrowserWindow): void;
+  disposeAll(): void;
+} {
   const store = options?.store;
-  const host = new TerminalHost(options?.open, (sessionId) => store?.get(sessionId));
+  const host = new TerminalHost(
+    options?.open,
+    (sessionId) => store?.get(sessionId),
+    options?.provider,
+  );
   const requireStore = (): TerminalSessionStore => {
     if (!store) throw new Error("Terminal sessions are not available");
     return store;
@@ -366,9 +532,17 @@ export function registerTerminalIpcHandlers(
     security.guarded(async (event: IpcMainInvokeEvent, sessionId: unknown) => {
       const id = terminalSessionId(sessionId);
       const sessions = requireStore();
-      await security.authorizeDestructive(event, removalConfirmation(sessions.get(id)), `delete:${id}`);
-      await host.closeSession(id);
+      const record = sessions.get(id);
+      await security.authorizeDestructive(event, removalConfirmation(record), `delete:${id}`);
+      await host.closeSession(id, record);
       sessions.delete(id);
+    }),
+  );
+  ipcMain.handle(
+    TERMINAL_IPC.killBackground,
+    security.guarded(async (event: IpcMainInvokeEvent) => {
+      await security.authorizeDestructive(event, KILL_BACKGROUND_CONFIRMATION);
+      return host.killBackground();
     }),
   );
 
@@ -399,6 +573,7 @@ export function registerTerminalIpcHandlers(
         TERMINAL_IPC.renameSession,
         TERMINAL_IPC.confirmSessionRemoval,
         TERMINAL_IPC.deleteSession,
+        TERMINAL_IPC.killBackground,
       ])
         ipcMain.removeHandler(channel);
       ipcMain.removeListener(TERMINAL_IPC.input, onInput);
