@@ -78,6 +78,7 @@ const ROUTING_MEMBERS = new Set([
   "adopt",
   "facet",
   "hiddenFromRemote",
+  "sessionOfTool",
 ]);
 
 type Mocked<T> = { [K in keyof T]: ReturnType<typeof vi.fn> };
@@ -365,6 +366,34 @@ describe("AgentRouter with a second runtime", () => {
     expect(router.runtimeOf("h1")).toBe("gjc");
     expect(router.controllerFor("h1")).toBe(gjc);
     expect(() => router.claimSession("h1", "herdr")).toThrow("has no controller");
+  });
+
+  it("takes a tool decision to the runtime whose session the tool id names, and GJC's own ids to GJC", async () => {
+    const gjc = fakeHost();
+    const herdr = fakeRuntime({
+      toolDecisionInfo: vi.fn(() => ({ name: "이번만 허용", requiresConfirmation: true })),
+      resolveToolCall: vi.fn(async () => undefined),
+    });
+    const router = new AgentRouter(gjc);
+    router.registerRuntime("herdr", herdr);
+    router.claimSession("terminal-1", "herdr");
+    const decision = { optionId: "allow_once" };
+    expect(router.sessionOfTool("terminal-1:toolu_9")).toBe("terminal-1");
+    expect(router.sessionOfTool("terminal-1/approval-2")).toBe("terminal-1");
+    expect(router.sessionOfTool("toolu_9")).toBeUndefined();
+    expect(router.toolDecisionInfo("terminal-1:toolu_9", decision)).toEqual({ name: "이번만 허용", requiresConfirmation: true });
+    await router.resolveToolCall("terminal-1:toolu_9", decision);
+    expect(herdr.resolveToolCall).toHaveBeenCalledWith("terminal-1:toolu_9", decision);
+    await router.resolveToolCall("toolu_9", decision);
+    expect(gjc.resolveToolCall).toHaveBeenCalledWith("toolu_9", decision);
+    expect(herdr.resolveToolCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks a runtime for a tool id of a session it has not listed yet", () => {
+    const herdr = fakeRuntime({ sessionOfTool: vi.fn((toolId: string) => (toolId.startsWith("terminal-9:") ? "terminal-9" : undefined)) });
+    const router = new AgentRouter(fakeHost());
+    router.registerRuntime("herdr", herdr);
+    expect(router.sessionOfTool("terminal-9:call_1")).toBe("terminal-9");
   });
 
   it("shuts every controller down once", () => {

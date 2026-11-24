@@ -188,15 +188,36 @@ export class AgentRouter implements FullAgentHost {
     return this.gjc.listHistorySessions();
   }
 
+  /**
+   * The session a tool id names. GJC's ids are its own and carry none; another runtime's start
+   * with their session's id (`<sessionId>:<call id>`, or `<sessionId>/<id>`, design §5.7), which is
+   * how a decision from the window or a phone, which names only the tool, reaches its runtime.
+   */
+  sessionOfTool(toolId: string): string | undefined {
+    for (const sessionId of this.owners.keys())
+      if (toolId.startsWith(`${sessionId}:`) || toolId.startsWith(`${sessionId}/`)) return sessionId;
+    for (const controller of this.runtimes.values()) {
+      const sessionId = controller.sessionOfTool?.(toolId);
+      if (sessionId !== undefined) return sessionId;
+    }
+    return undefined;
+  }
+
   toolDecisionInfo(
     toolId: string,
     decision: ToolDecision,
   ): { name: string; requiresConfirmation: boolean } {
-    return this.gjc.toolDecisionInfo(toolId, decision);
+    const sessionId = this.sessionOfTool(toolId);
+    if (sessionId === undefined) return this.gjc.toolDecisionInfo(toolId, decision);
+    const controller = this.controllerFor(sessionId);
+    if (!controller.toolDecisionInfo) throw new AgentUnsupportedError("tool approvals", sessionId);
+    return controller.toolDecisionInfo(toolId, decision);
   }
 
   resolveToolCall(toolId: string, decision: ToolDecision): Promise<void> {
-    return this.gjc.resolveToolCall(toolId, decision);
+    const sessionId = this.sessionOfTool(toolId);
+    if (sessionId === undefined) return this.gjc.resolveToolCall(toolId, decision);
+    return this.facet(sessionId, "resolveToolCall")(toolId, decision);
   }
 
   watchTranscripts(sessionIds: readonly string[]): void {

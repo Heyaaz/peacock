@@ -68,6 +68,8 @@ export interface RemoteOperationsHost {
   markSessionRead(sessionId: string): Promise<void>;
   /** A session remote devices must neither see nor drive (a terminal shell, design §5.7). */
   hiddenFromRemote?(sessionId: string): boolean;
+  /** The session a tool id names, when its runtime puts it there (design §5.7). */
+  sessionOfTool?(toolId: string): string | undefined;
 }
 
 export interface RemoteOperationParams {
@@ -196,11 +198,14 @@ export async function runRemoteOperation(
       return host.suggestNextInput(sessionId!);
     case "cancel-run":
       return host.cancelRun(sessionId!);
-    case "resolve-tool-call":
-      return host.resolveToolCall(
-        requiredId(params.toolId, "Tool call ID"),
-        toolDecision(decisionBody(body)),
-      );
+    case "resolve-tool-call": {
+      const toolId = requiredId(params.toolId, "Tool call ID");
+      // a tool of a session kept off remote devices is refused like the session itself
+      const owner = host.sessionOfTool?.(toolId);
+      if (owner !== undefined && host.hiddenFromRemote?.(owner))
+        throw new Error("This session is not available on remote devices");
+      return host.resolveToolCall(toolId, toolDecision(decisionBody(body)));
+    }
     case "pending-questions":
       return host.listPendingQuestions(sessionId!);
     case "answer-question": {

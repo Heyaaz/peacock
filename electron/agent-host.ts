@@ -185,6 +185,8 @@ export type AgentRuntimeController = AgentHost &
   Partial<AgentFacets> & {
     /** A session a remote device may neither see nor drive (a shell, design §5.7). */
     hiddenFromRemote?(sessionId: string): boolean;
+    /** The session one of its tool ids names, for a runtime whose tool ids carry it. */
+    sessionOfTool?(toolId: string): string | undefined;
   };
 
 /**
