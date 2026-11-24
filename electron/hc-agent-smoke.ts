@@ -1,5 +1,6 @@
 import type { BrowserWindow } from "electron";
-import { existsSync, mkdtempSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,7 +38,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * records whether omp reports its state to herdr-core. Phase 5 is a tool approval (design §5.6): a
  * Claude Code in its default permission mode asks to run one Bash command, the card in the window
  * answers it. Phase 6 is a fresh app: the same agent asks again, a paired phone answers through the
- * remote protocol, and a third request answered at the terminal must close its card.
+ * remote protocol, and a third request answered at the terminal must close its card. Phase 8 is a
+ * parallel run (P6): two Claude Code attempts (haiku) in their own worktrees of a throwaway
+ * repository, started with no window showing them; their folder-trust dialogs are answered at the
+ * terminal as a user would, and each attempt's request must be typed in once and answered.
  */
 export function attachHcAgentSmoke(
   window: BrowserWindow,
@@ -59,7 +63,7 @@ export function attachHcAgentSmoke(
   const timeout = setTimeout(() => {
     console.error("herdr agent smoke timed out");
     options.exit(1);
-  }, ["3", "4", "5", "6", "7"].includes(options.phase) ? 300_000 : 150_000);
+  }, ["3", "4", "5", "6", "7", "8"].includes(options.phase) ? 300_000 : 150_000);
   const finish = async (result: Record<string, unknown>, ok: boolean): Promise<void> => {
     clearTimeout(timeout);
     await writeFile(options.resultPath, `${JSON.stringify(result, null, 2)}\n`).catch(() => undefined);
@@ -76,6 +80,7 @@ export function attachHcAgentSmoke(
         else if (options.phase === "5") await phaseApproval();
         else if (options.phase === "6") await phaseRemoteApproval();
         else if (options.phase === "7") await phaseOmpApproval();
+        else if (options.phase === "8") await phaseParallel();
         else await phaseTwo();
       } catch (error) {
         console.error("herdr agent smoke failed to run", error);
@@ -504,6 +509,112 @@ export function attachHcAgentSmoke(
     return (await window.webContents.executeJavaScript(
       `window.agentControlDesktop.terminal.listSessions().then((rows) => rows.find((row) => row.id === ${JSON.stringify(sessionId)})?.status ?? null)`,
     )) as string | null;
+  }
+
+  async function phaseParallel(): Promise<void> {
+    // a throwaway repository with one commit: each attempt's worktree and branch come from it
+    const repo = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-parallel-smoke-")));
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README.md"), "# parallel smoke\n");
+    git("add", "README.md");
+    git("-c", "user.name=Gajae Smoke", "-c", "user.email=smoke@gajae.invalid", "commit", "-q", "-m", "init");
+    const prompt = "Reply with exactly the word OK and nothing else.";
+    const begun = (await window.webContents.executeJavaScript(`(async () => {
+      const desktop = window.agentControlDesktop;
+      const agents = await desktop.parallel.agents();
+      const claude = agents.find((agent) => agent.id === "claude");
+      if (!claude?.supported) return { agents, skipped: claude?.reason ?? "no Claude Code" };
+      // an agent that cannot drive a run is refused with its reason
+      const refused = await desktop.parallel.start({ title: "refused", workspace: ${JSON.stringify(repo)}, prompt: "x", presets: ["default", "default"], agentKind: "shell" }).then(() => null, (error) => String(error.message ?? error));
+      const group = await desktop.parallel.start({ title: "parallel smoke", workspace: ${JSON.stringify(repo)}, prompt: ${JSON.stringify(prompt)}, presets: ["haiku", "haiku"], agentKind: "claude" });
+      return { agents, refused, groupId: group.id };
+    })()`)) as { agents: { id: string; supported: boolean; reason?: string }[]; skipped?: string; refused?: string | null; groupId?: string };
+    if (begun.skipped || !begun.groupId) {
+      await finish({ phase: 8, ...begun }, false);
+      return;
+    }
+    type Group = { state: { kind: string }; attempts: { id: string; branch: string; state: { kind: string; sessionId?: string; worktreePath?: string; reason?: string } }[] };
+    const groupNow = async () =>
+      (await window.webContents.executeJavaScript(
+        `window.agentControlDesktop.parallel.list().then((groups) => groups.find((group) => group.id === ${JSON.stringify(begun.groupId)}))`,
+      )) as Group;
+    const deadline = Date.now() + 60_000;
+    let group = await groupNow();
+    while (Date.now() < deadline && group.state.kind === "draft") {
+      await wait(300);
+      group = await groupNow();
+    }
+    const sessions = group.attempts.flatMap((attempt) => (attempt.state.sessionId ? [attempt.state.sessionId] : []));
+    // each attempt's agent starts in a folder it has never seen: answer its trust dialog at the terminal
+    const trusted: Record<string, boolean> = {};
+    const answered = new Set<string>();
+    const trustDeadline = Date.now() + 90_000;
+    while (Date.now() < trustDeadline && answered.size < sessions.length) {
+      for (const sessionId of sessions) {
+        if (answered.has(sessionId)) continue;
+        const screen = ((await options.readScreen?.(sessionId)) ?? "").replace(/\s+/g, "");
+        if (/Yes,Itrust/.test(screen)) {
+          await wait(1500);
+          for (let attempt = 0; attempt < 3 && !/❯\d?\.?Yes,Itrust/.test(((await options.readScreen?.(sessionId)) ?? "").replace(/\s+/g, "")); attempt += 1) {
+            await options.pressKeys?.(sessionId, ["down"]);
+            await wait(500);
+          }
+          await options.pressKeys?.(sessionId, ["enter"]);
+          trusted[sessionId] = true;
+          answered.add(sessionId);
+        } else if ((await statusOf(sessionId)) === "running" || /OK/.test(screen.slice(-200))) {
+          // no dialog (the folder was trusted already): the request went straight in
+          trusted[sessionId] = false;
+          answered.add(sessionId);
+        }
+      }
+      await wait(700);
+    }
+    // each request typed in once and answered: the transcript holds the prompt and a reply
+    const answers: Record<string, { prompt: boolean; reply: string | null }> = {};
+    const answerDeadline = Date.now() + 150_000;
+    while (Date.now() < answerDeadline && Object.values(answers).filter((answer) => answer.reply).length < sessions.length) {
+      for (const sessionId of sessions) {
+        const items = (await rows(sessionId)) as { kind: string; role?: string; content?: string }[];
+        const prompts = items.filter((item) => item.kind === "message" && item.role === "user" && item.content?.includes("exactly the word OK"));
+        const reply = items.find((item) => item.kind === "message" && item.role === "assistant" && item.content?.trim());
+        answers[sessionId] = { prompt: prompts.length === 1, reply: reply?.content?.trim().slice(0, 40) ?? null };
+      }
+      await wait(1000);
+    }
+    // global search (⌘K) reads the attempts' transcripts too (P6)
+    const hits = (await window.webContents.executeJavaScript(
+      `window.agentControlDesktop.productivity.searchTranscripts("exactly the word OK", 40)`,
+    )) as { sessionId: string; kind: string }[];
+    const found = sessions.filter((sessionId) => hits.some((hit) => hit.sessionId === sessionId));
+    group = await groupNow();
+    const worktrees = git("worktree", "list", "--porcelain")
+      .split("\n")
+      .filter((line) => line.startsWith("branch "))
+      .map((line) => line.slice("branch refs/heads/".length));
+    const result = {
+      phase: 8,
+      agents: begun.agents.map((agent) => `${agent.id}:${agent.supported ? "yes" : `no (${agent.reason})`}`),
+      refused: begun.refused,
+      group: group.state.kind,
+      attempts: group.attempts.map((attempt) => ({ id: attempt.id, branch: attempt.branch, state: attempt.state.kind, reason: attempt.state.reason, worktree: attempt.state.worktreePath ? path.basename(attempt.state.worktreePath) : null })),
+      worktreeBranches: worktrees,
+      trusted,
+      answers,
+      searchFound: found.length,
+    };
+    // the run's sessions go; the repository and its worktrees are this phase's own throwaway folders
+    for (const sessionId of sessions)
+      await window.webContents.executeJavaScript(`window.agentControlDesktop.terminal.deleteSession(${JSON.stringify(sessionId)}).catch(() => undefined)`);
+    for (const attempt of group.attempts) if (attempt.state.worktreePath) execFileSync("git", ["-C", repo, "worktree", "remove", "--force", attempt.state.worktreePath]);
+    const ok =
+      typeof begun.refused === "string" &&
+      sessions.length === 2 &&
+      group.attempts.every((attempt) => attempt.state.kind === "started") &&
+      sessions.every((sessionId) => answers[sessionId]?.prompt && answers[sessionId]?.reply) &&
+      found.length === sessions.length;
+    await finish(result, ok);
   }
 
   async function phaseApproval(): Promise<void> {

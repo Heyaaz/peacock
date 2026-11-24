@@ -4,7 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 interface WindowView {
-  dialog: { prompt: string; workspace: string } | null;
+  /** The new-session dialog. The request a link hands over is not shown in it: it waits in the new session's composer. */
+  dialog: { workspace: string } | null;
+  /** What the selected session's composer holds. */
+  composer: string;
   /** The settings dialog, which a first run opens on the environment check. */
   settings: boolean;
   notice: string | null;
@@ -56,14 +59,14 @@ function currentWindow(): BrowserWindow {
 
 async function view(): Promise<WindowView> {
   const window = currentWindow();
-  if (window.webContents.isLoading()) return { dialog: null, settings: false, notice: null, selected: null };
+  if (window.webContents.isLoading()) return { dialog: null, composer: "", settings: false, notice: null, selected: null };
   return (await window.webContents.executeJavaScript(`(() => {
     const dialog = document.querySelector(".new-session-dialog");
     return {
       dialog: dialog ? {
-        prompt: dialog.querySelector("textarea")?.value ?? "",
         workspace: dialog.querySelector(".project-location-field code")?.textContent ?? "",
       } : null,
+      composer: document.querySelector(".composer textarea")?.value ?? "",
       settings: Boolean(document.querySelector(".settings-dialog")),
       notice: document.querySelector(".app-error span")?.textContent ?? null,
       selected: document.querySelector(".session-row.is-selected")?.textContent ?? null,
@@ -111,6 +114,15 @@ async function dismissDialog(): Promise<void> {
   await waitFor("dialog closed", (state) => state.dialog === null);
 }
 
+/**
+ * Creates the session the link's dialog offers (the sample backend makes it at once) and
+ * checks that the request the link carried waits in its composer, unsent.
+ */
+async function createFromDialog(label: string, prompt: string): Promise<void> {
+  await click('.new-session-dialog button[type="submit"]');
+  await waitFor(label, (state) => state.dialog === null && state.composer === prompt);
+}
+
 async function dismissNotice(): Promise<void> {
   await click(".app-error button");
   await waitFor("notice cleared", (state) => state.notice === null);
@@ -139,10 +151,10 @@ async function launchSecondInstance(url: string): Promise<{ code: number | null;
 
 async function run(workspace: string): Promise<void> {
   await waitFor(
-    "link sent before ready opens the prefilled dialog once the window loads",
-    (state) => state.dialog?.prompt === "cold launch prompt" && state.dialog.workspace === workspace,
+    "link sent before ready opens the dialog on its folder once the window loads",
+    (state) => state.dialog?.workspace === workspace,
   );
-  await dismissDialog();
+  await createFromDialog("the cold launch link's request waits in the new session's composer", "cold launch prompt");
 
   const before = await view();
   if (before.selected?.includes("Codex router cleanup"))
@@ -189,18 +201,19 @@ async function run(workspace: string): Promise<void> {
   console.log("ok: second instance exited 0:", JSON.stringify(second.output.trim()));
   await waitFor(
     "a second launch hands its link to the running instance",
-    (state) => state.dialog?.prompt === "second instance prompt",
+    (state) => state.dialog?.workspace === workspace,
   );
+  await createFromDialog("the second instance's request waits in the new session's composer", "second instance prompt");
+  emitOpenUrl(link(`new?${query({ prompt: "dismissed prompt", path: workspace })}`));
+  await waitFor("another link opens the dialog again", (state) => state.dialog?.workspace === workspace);
   await dismissDialog();
 
   currentWindow().destroy();
   await new Promise((resolve) => setTimeout(resolve, 300));
   if (BrowserWindow.getAllWindows().length !== 0) throw new Error("The window did not close");
   emitOpenUrl(link(`new?${query({ prompt: "no window prompt" })}`));
-  await waitFor(
-    "a link with every window closed opens a window and its dialog",
-    (state) => state.dialog?.prompt === "no window prompt",
-  );
+  await waitFor("a link with every window closed opens a window and its dialog", (state) => state.dialog !== null);
+  await createFromDialog("the request of a link that opened the window waits in the composer", "no window prompt");
 
   const image = await currentWindow().capturePage();
   const directory = path.join(app.getAppPath(), "artifacts");
