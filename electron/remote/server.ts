@@ -7,7 +7,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import path from "node:path";
-import type { AgentEvent, TranscriptItem } from "../../shared/agent-contract.js";
+import { eventSessionId, type AgentEvent, type TranscriptItem } from "../../shared/agent-contract.js";
 import {
   REMOTE_API,
   REMOTE_PROTOCOL_VERSION,
@@ -288,6 +288,9 @@ export class RemoteServer {
 
   /** Fans one runtime event out to every connected remote device. */
   publish(event: AgentEvent): void {
+    // a shell's events stay on the desktop, as its row does
+    const sessionId = eventSessionId(event);
+    if (sessionId !== undefined && this.options.host.hiddenFromRemote?.(sessionId)) return;
     this.sequence += 1;
     const seq = this.sequence;
     this.buffer.push({ seq, data: JSON.stringify({ seq, event }) });

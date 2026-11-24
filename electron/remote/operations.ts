@@ -66,6 +66,8 @@ export interface RemoteOperationsHost {
     idempotencyKey: string,
   ): Promise<void>;
   markSessionRead(sessionId: string): Promise<void>;
+  /** A session remote devices must neither see nor drive (a terminal shell, design §5.7). */
+  hiddenFromRemote?(sessionId: string): boolean;
 }
 
 export interface RemoteOperationParams {
@@ -127,9 +129,15 @@ export async function runRemoteOperation(
 ): Promise<unknown> {
   const sessionId =
     params.sessionId === undefined ? undefined : remoteSessionId(params.sessionId);
+  // refused here, on the desktop, whatever an older remote client asks for
+  if (sessionId !== undefined && host.hiddenFromRemote?.(sessionId))
+    throw new Error("This session is not available on remote devices");
   switch (operation) {
     case "state":
-      return { connection: await host.getConnection(), sessions: await host.listSessions() };
+      return {
+        connection: await host.getConnection(),
+        sessions: (await host.listSessions()).filter((session) => !host.hiddenFromRemote?.(session.id)),
+      };
     case "history-sessions":
       return host.listHistorySessions();
     case "transcript": {
