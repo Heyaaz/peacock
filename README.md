@@ -22,10 +22,10 @@ file and answers their tool approvals from a card. GJC sessions go through GJC's
 `gjc sdk session` CLI and the session files GJC already writes, so a request
 started in the app can be checked from the terminal and the other way round.
 
-The richest features (questions, goals, side chat, model picker, parallel runs,
-search) are GJC's. Other agents get their terminal, status where the agent
-reports it, and remote access; Claude Code and omp also the chat view and tool
-approvals.
+The richest features (questions, goals, side chat, model picker) are GJC's.
+Other agents get their terminal, status where the agent reports it, and remote
+access; Claude Code and omp also the chat view, tool approvals, global search
+and parallel runs.
 
 ## Demo
 

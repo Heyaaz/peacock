@@ -255,7 +255,12 @@ agents could be chosen keeps opening GJC (`새 세션 종류` app) or a shell (C
   follow, and an approval waits on a card in the window or on a paired phone.
 - **Remote access** lists Claude Code, omp and Codex sessions; a shell never
   leaves the desktop.
-- Search, Inbox, model settings, and parallel runs only cover GJC sessions.
+- **Search** (⌘K) covers Claude Code and omp sessions too: their rows are read
+  from the agents' own transcript files, and a file that grew while no window
+  followed it is noticed before the next search answers. A shell or Codex
+  session has nothing to search.
+- Inbox and model settings only cover GJC sessions. Parallel runs can drive
+  Claude Code and omp (see [Parallel runs](#parallel-runs-best-of-n)).
 
 The app keeps agent and shell sessions in `terminal-sessions.json` under its user
 data, since GJC does not know about them.
@@ -409,7 +414,27 @@ An empty issue or pull list is none of those: it is reported as an empty list.
 ## Parallel runs (Best-of-N)
 
 The new-session dialog no longer starts parallel runs. Existing groups still
-open in the comparison described here. A run of 2-4 attempts gives each
+open in the comparison described here, and a run can still be started through
+the desktop bridge (`window.agentControlDesktop.parallel.start`).
+
+A run's attempts can be GJC sessions or (`agentKind`) Claude Code or omp
+sessions. `parallel.agents()` says which agents can drive a run here and why
+not for the rest: a shell runs whatever is typed, Codex has no transcript to
+compare, and an agent that is not installed cannot start. For a terminal agent:
+
+- Each attempt's preset is the agent's model, or `default` for the agent's own
+  default; `launch` sets the other options (permission mode, effort) for every
+  attempt.
+- Gajae makes each attempt's worktree and branch itself, in the same place GJC
+  does (`<repo>.gajae-worktrees/`), and opens the agent there. No window has to
+  show it: the terminal starts in herdr-core, and the request is typed in once
+  the agent is at its prompt. Claude Code asks whether to trust a folder it has
+  never seen, and that dialog is left to you: the attempt waits (up to ten
+  minutes) until it is answered in the attempt's terminal, and fails with what
+  the agent was waiting on otherwise.
+- The comparison reads each attempt's changes from its worktree (`git diff HEAD`
+  and untracked files). Cleanup ends a removed attempt's terminal and deletes
+  its session; the agent's own transcript file stays. A run of 2-4 attempts gives each
 attempt its own managed worktree, a new branch (`<branch>-1`, `-2`, … or
 `gajae/best-of-<id>-N` without a name) and its own model preset, and the first
 request is sent to each attempt once. More than one attempt always uses worktrees.

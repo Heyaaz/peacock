@@ -160,6 +160,16 @@ Main
   - **실측**(`npm run desktop:onboarding-smoke -- --agent=claude`): GJC가 없는 Mac(빈 HOME, PATH에 gjc 없음)의 첫 실행에서 에이전트 선택에 Claude Code 2.1.331이 미리 선택됨 → 고르면 `newSession = {claude, terminal}` 저장, 온보딩 완료, GJC 미설치 그대로 → 새 세션 창이 Claude Code·터미널·`에이전트 설정 따름`으로 열림 → 환경 점검 ready(GJC 행은 선택 항목) → 세션 생성(`runtime: "herdr"`, agentKind claude) → 이 실행 전용 herdr-core에서 Claude Code 첫 화면("Welcome to Claude Code")이 그려짐 → 온보딩 다시 열리지 않음. 모델 호출 없음. 기본 모드(GJC 선택)는 기존 설치·로그인 경로를 그대로 지나고 새 세션 창이 GJC로 열림을 확인.
   - 스모크의 HOME은 `/tmp/goh-*`(짧은 경로): hc 소켓이 `~/.local/state/herdr-core` 아래라 TMPDIR 안의 HOME이면 소켓 경로 한도(103바이트)를 넘는다(첫 측정에서 "socket path … too long" 148바이트로 실패).
 
+### 5.9 검색 / 병렬 실행 (P6)
+- **검색**: `ProductivityService`의 원천은 원래 라우터라 herdr 세션도 목록에 있었다. P6에서 색인 대상을 `searchable(session)`으로 정했다: GJC 세션 전부와, 채팅 화면이 있는 터미널 에이전트(Claude Code·omp, 카탈로그 `surfaces`에 chat). 셸·codex는 읽지 않는다. 터미널 에이전트의 기록은 창이 따라가는 동안만 `transcript.*` 이벤트가 나오므로(§5.5), 검색은 답하기 전에(1초에 한 번) 각 세션의 `getTranscriptRevision`을 색인 때 값과 비교해 바뀐 세션만 다시 읽는다. `transcript.invalidated`(행이 사라지거나 다른 파일로 옮김)도 색인 무효화 이벤트에 넣었다. 검색 결과를 고르면 터미널 에이전트 세션은 채팅 화면으로 열린다. 한계: 기록 파일이 크면 따라가기가 끝부분부터 읽으므로(`initialBytes`) 그 앞 내용은 색인되지 않는다.
+- **병렬 실행**: `ParallelStartInput`·`ParallelGroup`에 `agentKind`(없으면 GJC, P6 이전 기록 그대로). `parallelAgentSupport`가 에이전트별 가능 여부와 사유를 정한다: 셸("셸은 병렬 실행에 쓸 수 없습니다"), codex(채팅 입력을 받지 않음), 미설치(감지 사유). `parallel.agents()` 브리지로 그 목록을 준다. 시도의 preset은 터미널 에이전트에선 모델(`default` = 에이전트 기본값), `launch`는 권한 모드·effort.
+  - worktree: GJC는 SDK가 만들지만 터미널 에이전트는 Gajae가 같은 규칙(`<repo>.gajae-worktrees/best-of-<id>-<n>`, `git worktree add -b`)으로 만들고 그 폴더를 cwd로 세션을 연다. 세션 생성이 실패하면 방금 만든 worktree·브랜치를 지운다. 정리(cleanup)는 기존 그대로 `git worktree list`에서 브랜치로 찾으므로 위치와 무관하다. 정리 시 herdr 세션은 `hideSession`이 터미널을 끝내고 세션을 지운다(확인 문구도 그렇게 바꿈).
+  - 전송: `HerdrAgentController.sendWhenReady` — 창이 없어도 터미널을 띄우고(`startTerminal` = `HcSessionTerminals.open` 후 바로 detach), 에이전트가 프롬프트에 있을 때(상태 idle + hc가 입력 가능) `terminal.send` 한 번. 대화상자(새 worktree의 폴더 신뢰)는 사용자가 답할 일이라 자동으로 답하지 않고 최대 10분 기다린다. 거부(not_executed)는 아무것도 입력되지 않은 것이므로 다시 시도한다. 시간이 다 되면 무엇을 기다렸는지와 함께 시도를 실패로 둔다.
+  - 비교 화면: 터미널 에이전트에는 `diff.list_files` 같은 질의가 없어 `workspaceDiff`가 worktree에서 `git diff HEAD`와 추적 안 된 파일을 읽는다(인덱스를 건드리지 않음). capabilities.git은 그대로 false(다른 화면의 변경 파일 패널은 열지 않음).
+  - **시작 UI는 없다**: 새 세션 창의 병렬 실행 시작 경로는 이 브랜치 이전 커밋 b9bd4e2에서 의도적으로 지워졌고(`docs/usage.md` "The new-session dialog no longer starts parallel runs"), P6에서 되살리지 않았다. 지원 불가 조합은 서비스가 사유와 함께 거부하고 `parallel.agents()`가 사유를 주므로, 시작 UI를 다시 만들면 그 값으로 비활성+사유를 표시하면 된다.
+  - **실측**(`GAJAE_SMOKE_CLAUDE_ARGS="--setting-sources project,local" GAJAE_AGENT_SMOKE_PHASES=8 npm run desktop:hc-agent-smoke`): 임시 저장소에서 Claude Code(haiku) 시도 2개 → 각자 worktree·브랜치 생성, 창 없이 터미널 시작, 폴더 신뢰 대화상자를 터미널 키로 답한 뒤 요청이 한 번씩 입력되고 둘 다 "OK" 응답, 그룹은 comparing. 셸 지정은 "셸은 병렬 실행에 쓸 수 없습니다"로 거부. 같은 실행에서 전체 검색이 두 시도의 기록을 찾음(2/2). 모델 호출은 실행당 짧은 요청 2개(두 번 실행).
+- **P5 후속**: 사이드바 하단은 GJC가 연결되지 않았고 새 세션 기본값도 아니며 GJC 세션도 없으면 "GJC · 연결 중" 대신 "새 세션: <에이전트>"(자동이면 "설치된 첫 에이전트")를 보이고 연결 점을 숨긴다(`desktop:onboarding-smoke -- --agent=claude`가 GJC 없는 첫 실행 뒤 "새 세션: Claude Code"를 실측). 에이전트 버전 확인은 실행 파일의 폴더 → 로그인 셸 PATH → 앱 PATH 순 PATH로 실행한다(`versionSearchPath`; `#!/usr/bin/env node`인 codex가 Finder 실행 앱에서도 감지되게). `desktop:deep-link-smoke`는 대화상자에 요청이 보이지 않는 현재 UI에 맞춰, 만든 세션의 입력창에 요청이 남아 있는지로 확인한다.
+
 ## 6. 이식 원칙과 규모
 - 출처 표기: Ovis(MIT, © 2026 devswha), herdr-core(Apache-2.0, 바이너리 번들). `THIRD_PARTY_NOTICES.md` 갱신, 이식 파일 상단에 출처 주석.
 - Bun API 치환: `Bun.spawn`→`child_process`, `Bun.connect`→`net`, `Bun.gunzipSync`→`zlib`, web ReadableStream → `Readable.toWeb` 어댑터.
@@ -185,7 +195,7 @@ Main
 | P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 (**완료**: `GAJAE_AGENT_SMOKE_PHASES=3,4 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku)와 omp(작은 모델)로 창에서 세션을 열고 채팅으로 전환해 보낸 메시지가 터미널 화면에 나타나고 답이 채팅에 나타남을, 전환 뒤에도 같은 id임을 실측. 2단계는 재시작 뒤 같은 기록과 `/clear` 뒤 새 기록 추종을 실측) |
 | P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 (**완료**: `GAJAE_SMOKE_CLAUDE_ARGS="--setting-sources project,local" GAJAE_AGENT_SMOKE_PHASES=5,6 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku, `--permission-mode default`)로 창의 카드 승인, 앱 재시작 뒤 원격 프로토콜(페어링한 기기 HTTP)로 카드 확인·승인, 터미널에서 답한 요청의 카드 해제를 실측. `GAJAE_AGENT_SMOKE_PHASES=7`은 omp 19.1.1 승인을 실측) |
 | P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 (**완료**: `npm run desktop:onboarding-smoke -- --agent=claude`가 GJC 없는 첫 실행 → 에이전트 선택 → Claude Code 세션 생성과 그 터미널의 첫 화면까지 실측(§5.8). node-pty는 유지(§5.2). 공증 빌드에서 Herdr Core.app 서명 보존(§5.1)은 공증 자격이 없어 확인하지 못함) |
-| P6 | 검색 색인·병렬 실행의 herdr 세션 지원 | — |
+| P6 | 검색 색인·병렬 실행의 herdr 세션 지원 | herdr 기록 검색, 병렬 Claude Code 세션 2개 이상 생성·전송 (**완료**: `GAJAE_AGENT_SMOKE_PHASES=8 npm run desktop:hc-agent-smoke`가 Claude Code 시도 2개의 worktree·세션 생성, 요청 전송·응답, 전체 검색이 두 기록을 찾음을 실측(§5.9). deep-link-smoke 포함 기존 smoke 통과) |
 
 ## 8. 위험 / 미확인 가정
 1. hc 0.1.x 변동. 버전 불일치는 0.1.18 채택으로 해소. 0.1.19~0.1.22가 이미 나와 있어 업그레이드는 hello `methods/features` 판정으로 대비.
@@ -196,3 +206,21 @@ Main
 8. 코어 env 오염: 코어를 처음 띄운 클라이언트 env가 모든 터미널로 감 → 허용 목록 필수, 오염 시 `server.restart`(§5.1).
 6. 원격에서 shell 세션 노출(서버 쪽 차단으로 대응), 구버전 PWA(P5: 와이어의 runtime 이름을 `"terminal"`로 유지, §5.7).
 7. TerminalView가 디스플레이 질의에 응답하는지.
+
+## 9. 최종 요약 (P6 이후)
+P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고르는 범용 에이전트 셸이 됐다: 터미널은 herdr-core에서 앱 재시작을 넘어 유지되고, Claude Code·omp는 채팅 화면·상태·알림·도구 승인(창·폰)·전체 검색·병렬 실행까지 된다.
+
+**남은 한계**
+- 병렬 실행 시작 UI 없음(b9bd4e2에서 제거된 상태 유지, 브리지로만 시작). 터미널 에이전트 시도는 새 worktree의 폴더 신뢰 대화상자를 사용자가 답해야 요청이 들어간다(자동 응답 안 함).
+- codex: 기록 파서가 없어 채팅 화면·검색·병렬 실행·승인 없음. 터미널과 상태(hc가 보고하는 만큼)만.
+- 검색은 기록 파일의 따라가기 범위(끝부분 `initialBytes`)만 색인. Inbox·모델 설정·목표·사이드 채팅 등은 GJC 전용.
+- 터미널 에이전트 세션의 git 상태·변경 파일 패널(capabilities.git)은 꺼져 있다. 병렬 비교 화면만 worktree diff를 읽는다.
+- node-pty는 유지(채팅 화면 임시 셸, hc 실패 시 셸 폴백, GJC CLI 세션 삭제).
+- macOS 외 플랫폼은 hc가 없어 셸만 앱 안 셸로 폴백하고 에이전트 세션은 오류.
+
+**미확인**
+- 공증(notarized) 빌드에서 Herdr Core.app 서명 보존, TCC 권한 주체(§8-2).
+- Claude Code 최소 지원 버전(2.1.331로만 측정), omp는 19.1.1로만 측정. hc 0.1.19 이상으로의 실제 업그레이드 경로(§5.1 설계만, 0.1.18→0.1.19 한 번 측정).
+- TerminalView의 디스플레이 질의(OSC 10/11/12, CSI 16t) 응답은 이식했지만 별도 실측 기록이 없다(§8-7).
+- omp의 병렬 실행·검색은 단위 테스트로만 확인(실측은 Claude Code). 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 실측하지 못함.
+- 구버전 PWA 호환은 와이어 이름 유지로 대응했지만 실제 구버전 PWA 기기로는 확인하지 않았다.
