@@ -333,6 +333,12 @@ export interface SidebarProps {
   needsSignIn?: boolean;
   /** Opens the AI sign-in flow; absent where the host cannot run it. */
   onLogin?: () => void;
+  /**
+   * GJC is neither connected nor what new sessions open (P6): the footer names the agent
+   * new sessions open instead of a GJC connection that is not coming. Empty when that is
+   * automatic (the first installed agent).
+   */
+  gjcUnused?: { defaultAgent?: string };
   selectedId: string | null;
   /** Every project the rail can filter by, in selector order. */
   projects: ProjectGroup[];
@@ -393,6 +399,7 @@ function SidebarView({
   connection,
   needsSignIn = false,
   onLogin,
+  gjcUnused,
   selectedId,
   projects,
   projectId,
@@ -820,7 +827,11 @@ function SidebarView({
             ) : (
               <strong>{workspaceLabel}</strong>
             )}
-            {needsSignIn && onLogin && connection.state === "connected" ? (
+            {gjcUnused ? (
+              <small title={connection.detail}>
+                {gjcUnused.defaultAgent ? t`새 세션: ${gjcUnused.defaultAgent}` : t("새 세션: 설치된 첫 에이전트")}
+              </small>
+            ) : needsSignIn && onLogin && connection.state === "connected" ? (
               <small>
                 {connection.label} ·{" "}
                 <button
@@ -866,7 +877,7 @@ function SidebarView({
                   <ArrowDown size={13} />
                 )}
               </button>
-            ) : (
+            ) : gjcUnused ? null : (
               <span
                 className={`connection-dot connection-dot--${
                   needsSignIn && onLogin && connection.state === "connected"

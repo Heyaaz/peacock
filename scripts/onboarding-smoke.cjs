@@ -285,6 +285,10 @@ function drive() {
       60_000,
     )
     step('terminal', screen.replace(/\s+/gu, ' ').trim().slice(0, 160))
+    // GJC is neither installed nor chosen: the footer names the agent instead of "GJC · 연결 중"
+    const footer = await run('document.querySelector(".profile-row small")?.textContent ?? ""')
+    assert(footer.includes('새 세션: Claude Code') && !footer.includes('연결 중'), `footer names the agent, got ${footer}`)
+    step('footer', footer)
     await shot('2-claude-terminal')
     const again = await run('window.agentControlDesktop.onboarding.pendingStep()')
     assert(again === null, 'setup does not open again')

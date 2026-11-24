@@ -317,6 +317,10 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "셸이 종료되었습니다": "The shell exited",
   앱: "App",
   CLI: "CLI",
+  "새 세션: {0}":
+    "New sessions: {0}",
+  "새 세션: 설치된 첫 에이전트":
+    "New sessions: first installed agent",
   "에이전트":
     "Agents",
   "처음 열 화면":
