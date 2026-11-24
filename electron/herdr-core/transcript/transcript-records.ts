@@ -321,6 +321,15 @@ export function toolRow(
   };
 }
 
+/**
+ * A call id as a row id holds it: the characters every id check takes (letters, digits, `.`, `_`,
+ * `:`, `-`), anything else as `_`. omp's OpenAI calls are `call_…|fc_…`, which the window's and
+ * a phone's tool-decision checks would refuse; the transcript and the approvals spell it the same.
+ */
+export function callIdPart(callId: string): string {
+  return callId.replace(/[^A-Za-z0-9._:-]/gu, "_");
+}
+
 /** Reads a transcript a line at a time and answers with its rows. */
 export interface TranscriptParser {
   /** Whole lines, each ending in a newline; a torn last line is the caller's to keep. */

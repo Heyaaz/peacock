@@ -10,11 +10,13 @@ import type {
   MessageDelivery,
   SessionCapabilities,
   SessionStatus,
+  ToolDecision,
   TranscriptChange,
   TranscriptItem,
   TranscriptPage,
   TranscriptPageRequest,
 } from "../../shared/agent-contract.js";
+import type { CommandRuleDecision, CommandRuleMatch } from "../../shared/command-rules.js";
 import { isAgentKindId } from "../../shared/agent-contract.js";
 import { agentCatalogEntry } from "../../shared/agent-catalog.js";
 import { launchOptions } from "../../shared/agent-launch.js";
@@ -27,7 +29,8 @@ import { AgentUnsupportedError, type AgentRuntimeController } from "../agent-hos
 import type { ResolvedMessageInput } from "../gjc-sdk-model.js";
 import type { TerminalSessionStore } from "../terminal-session-store.js";
 import { terminalAgentSession } from "../terminal-session-row.js";
-import type { HookMessage } from "./agent-hooks.js";
+import type { HookChannel, HookMessage } from "./agent-hooks.js";
+import { HerdrApprovals } from "./approvals.js";
 import { planAgentLaunch, type LaunchPlan } from "./agent-launch.js";
 import { activityOf, factsOfTerminal, sessionStatusOf, type ActivityCategory, type TerminalFacts } from "./agent-status.js";
 import { claudeSessionOfPid, claudeTranscriptPath } from "./claude-session.js";
@@ -43,6 +46,22 @@ const RESUBSCRIBE_MS = 2000;
 const SEND_TIMEOUT_MS = 30_000;
 /** How often an omp session's transcript is looked for again (its breadcrumb, then its folder). */
 const OMP_LOCATE_MS = 2000;
+/**
+ * The agent versions whose approval hooks Gajae measured (design §5.6): Claude Code's
+ * PermissionRequest beside its own dialog, and omp's `tool_approval_requested` with `ui.approve`.
+ */
+export const CLAUDE_APPROVAL_MIN_VERSION = "2.1.331";
+export const OMP_APPROVAL_MIN_VERSION = "19.1.1";
+
+/** Whether a dotted version is at least `minimum`. */
+export function versionAtLeast(version: string | undefined, minimum: string): boolean {
+  const parse = (text: string) => (/(\d+)\.(\d+)\.(\d+)/u.exec(text) ?? []).slice(1).map(Number);
+  const have = version ? parse(version) : [];
+  const want = parse(minimum);
+  if (have.length !== 3) return false;
+  for (let index = 0; index < 3; index += 1) if (have[index] !== want[index]) return have[index]! > want[index]!;
+  return true;
+}
 
 export interface HerdrAgentControllerOptions {
   store: TerminalSessionStore;
@@ -53,6 +72,15 @@ export interface HerdrAgentControllerOptions {
   listAgents(): Promise<AgentAvailability[]>;
   /** Claude Code's hook settings, once the hook channel is up. */
   claudeSettingsPath?: () => string | undefined;
+  /** omp's approval extension, once the hook channel is up. */
+  ompExtensionPath?: () => string | undefined;
+  /** Whether the hook channel listens, so an approval can be answered here. */
+  hooksListening?: () => boolean;
+  /** Project command rules that decide an approval without a card (GJC's store). */
+  commandRules?: {
+    decide(projectPath: string, toolName: string, command: string): Promise<CommandRuleMatch | undefined>;
+    add(projectPath: string, prefix: string, decision: CommandRuleDecision): Promise<void>;
+  };
   emit(event: AgentEvent): void;
   /** Tells the router this runtime owns a new session. */
   claim?(sessionId: string): void;
@@ -88,6 +116,9 @@ export class HerdrAgentController implements AgentRuntimeController {
   private readonly launchedAt = new Map<string, number>();
   private readonly ompLocations = new Map<string, { location: TranscriptLocation | undefined; at: number }>();
   private readonly transcripts: HerdrTranscripts;
+  private readonly approvals: HerdrApprovals;
+  /** Sessions whose agent runs with Gajae's approval hook: started so here, or heard from by it. */
+  private readonly approvalHooked = new Set<string>();
   private subscription: Channel | undefined;
   private subscribing: Promise<void> | undefined;
   private retry: ReturnType<typeof setTimeout> | undefined;
@@ -96,9 +127,17 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   constructor(private readonly options: HerdrAgentControllerOptions) {
     this.log = options.log ?? ((message, error) => console.error(`herdr agents: ${message}`, error ?? ""));
+    this.approvals = new HerdrApprovals({
+      ...(options.commandRules ? { commandRules: options.commandRules } : {}),
+      workspaceOf: (sessionId) => this.options.store.get(sessionId)?.workspace,
+      lastRowId: (sessionId) => this.transcripts.lastRowId(sessionId),
+      changed: (sessionId) => this.transcripts.refresh(sessionId),
+    });
     this.transcripts = new HerdrTranscripts({
       locate: (sessionId) => this.locateTranscript(sessionId),
       emit: (event) => options.emit(event),
+      overlay: (sessionId) => this.approvals.overlay(sessionId),
+      onRows: (sessionId, rows) => this.approvals.noteRows(sessionId, rows),
       ...(options.transcripts?.pollMs !== undefined ? { pollMs: options.transcripts.pollMs } : {}),
       ...(options.transcripts?.initialBytes !== undefined ? { initialBytes: options.transcripts.initialBytes } : {}),
       log: (message, error) => this.log(message, error),
@@ -209,6 +248,8 @@ export class HerdrAgentController implements AgentRuntimeController {
     this.processes.delete(sessionId);
     this.launchedAt.delete(sessionId);
     this.ompLocations.delete(sessionId);
+    this.approvalHooked.delete(sessionId);
+    this.approvals.forget(sessionId);
     this.transcripts.forget(sessionId);
     for (const [address, owner] of this.addresses) if (owner === sessionId) this.addresses.delete(address);
   }
@@ -266,6 +307,22 @@ export class HerdrAgentController implements AgentRuntimeController {
     return "prompt";
   }
 
+  // ---- approvals (design §5.6)
+
+  /** The session a tool id belongs to: every row id here starts with its session's id. */
+  sessionOfTool(toolId: string): string | undefined {
+    const sessionId = sessionOfToolId(toolId);
+    return sessionId !== undefined && this.options.store.get(sessionId) !== undefined ? sessionId : undefined;
+  }
+
+  toolDecisionInfo(toolId: string, decision: ToolDecision): { name: string; requiresConfirmation: boolean } {
+    return this.approvals.decisionInfo(toolId, decision);
+  }
+
+  resolveToolCall(toolId: string, decision: ToolDecision): Promise<void> {
+    return this.approvals.resolve(toolId, decision);
+  }
+
   /** Presses the agent's stop key (esc for a program that reports status, else ctrl+c). */
   async cancelRun(sessionId: string): Promise<void> {
     const address = this.addressOf(sessionId);
@@ -286,6 +343,7 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   dispose(): void {
     this.disposed = true;
+    this.approvals.dispose();
     this.transcripts.dispose();
     clearTimeout(this.retry);
     void this.subscription?.close();
@@ -296,11 +354,20 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   /** What a session's terminal runs (HcSessionTerminals asks before it starts one). */
   async launchPlan(record: TerminalSessionRecord): Promise<LaunchPlan> {
+    const agent = record.agentKind === "claude" || record.agentKind === "omp" ? await this.options.detect(record.agentKind) : undefined;
+    const settings = this.options.claudeSettingsPath?.();
+    // omp's extension is written for the omp measured; an older one starts without it
+    const extension = record.agentKind === "omp" && versionAtLeast(agent?.version, OMP_APPROVAL_MIN_VERSION) ? this.options.ompExtensionPath?.() : undefined;
     const plan = await planAgentLaunch(record, {
       detect: (id) => this.options.detect(id),
-      claudeSettingsPath: this.options.claudeSettingsPath?.(),
+      claudeSettingsPath: settings,
+      ...(extension ? { ompExtensionPath: extension } : {}),
       home: this.options.home,
     });
+    const hooked =
+      record.agentKind === "claude" ? Boolean(settings) && versionAtLeast(agent?.version, CLAUDE_APPROVAL_MIN_VERSION) : Boolean(extension);
+    if (hooked) this.approvalHooked.add(record.id);
+    else this.approvalHooked.delete(record.id);
     if (plan.agentSessionRef && plan.agentSessionRef !== record.agentSessionRef)
       this.options.store.reportAgentSession(record.id, { agentSessionRef: plan.agentSessionRef });
     this.launchedAt.set(record.id, Date.now());
@@ -314,10 +381,35 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   // ---- hooks
 
-  onHook(message: HookMessage): void {
+  onHook(message: HookMessage, channel?: HookChannel): void {
+    if (process.env.GAJAE_DEBUG_HERDR)
+      console.log(`[herdr hook] ${new Date().toISOString().slice(11, 23)} ${message.event} ${message.session ?? "-"} ${String(message.payload.tool_name ?? "")} ${String(message.payload.tool_use_id ?? "")} ${message.event === "Notification" ? String(message.payload.notification_type ?? message.payload.message ?? "") : ""}`);
     const record = this.recordOfHook(message);
-    if (!record) return;
+    if (!record) {
+      channel?.reply("");
+      return;
+    }
     const payload = message.payload;
+    // the approval hook reports: its agent runs with it, whatever started it
+    if (message.event === "PreToolUse" || message.event === "PermissionRequest") this.noteApprovalHook(record.id);
+    if (message.event === "PermissionRequest") {
+      if (channel) void this.approvals.request(record.id, payload, channel).catch((error: unknown) => {
+        this.log(`could not hold the approval of ${record.id}`, error);
+        channel.reply("");
+      });
+      return;
+    }
+    if (message.event === "PreToolUse") {
+      this.approvals.notePreToolUse(record.id, payload);
+      return;
+    }
+    if (message.event === "PostToolUse") {
+      this.approvals.notePostToolUse(record.id, payload);
+      return;
+    }
+    // the turn ended or the session did: a card still waiting was answered at the terminal
+    if (message.event === "Stop") this.approvals.releaseSession(record.id, "stopped");
+    if (message.event === "SessionEnd") this.approvals.releaseSession(record.id, "ended");
     if (message.event === "SessionStart") {
       const ref = typeof payload.session_id === "string" ? payload.session_id : undefined;
       const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : undefined;
@@ -407,6 +499,9 @@ export class HerdrAgentController implements AgentRuntimeController {
       if (!sessionId) continue;
       seen.add(sessionId);
       this.noteProcess(sessionId, terminal);
+      // an omp started with the approval extension still runs it after Gajae restarted
+      const extension = this.options.ompExtensionPath?.();
+      if (extension && terminal.argv?.includes(extension)) this.approvalHooked.add(sessionId);
       // what was already so before this app looked is not news
       this.update(sessionId, factsOfTerminal(terminal), false);
       void this.recoverAgentSession(sessionId, terminal);
@@ -506,6 +601,11 @@ export class HerdrAgentController implements AgentRuntimeController {
   private update(sessionId: string, next: TerminalFacts, announce = true): void {
     const previous = this.facts.get(sessionId);
     this.facts.set(sessionId, next);
+    // the agent's dialog closed (answered here or at the terminal), or the agent ended: a card asked
+    // before now is no longer on its screen
+    const wasBlocked = previous?.state === "live" && previous.status?.state === "blocked";
+    if (next.state !== "live") this.approvals.releaseSession(sessionId, "ended");
+    else if (wasBlocked && next.status?.state !== "blocked") this.approvals.releaseSession(sessionId, "answered", Date.now());
     const status = sessionStatusOf(next, this.statuses.get(sessionId) ?? "idle");
     const activity = announce && !this.ending.has(sessionId) ? activityOf(previous, next) : undefined;
     // the chat may send once the agent reports, and no longer once its terminal ends
@@ -541,9 +641,17 @@ export class HerdrAgentController implements AgentRuntimeController {
     return {
       ...ceiling,
       send: ceiling.send && sendable(this.facts.get(record.id)),
-      approvals: false,
+      // a card can be answered only while the agent runs with the hook and the app listens for it
+      approvals: ceiling.approvals && this.approvalHooked.has(record.id) && this.options.hooksListening?.() === true,
       git: false,
     };
+  }
+
+  private noteApprovalHook(sessionId: string): void {
+    if (this.approvalHooked.has(sessionId)) return;
+    this.approvalHooked.add(sessionId);
+    this.revisions.set(sessionId, (this.revisions.get(sessionId) ?? 0) + 1);
+    this.emitUpdated(sessionId);
   }
 
   private async locateTranscript(sessionId: string): Promise<TranscriptLocation | undefined> {
@@ -636,7 +744,7 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   private emitUpdated(sessionId: string): void {
     const record = this.options.store.get(sessionId);
-    if (process.env.GAJAE_DEBUG_HERDR) console.log(`[herdr status] ${sessionId} ${this.statuses.get(sessionId)}`);
+    if (process.env.GAJAE_DEBUG_HERDR) console.log(`[herdr status] ${new Date().toISOString().slice(11, 23)} ${sessionId} ${this.statuses.get(sessionId)}`);
     if (record) this.options.emit({ type: "session.updated", session: this.row(record) });
   }
 }
@@ -653,4 +761,10 @@ async function exists(file: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** The session a row id belongs to: the Gajae session id before the first `:` or `/`. */
+export function sessionOfToolId(toolId: string): string | undefined {
+  const match = /^(terminal-[A-Za-z0-9-]+)[:/]/u.exec(toolId);
+  return match?.[1];
 }

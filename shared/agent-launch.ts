@@ -15,6 +15,8 @@ export interface AgentLaunchOptions {
 export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 /** Claude Code's `--permission-mode` values Gajae offers. */
 export const CLAUDE_PERMISSION_MODES = ["default", "acceptEdits", "plan", "bypassPermissions"] as const;
+/** omp's `--approval-mode` values (`omp --help`, 19.1.1): when it asks before a tool runs. */
+export const OMP_APPROVAL_MODES = ["always-ask", "always-ask-cached", "write", "yolo"] as const;
 /** Codex's `model_reasoning_effort` levels (developers.openai.com/codex/config-reference). */
 export const CODEX_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
 
@@ -30,7 +32,7 @@ const FIELDS = ["model", "effort", "permissionMode"] as const;
 const SUPPORTED: Partial<Record<AgentKindId, Partial<Record<(typeof FIELDS)[number], readonly string[] | "model">>>> = {
   claude: { model: "model", effort: CLAUDE_EFFORTS, permissionMode: CLAUDE_PERMISSION_MODES },
   codex: { model: "model", effort: CODEX_EFFORTS },
-  omp: { model: "model" },
+  omp: { model: "model", permissionMode: OMP_APPROVAL_MODES },
 };
 
 /**
@@ -80,6 +82,7 @@ export function launchArgs(agentKind: AgentKindId, options: AgentLaunchOptions |
     if (options.effort) args.push("-c", `model_reasoning_effort="${options.effort}"`);
   } else if (agentKind === "omp") {
     if (options.model) args.push(`--model=${options.model}`);
+    if (options.permissionMode) args.push(`--approval-mode=${options.permissionMode}`);
   }
   return args;
 }

@@ -11,6 +11,7 @@
 import type { ToolActivity } from "../../../shared/agent-contract.js";
 import {
   bounded,
+  callIdPart,
   capNotice,
   clockLabel,
   isContextClear,
@@ -89,7 +90,7 @@ export function createClaudeTranscriptParser(sessionId: string): TranscriptParse
   const resolveTool = (block: Row): void => {
     const callId = block.tool_use_id;
     if (typeof callId !== "string") return;
-    const id = pending.get(callId) ?? rows.id(callId);
+    const id = pending.get(callId) ?? rows.id(callIdPart(callId));
     if (!rows.has(id)) return;
     pending.delete(callId);
     const text = resultText(block.content);
@@ -226,7 +227,7 @@ export function createClaudeTranscriptParser(sessionId: string): TranscriptParse
         } else if (block.type === "tool_use" && typeof block.name === "string") {
           const input = record(block.input);
           const callId = typeof block.id === "string" && block.id.length > 0 ? block.id : undefined;
-          const id = callId ? rows.id(callId) : rows.id(entry.uuid as string, index);
+          const id = callId ? rows.id(callIdPart(callId)) : rows.id(entry.uuid as string, index);
           // a call Claude Code wrote twice (a resumed stream) keeps the result it already has
           if (rows.has(id)) return;
           rows.put(toolRow(rows, id, block.name, input, toolSummary(block.name, input), ts));

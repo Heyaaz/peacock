@@ -11,6 +11,7 @@ import { transcriptDelivery, transcriptItemEqual } from "../../../shared/transcr
 import { createClaudeTranscriptParser } from "./claude-transcript.js";
 import { createOmpTranscriptParser } from "./omp-transcript.js";
 import type { TranscriptParser } from "./transcript-records.js";
+import type { ApprovalOverlay } from "../approvals.js";
 
 /** The agents whose transcripts Gajae reads into the chat. */
 export type TranscriptFormat = "claude" | "omp";
@@ -147,6 +148,10 @@ export interface HerdrTranscriptsOptions {
   /** Where a session's transcript is now; undefined for a session with no chat or no file yet. */
   locate(sessionId: string): Promise<TranscriptLocation | undefined>;
   emit(event: AgentEvent): void;
+  /** Approval cards laid over the transcript's rows (approvals.ts). */
+  overlay?(sessionId: string): ApprovalOverlay[];
+  /** The transcript's own rows, each time they change (approvals let go of what finished). */
+  onRows?(sessionId: string, rows: readonly TranscriptItem[]): void;
   pollMs?: number;
   initialBytes?: number;
   log?(message: string, error?: unknown): void;
@@ -168,6 +173,9 @@ export class HerdrTranscripts {
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking = false;
   private readonly syncing = new Map<string, Promise<{ follower: TranscriptFollower; changed: boolean }>>();
+  /** Each session's rows with its approval cards laid over them, and the cards' version they hold. */
+  private readonly composed = new Map<string, { version: number; items: TranscriptItem[] }>();
+  private readonly overlayVersions = new Map<string, number>();
 
   constructor(private readonly options: HerdrTranscriptsOptions) {}
 
@@ -185,7 +193,25 @@ export class HerdrTranscripts {
   }
 
   async items(sessionId: string): Promise<TranscriptItem[]> {
-    return (await this.synced(sessionId)).follower.items();
+    await this.synced(sessionId);
+    return this.composed.get(sessionId)?.items ?? [];
+  }
+
+  /** The last row the session's chat holds now, if it was read. */
+  lastRowId(sessionId: string): string | undefined {
+    return this.composed.get(sessionId)?.items.at(-1)?.id;
+  }
+
+  /** The session's approval cards changed: the window hears it as it hears the transcript. */
+  refresh(sessionId: string): void {
+    this.overlayVersions.set(sessionId, (this.overlayVersions.get(sessionId) ?? 0) + 1);
+    void this.synced(sessionId)
+      .then(() => {
+        // a read already past composing when the cards changed did not take them in
+        if (this.composed.get(sessionId)?.version !== this.overlayVersions.get(sessionId)) return this.synced(sessionId);
+        return undefined;
+      })
+      .catch((error: unknown) => this.options.log?.(`could not read the transcript of ${sessionId}`, error));
   }
 
   async page(sessionId: string, request?: TranscriptPageRequest): Promise<TranscriptPage> {
@@ -205,10 +231,14 @@ export class HerdrTranscripts {
   }
 
   async revision(sessionId: string): Promise<string | undefined> {
-    return (await this.synced(sessionId)).follower.revision();
+    const file = (await this.synced(sessionId)).follower.revision();
+    const cards = this.overlayVersions.get(sessionId);
+    return file === undefined && cards === undefined ? undefined : `${file ?? "none"}#${cards ?? 0}`;
   }
 
   forget(sessionId: string): void {
+    this.composed.delete(sessionId);
+    this.overlayVersions.delete(sessionId);
     this.followers.delete(sessionId);
     this.published.delete(sessionId);
     this.baselines.delete(sessionId);
@@ -233,9 +263,17 @@ export class HerdrTranscripts {
         follower = new TranscriptFollower(sessionId, this.options.initialBytes);
         this.followers.set(sessionId, follower);
       }
-      const changed = await follower.sync(await this.options.locate(sessionId));
-      // whoever caused the read, the window hears what changed since it last read
-      if (changed) this.publish(sessionId, follower.items());
+      const read = await follower.sync(await this.options.locate(sessionId));
+      if (read) this.options.onRows?.(sessionId, follower.items());
+      const version = this.overlayVersions.get(sessionId) ?? 0;
+      const held = this.composed.get(sessionId);
+      const changed = read || held?.version !== version;
+      if (changed) {
+        const items = composeRows(follower.items(), this.options.overlay?.(sessionId) ?? []);
+        this.composed.set(sessionId, { version, items });
+        // whoever caused the read, the window hears what changed since it last read
+        this.publish(sessionId, items);
+      }
       return { follower, changed };
     })().finally(() => this.syncing.delete(sessionId));
     this.syncing.set(sessionId, read);
@@ -281,4 +319,42 @@ export class HerdrTranscripts {
     const from = Math.max(0, Math.min(changed[0]!, previous.length - 1));
     this.options.emit({ type: "transcript.synced", sessionId, items: items.slice(from) });
   }
+}
+
+const FINAL_STATUSES: ReadonlySet<string> = new Set(["completed", "failed", "denied", "cancelled"]);
+
+/**
+ * The transcript's rows with the approval cards laid over them. A card for a call the transcript
+ * shows takes that row's place while it waits or until the row finishes; a card with no row of its
+ * own follows the row that was last when it came, so the rows keep their order as the file grows.
+ */
+export function composeRows(items: readonly TranscriptItem[], overlays: readonly ApprovalOverlay[]): TranscriptItem[] {
+  if (overlays.length === 0) return items.slice();
+  const byId = new Map(overlays.map((overlay) => [overlay.row.id, overlay]));
+  const rows = items.map((item) => {
+    const overlay = byId.get(item.id);
+    if (!overlay) return item;
+    byId.delete(item.id);
+    if (item.kind !== "tool" || overlay.released || FINAL_STATUSES.has(item.status)) return item;
+    const { permissionOptions: _options, ...base } = item;
+    return {
+      ...base,
+      status: overlay.row.status,
+      ...(overlay.row.permissionOptions ? { permissionOptions: overlay.row.permissionOptions } : {}),
+      ...(overlay.row.autoDecision ? { autoDecision: overlay.row.autoDecision } : {}),
+    };
+  });
+  const placedAfter = new Map<string, string | undefined>();
+  for (const overlay of overlays) {
+    if (!byId.has(overlay.row.id)) continue;
+    const anchor = overlay.afterId === undefined ? -1 : rows.findIndex((row) => row.id === overlay.afterId);
+    if (anchor < 0) rows.push(overlay.row);
+    else {
+      let at = anchor + 1;
+      while (at < rows.length && placedAfter.has(rows[at]!.id) && placedAfter.get(rows[at]!.id) === overlay.afterId) at += 1;
+      rows.splice(at, 0, overlay.row);
+    }
+    placedAfter.set(overlay.row.id, overlay.afterId);
+  }
+  return rows;
 }

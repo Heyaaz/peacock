@@ -8,6 +8,30 @@ import { TerminalSessionStore } from "../terminal-session-store.js";
 import { HerdrAgentController } from "./agent-controller.js";
 import { claudeTranscriptPath } from "./claude-session.js";
 import { HcReplyError, type ChannelHandlers, type HcConnection, type HelloInfo } from "./connection.js";
+import type { HookChannel } from "./agent-hooks.js";
+
+function hookChannel() {
+  const replies: string[] = [];
+  const listeners: (() => void)[] = [];
+  let closed = false;
+  const channel: HookChannel & { replies: string[] } = {
+    replies,
+    reply(answer: string) {
+      if (closed) return;
+      closed = true;
+      replies.push(answer);
+      for (const listener of listeners.splice(0)) listener();
+    },
+    get closed() {
+      return closed;
+    },
+    onClose(listener: () => void) {
+      if (closed) listener();
+      else listeners.push(listener);
+    },
+  };
+  return channel;
+}
 
 function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[]; installed?: boolean } = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
@@ -44,6 +68,7 @@ function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[];
     detect,
     listAgents: async () => [],
     claudeSettingsPath: () => "/data/agent-hooks/claude-settings.json",
+    hooksListening: () => true,
     emit: (event) => events.push(event),
     claim,
     home,
@@ -316,6 +341,74 @@ describe("HerdrAgentController status", () => {
     );
     expect((await fixture.controller.getTranscriptPage(session.id)).items).toMatchObject([{ id: `${session.id}:e1`, content: "hello omp" }]);
     expect(fixture.store.get(session.id)).toMatchObject({ transcriptPath: file, agentSessionRef: "01abc-def" });
+  });
+
+  it("shows a Claude Code approval as a card on the call's row, and answers its hook from the card", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    const record = fixture.store.get(session.id)!;
+    const file = claudeTranscriptPath(record.workspace, record.agentSessionRef!, fixture.home);
+    mkdirSync(path.dirname(file), { recursive: true });
+    const common = { isSidechain: false, timestamp: "2026-11-24T06:00:00.000Z" };
+    writeFileSync(
+      file,
+      [
+        { ...common, parentUuid: null, type: "user", uuid: "u1", message: { role: "user", content: "run the tests" }, origin: { kind: "human" }, permissionMode: "default" },
+        { ...common, parentUuid: "u1", type: "assistant", uuid: "a1", message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "npm test" } }], stop_reason: "tool_use" } },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    await fixture.controller.getTranscriptPage(session.id);
+    fixture.events.length = 0;
+    fixture.controller.onHook({ event: "PreToolUse", session: session.id, payload: { tool_use_id: "toolu_1", tool_name: "Bash", tool_input: { command: "npm test" } } });
+    const hook = hookChannel();
+    fixture.controller.onHook({ event: "PermissionRequest", session: session.id, payload: { tool_name: "Bash", tool_input: { command: "npm test" } } }, hook);
+    const toolId = `${session.id}:toolu_1`;
+    await vi.waitFor(() =>
+      expect(fixture.events).toContainEqual({ type: "transcript.appended", item: expect.objectContaining({ id: toolId, status: "approval-required" }) }),
+    );
+    const page = await fixture.controller.getTranscriptPage(session.id);
+    expect(page.items.map((item) => item.id)).toEqual([`${session.id}:u1`, toolId]);
+    expect(fixture.controller.sessionOfTool(toolId)).toBe(session.id);
+    expect(fixture.controller.toolDecisionInfo(toolId, { optionId: "allow_once" }).requiresConfirmation).toBe(true);
+    await fixture.controller.resolveToolCall(toolId, { optionId: "allow_once" });
+    expect(JSON.parse(hook.replies[0]!).hookSpecificOutput.decision).toEqual({ behavior: "allow" });
+    await vi.waitFor(async () =>
+      expect((await fixture.controller.getTranscript(session.id)).find((item) => item.id === toolId)).toMatchObject({ status: "approved" }),
+    );
+  });
+
+  it("closes a card the user answered at the terminal, when the agent's dialog closes or the turn stops", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    fixture.push("status", "t1", { reported: true, status: { app: "claude-code", state: "blocked", kind: "permission" } });
+    const answered = hookChannel();
+    fixture.controller.onHook({ event: "PermissionRequest", session: session.id, payload: { tool_name: "Bash", tool_input: { command: "ls" } } }, answered);
+    await vi.waitFor(() => expect(fixture.controller.sessionOfTool(`${session.id}:approval-1`)).toBe(session.id));
+    fixture.push("status", "t1", STATUS("working"));
+    expect(answered.replies).toEqual([""]);
+    const stopped = hookChannel();
+    fixture.controller.onHook({ event: "PermissionRequest", session: session.id, payload: { tool_name: "Write", tool_input: { file_path: "/w/a" } } }, stopped);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    fixture.controller.onHook({ event: "Stop", session: session.id, payload: {} });
+    expect(stopped.replies).toEqual([""]);
+  });
+
+  it("offers approvals once the agent runs with the hook and the app listens", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    expect((await fixture.controller.listSessions())[0]!.capabilities?.approvals).toBe(false);
+    fixture.controller.onHook({ event: "PreToolUse", session: session.id, payload: { tool_use_id: "toolu_1", tool_name: "Read", tool_input: {} } });
+    expect((await fixture.controller.listSessions())[0]!.capabilities?.approvals).toBe(true);
+    expect(fixture.events.at(-1)).toMatchObject({ type: "session.updated", session: { capabilities: { approvals: true } } });
+  });
+
+  it("answers a hook of a session it does not have with no decision", () => {
+    const fixture = setup();
+    const hook = hookChannel();
+    fixture.controller.onHook({ event: "PermissionRequest", session: "terminal-gone", payload: { tool_name: "Bash" } }, hook);
+    expect(hook.replies).toEqual([""]);
   });
 
   it("interrupts the agent's turn on cancel", async () => {

@@ -31,6 +31,8 @@ describe("launchArgs", () => {
       "--model", "gpt-5.2", "-c", 'model_reasoning_effort="high"',
     ]);
     expect(launchArgs("omp", { model: "opus" })).toEqual(["--model=opus"]);
+    expect(launchArgs("omp", { permissionMode: "always-ask" })).toEqual(["--approval-mode=always-ask"]);
+    expect(launchOptionsFault("omp", { permissionMode: "bypassPermissions" })).toMatch(/not one omp takes/u);
     expect(launchArgs("claude", undefined)).toEqual([]);
   });
 

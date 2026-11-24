@@ -46,7 +46,7 @@ describe("omp transcript", () => {
       { id: `${SID}:e1`, kind: "message", role: "user", content: "Read the readme" },
       { id: `${SID}:e2:0`, kind: "thought", content: "Plan: read it." },
       { id: `${SID}:e2:1`, kind: "message", role: "assistant", content: "Reading." },
-      { id: `${SID}:call_1|fc_1`, kind: "tool", name: "read", description: "Read README", targetPath: "README.md", status: "completed", output: "# Demo" },
+      { id: `${SID}:call_1_fc_1`, kind: "tool", name: "read", description: "Read README", targetPath: "README.md", status: "completed", output: "# Demo" },
       { id: `${SID}:e4:0`, kind: "message", role: "assistant", content: "It says Demo." },
     ]);
   });

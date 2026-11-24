@@ -11,6 +11,7 @@
 import type { ToolActivity } from "../../../shared/agent-contract.js";
 import {
   bounded,
+  callIdPart,
   clockLabel,
   isContextClear,
   messageRow,
@@ -89,7 +90,7 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
 
   const applyResults = (message: Row): void => {
     for (const result of piResults(message)) {
-      const id = pending.get(result.id) ?? rows.id(result.id);
+      const id = pending.get(result.id) ?? rows.id(callIdPart(result.id));
       if (!rows.has(id)) continue;
       pending.delete(result.id);
       rows.update<ToolActivity>(id, (tool) => ({
@@ -159,7 +160,7 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
         } else if (block.type === "toolCall" && typeof block.name === "string") {
           const input = record(block.arguments);
           const callId = typeof block.id === "string" && block.id.length > 0 ? block.id : undefined;
-          const id = callId ? rows.id(callId) : rows.id(entryId, index);
+          const id = callId ? rows.id(callIdPart(callId)) : rows.id(entryId, index);
           if (rows.has(id)) return;
           const summary = typeof block.intent === "string" && block.intent.length > 0 ? block.intent.slice(0, 120) : toolSummary(block.name, input);
           rows.put(toolRow(rows, id, block.name, input, summary, ts));

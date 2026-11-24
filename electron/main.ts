@@ -701,11 +701,20 @@ let herdrAgents: HerdrAgentController | undefined;
 // Hooks the agents run report on a socket the app listens on; the relay, the settings and the
 // token stay in userData, so agents started before a restart keep reporting after it.
 const agentHooks = hcCore
-  ? new AgentHooks(path.join(userDataDirectory, "agent-hooks"), (message) => herdrAgents?.onHook(message))
+  ? new AgentHooks(path.join(userDataDirectory, "agent-hooks"), (message, channel) => {
+      if (herdrAgents) herdrAgents.onHook(message, channel);
+      else channel?.reply("");
+    })
   : undefined;
 let agentHooksReady = false;
+// The approval smoke runs Claude Code apart from the user's own settings (their hooks, auto mode and
+// allow rules answer dialogs on their own): GAJAE_SMOKE_CLAUDE_ARGS, read only in that smoke.
+const smokeClaudeArgs = hcAgentSmokePhase ? (process.env.GAJAE_SMOKE_CLAUDE_ARGS?.split(" ").filter(Boolean) ?? []) : [];
 const hcTerminals = hcCore
-  ? new HcSessionTerminals(hcCore, terminalSessions, (record) => herdrAgents!.launchPlan(record))
+  ? new HcSessionTerminals(hcCore, terminalSessions, async (record) => {
+      const plan = await herdrAgents!.launchPlan(record);
+      return record.agentKind === "claude" && smokeClaudeArgs.length > 0 ? { ...plan, argv: [...plan.argv, ...smokeClaudeArgs] } : plan;
+    })
   : undefined;
 herdrAgents =
   hcCore && hcTerminals
@@ -716,6 +725,9 @@ herdrAgents =
         detect: (id) => agentDetector.detect(id),
         listAgents: () => agentDetector.list(),
         claudeSettingsPath: () => (agentHooksReady ? agentHooks?.claudeSettingsPath : undefined),
+        ompExtensionPath: () => (agentHooksReady ? agentHooks?.ompExtensionPath : undefined),
+        hooksListening: () => agentHooks?.listening === true,
+        commandRules,
         emit: (event) => broadcastAgentEvent(event),
         claim: (sessionId) => agentRouter.claimSession(sessionId, "herdr"),
         home: homedir(),
@@ -1561,6 +1573,13 @@ function createWindow(): BrowserWindow {
         const hc = await hcCore.connection();
         return (await hc.call("terminal.read", { terminal: address, lines: 80 })).text;
       },
+      pressKeys: async (sessionId, keys) => {
+        const address = terminalSessions.get(sessionId)?.terminalAddress;
+        if (!hcCore || !address) return;
+        const hc = await hcCore.connection();
+        await hc.call("terminal.keys", { terminal: address, keys });
+      },
+      remote: { host: agentRouter, webRoot: path.join(app.getAppPath(), "dist/web"), version: app.getVersion() },
       exit: exitWithTerminals,
     });
   else if (hcTerminalSmokePhase)

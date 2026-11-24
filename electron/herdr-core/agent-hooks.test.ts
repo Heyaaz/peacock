@@ -1,10 +1,18 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentHooks, claudeHookSettings, parseHookLine, pickSocketPath, type HookMessage } from "./agent-hooks.js";
+import {
+  AgentHooks,
+  claudeHookSettings,
+  ompApprovalExtension,
+  parseHookLine,
+  pickSocketPath,
+  type HookChannel,
+  type HookMessage,
+} from "./agent-hooks.js";
 
 const execFileAsync = promisify(execFile);
 const running: AgentHooks[] = [];
@@ -21,12 +29,28 @@ const shortDirectory = () => {
   return folder;
 };
 
-async function startHooks(directory = shortDirectory()) {
+async function startHooks(directory = shortDirectory(), answer?: (message: HookMessage, channel: HookChannel) => void) {
   const received: HookMessage[] = [];
-  const hooks = new AgentHooks(path.join(directory, "hooks"), (message) => received.push(message));
+  const hooks = new AgentHooks(path.join(directory, "hooks"), (message, channel) => {
+    received.push(message);
+    if (channel) answer?.(message, channel);
+  });
   await hooks.start();
   running.push(hooks);
   return { hooks, received, directory };
+}
+
+/** Runs the relay as an agent's hook does, and what it printed. */
+async function relayOutput(hooks: AgentHooks, event: string, stdin: string, env: Record<string, string> = {}) {
+  const child = execFile("/bin/sh", [hooks.relayPath, event], { env: { PATH: "/usr/bin:/bin", ...env } });
+  let out = "";
+  child.stdout!.on("data", (chunk: Buffer) => {
+    out += chunk.toString();
+  });
+  child.stdin!.end(stdin);
+  const started = Date.now();
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  return { out, code, ms: Date.now() - started };
 }
 
 async function relay(hooks: AgentHooks, event: string, stdin: string, env: Record<string, string> = {}) {
@@ -77,6 +101,41 @@ describe("AgentHooks", () => {
     expect(Date.now() - started).toBeLessThan(2500);
   });
 
+  it("waits for an approval's answer and prints it, and prints nothing for no decision", async () => {
+    const decision = '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}';
+    const { hooks, received } = await startHooks(undefined, (message, channel) => {
+      setTimeout(() => channel.reply(message.payload.tool_name === "Bash" ? decision : ""), 1200);
+    });
+    const allowed = await relayOutput(hooks, "PermissionRequest", '{"tool_name":"Bash","tool_input":{"command":"ls"}}', { GAJAE_SESSION_ID: "terminal-1" });
+    expect(allowed.out.trim()).toBe(decision);
+    expect(allowed.ms).toBeGreaterThanOrEqual(1000);
+    expect(received[0]).toMatchObject({ event: "PermissionRequest", session: "terminal-1", payload: { tool_name: "Bash" } });
+    const none = await relayOutput(hooks, "PermissionRequest", '{"tool_name":"Read","tool_input":{}}');
+    expect(none.out).toBe("");
+    expect(none.code).toBe(0);
+  });
+
+  it("prints only a decision in the hook's format", async () => {
+    const { hooks } = await startHooks(undefined, (_message, channel) => channel.reply('{"anything":"else"}'));
+    expect((await relayOutput(hooks, "PermissionRequest", "{}")).out).toBe("");
+  });
+
+  it("tells the app when a waiting hook goes away, and lets the agent go when nobody listens", async () => {
+    let closed = false;
+    const { hooks } = await startHooks(undefined, (_message, channel) => channel.onClose(() => (closed = true)));
+    const child = spawn("/bin/sh", [hooks.relayPath, "PermissionRequest"], { env: { PATH: "/usr/bin:/bin" }, detached: true });
+    child.stdin.end("{}");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    // a hook timed out: its whole process group is killed
+    process.kill(-child.pid!, "SIGTERM");
+    await expect.poll(() => closed, { timeout: 4000 }).toBe(true);
+    hooks.stop();
+    running.pop();
+    const alone = await relayOutput(hooks, "PermissionRequest", "{}");
+    expect(alone.out).toBe("");
+    expect(alone.ms).toBeLessThan(2500);
+  });
+
   it("hears the same relay again after a restart on the same socket", async () => {
     const { hooks, directory } = await startHooks();
     hooks.stop();
@@ -84,6 +143,17 @@ describe("AgentHooks", () => {
     const again = await startHooks(directory);
     await relay(again.hooks, "UserPromptSubmit", '{"prompt":"hi"}');
     await expect.poll(() => again.received.length).toBe(1);
+  });
+});
+
+describe("omp approval extension", () => {
+  it("runs the relay as an approval, and names the call omp asks about", () => {
+    const source = ompApprovalExtension("/data/agent-hooks/relay.sh");
+    expect(source).toContain('const RELAY = {"command":"/bin/sh","args":["/data/agent-hooks/relay.sh","PermissionRequest"]};');
+    expect(source).toContain('pi.on("tool_approval_requested"');
+    expect(source).toContain("export default function gajaeApprovals(pi)");
+    // a module omp can load: plain JavaScript that parses
+    expect(() => new Function(source.replace(/^import .*$/mu, "").replace("export default function", "function"))).not.toThrow();
   });
 });
 
@@ -100,7 +170,19 @@ describe("hook lines", () => {
     const settings = claudeHookSettings("/Users/me/Library/Application Support/Agent Control/agent-hooks/relay.sh") as {
       hooks: Record<string, { hooks: { command: string }[] }[]>;
     };
-    expect(Object.keys(settings.hooks)).toEqual(["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd", "Notification"]);
+    expect(Object.keys(settings.hooks)).toEqual([
+      "SessionStart",
+      "UserPromptSubmit",
+      "Stop",
+      "SessionEnd",
+      "Notification",
+      "PreToolUse",
+      "PostToolUse",
+      "PermissionRequest",
+    ]);
+    // the approval hook outlasts Gajae's own wait, so Gajae lets go of it first
+    expect((settings.hooks.PermissionRequest![0]!.hooks[0] as { timeout?: number }).timeout).toBe(620);
+    expect((settings.hooks.Stop![0]!.hooks[0] as { timeout?: number }).timeout).toBeUndefined();
     expect(settings.hooks.Stop![0]!.hooks[0]!.command).toBe(
       "/bin/sh '/Users/me/Library/Application Support/Agent Control/agent-hooks/relay.sh' Stop",
     );

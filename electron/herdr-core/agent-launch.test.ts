@@ -64,6 +64,11 @@ describe("planAgentLaunch", () => {
     expect((await planAgentLaunch(known, deps())).argv).toEqual(["/bin/omp", "--model=test/m"]);
   });
 
+  it("loads Gajae's approval extension into omp when it is given", async () => {
+    const plan = await planAgentLaunch(record({ agentKind: "omp", launch: { permissionMode: "always-ask" } }), deps({ ompExtensionPath: "/data/agent-hooks/omp-approvals.js" }));
+    expect(plan.argv).toEqual(["/bin/omp", "-e", "/data/agent-hooks/omp-approvals.js", "--approval-mode=always-ask"]);
+  });
+
   it("refuses an agent that is not installed, and GJC in a terminal", async () => {
     await expect(
       planAgentLaunch(record({ agentKind: "codex" }), deps({ detect: async (id) => ({ id, name: "Codex", installed: false, reason: "설치되어 있지 않습니다" }) })),
