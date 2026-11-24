@@ -31,6 +31,7 @@ import { QuickInputShortcutRow } from "./quick-input-shortcut-row";
 import { EnvironmentCheckPanel } from "./environment-check-panel";
 import { GjcSettingsPanel } from "./gjc-settings-panel";
 import { CommandRulesPanel } from "./command-rules-panel";
+import { BackgroundTerminalsRow } from "./background-terminals-row";
 const RemoteAccessPanel = lazy(() =>
   import("./remote-access-panel").then((mod) => ({ default: mod.RemoteAccessPanel })),
 );
@@ -978,6 +979,7 @@ export function SettingsDialog({
                     onChange={(value) => void persistNewSessionKind(value as NewSessionKind)}
                   />
                 </label>
+                <BackgroundTerminalsRow />
                 <label className="settings-field-wide">
                   <span>
                     <strong>{t("GJC 실행 파일")}</strong>
