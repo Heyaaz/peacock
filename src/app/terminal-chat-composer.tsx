@@ -14,6 +14,10 @@ export interface TerminalChatComposerProps {
   onSend: (text: string) => Promise<MessageDelivery>;
   onCancel: () => Promise<void>;
   onOpenTerminal: () => void;
+  /** An approval card is waiting: it, or the agent's own dialog, answers. */
+  approvalPending?: boolean;
+  /** False on a phone, which reaches no terminal. */
+  terminalReachable?: boolean;
 }
 
 /**
@@ -23,7 +27,16 @@ export interface TerminalChatComposerProps {
  * goals, compaction, side questions, suggestions, attachments) are not offered. Nothing is shown
  * in the conversation until the agent writes the message to its transcript.
  */
-export function TerminalChatComposer({ session, capabilities, agentName, onSend, onCancel, onOpenTerminal }: TerminalChatComposerProps) {
+export function TerminalChatComposer({
+  session,
+  capabilities,
+  agentName,
+  onSend,
+  onCancel,
+  onOpenTerminal,
+  approvalPending = false,
+  terminalReachable = true,
+}: TerminalChatComposerProps) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -60,12 +73,12 @@ export function TerminalChatComposer({ session, capabilities, agentName, onSend,
     void onCancel().catch((cause: unknown) => setError(humanErrorMessage(cause)));
   }
 
-  const openTerminal = (
+  const openTerminal = terminalReachable ? (
     <button type="button" className="composer-terminal-link" onClick={onOpenTerminal}>
       <SquareTerminal size={11} aria-hidden="true" />
       {t("터미널 열기")}
     </button>
-  );
+  ) : null;
 
   return (
     <form
@@ -79,6 +92,8 @@ export function TerminalChatComposer({ session, capabilities, agentName, onSend,
         <small className="composer-hint">
           {t`${agentName}에 지금은 채팅으로 보낼 수 없습니다. 터미널에서 입력하세요.`} {openTerminal}
         </small>
+      ) : waiting && approvalPending ? (
+        <small className="composer-hint">{t("승인 카드에서 답하거나 터미널에서 답하세요.")}</small>
       ) : waiting ? (
         <small className="composer-hint">
           {t`${agentName}이(가) 터미널에서 응답을 기다리고 있습니다.`} {openTerminal}

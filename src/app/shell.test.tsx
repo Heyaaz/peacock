@@ -65,6 +65,8 @@ const actionProbe = vi.hoisted(() => {
   };
   return {
     rename: vi.fn(),
+    /** Whether the backend reaches terminals (false on a phone). */
+    terminalSessions: true,
     forkSession: vi.fn(),
     deleteSession: vi.fn(),
     confirmSessionRemoval: vi.fn(),
@@ -93,6 +95,7 @@ const actionProbe = vi.hoisted(() => {
       this.deleteSession.mockReset();
       this.confirmSessionRemoval.mockReset();
       this.confirmSessionRemoval.mockResolvedValue(true);
+      this.terminalSessions = true;
       stateChanges.mockReset();
       this.onRename = null;
       this.sidebar = null;
@@ -112,6 +115,9 @@ vi.mock("react", async (importOriginal) => {
 
 vi.mock("../backend/use-agent-backend", () => ({
   useAgentBackend: () => ({
+    get terminalSessions() {
+      return actionProbe.terminalSessions;
+    },
     renameSession: actionProbe.rename,
     forkSession: actionProbe.forkSession,
     deleteSession: actionProbe.deleteSession,
@@ -732,6 +738,28 @@ describe("terminal sessions", () => {
     expect(markup).toContain("Claude Code에 지금은 채팅으로 보낼 수 없습니다");
     expect(markup).not.toContain("세션 정보");
     expect(markup).not.toContain("변경 파일 보기");
+  });
+
+  it("shows a terminal agent's session as its chat on a device that reaches no terminal", async () => {
+    actionProbe.terminalSessions = false;
+    const row = session("terminal-3", {
+      title: "폰에서 본 Claude",
+      runtime: "terminal",
+      agentKind: "claude",
+      surfaces: ["terminal", "chat"],
+      capabilities: { send: true, cancel: true, approvals: true },
+    });
+    actionProbe.forkSession.mockResolvedValueOnce(row);
+    renderApp();
+    actionProbe.sidebar!.onFork(session("source-1"));
+    await settle();
+    renderApp();
+    actionProbe.sidebar!.onSelect(row.id);
+    const markup = renderApp();
+    expect(markup).toContain('data-surface="chat"');
+    expect(markup).not.toContain("surface-mode-toggle");
+    expect(markup).not.toContain("터미널 열기");
+    expect(markup).toContain("composer--terminal-agent");
   });
 });
 

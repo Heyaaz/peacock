@@ -317,6 +317,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "셸이 종료되었습니다": "The shell exited",
   앱: "App",
   CLI: "CLI",
+  "승인 카드에서 답하거나 터미널에서 답하세요.":
+    "Answer on the approval card or in the terminal.",
   "터미널에서 응답을 기다리고 있어 보내지 않았습니다: {0}":
     "Not sent: the agent is waiting for an answer in its terminal: {0}",
   "터미널 열기":

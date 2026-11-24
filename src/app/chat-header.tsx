@@ -26,6 +26,8 @@ interface ChatHeaderProps {
    * GJC's changed-files and session-info panels have nothing to read for it.
    */
   terminalAgent?: boolean;
+  /** Absent where the session has one screen only (a phone shows a terminal agent's chat). */
+  surfaceToggle?: boolean;
 }
 
 export function ChatHeader({
@@ -43,6 +45,7 @@ export function ChatHeader({
   sideOpen = false,
   setSideOpen,
   terminalAgent = false,
+  surfaceToggle = true,
 }: ChatHeaderProps) {
   return (
   <header className="chat-header">
@@ -92,6 +95,7 @@ export function ChatHeader({
       </span>
     </div>
     <div className="chat-header__actions">
+      {surfaceToggle && (
       <div className="surface-mode-toggle" role="group" aria-label={t("채팅과 터미널")}>
         <button
           type="button"
@@ -114,6 +118,7 @@ export function ChatHeader({
           {t("터미널")}
         </button>
       </div>
+      )}
       <div className="tool-view-mode-toggle">
         <Dropdown ariaLabel={t("대화 표시 방식")} icon={<Layers size={15} aria-hidden="true" />} value={toolViewMode} onChange={changeToolViewMode}
           options={[

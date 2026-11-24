@@ -457,7 +457,14 @@ export default function App() {
   const chatId = terminalSession ? null : selectedId;
   const selectedSessionId = terminalRuntime ? undefined : selectedSession?.id;
   const agentEntry = agentChat ? agentCatalogEntry(agentChat.agentKind ?? "claude") : null;
-  const agentSurface = agentChat && agentEntry ? (agentSurfaces[agentChat.id] ?? agentEntry.defaultSurface) : null;
+  // a phone reaches no terminal: there an agent's session is its chat
+  const agentTerminalReachable = backend.terminalSessions === true;
+  const agentSurface =
+    agentChat && agentEntry
+      ? agentTerminalReachable
+        ? (agentSurfaces[agentChat.id] ?? agentEntry.defaultSurface)
+        : "chat"
+      : null;
   const viewSurface = agentSurface ?? surface;
   const setViewSurface = useCallback(
     (next: SessionSurface): void => {
@@ -1315,6 +1322,7 @@ export default function App() {
             setInspectorOpen={setInspectorOpen}
             {...(askSideBackend && !agentChat ? { sideOpen, setSideOpen } : {})}
             terminalAgent={agentChat !== null}
+            surfaceToggle={!agentChat || agentTerminalReachable}
           />
 
           <div className="workspace-body">
@@ -1393,6 +1401,16 @@ export default function App() {
               />
               <div className="composer-wrap">
                 {agentChat && agentEntry ? (
+                  <>
+                  <ApprovalBanner
+                    pending={pendingApprovals}
+                    focusedId={focusedApprovalId}
+                    onReveal={(toolId) => {
+                      setFocusedApprovalId(toolId);
+                      setRevealTarget({ sessionId: selectedSession.id, itemId: toolId });
+                    }}
+                    onFocusChange={setFocusedApprovalId}
+                  />
                   <TerminalChatComposer
                     key={agentChat.id}
                     session={agentChat}
@@ -1401,7 +1419,10 @@ export default function App() {
                     onSend={(text) => sendAgentMessage(agentChat.id, text)}
                     onCancel={() => backend.cancelRun(agentChat.id)}
                     onOpenTerminal={() => setViewSurface("terminal")}
+                    approvalPending={pendingApprovals.length > 0}
+                    terminalReachable={agentTerminalReachable}
                   />
+                  </>
                 ) : (
                 <>
                 <QuestionBanner
