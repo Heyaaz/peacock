@@ -125,12 +125,24 @@ Main
 - 명령 규칙(`matchCommandRule`) 먼저 적용.
 - **터미널에서 직접 답한 경우 해제 규칙**: PostToolUse/Stop 훅 또는 기록의 tool_result가 오면 카드 닫음(Ovis는 화면 판독으로 해제, 600초 타임아웃).
 - 최소 지원 버전은 Gajae 기준으로 따로 측정(Ovis의 2.1.286은 화면 대조용 기준).
+- **P4 결과(실측·구현)**:
+  - 구현: `electron/herdr-core/approvals.ts`(HerdrApprovals: 짝짓기·규칙·카드·해제), 훅 채널(`agent-hooks.ts`: PreToolUse/PostToolUse/PermissionRequest 추가, PermissionRequest만 연결을 열어 두고 답을 기다림), 카드는 transcript 행 위에 겹쳐 그림(`transcripts.ts` composeRows: 같은 id의 transcript 행이 있으면 그 자리, 없으면 요청 당시 마지막 행 뒤).
+  - 릴레이: macOS `nc`는 입력이 끝나면 연결을 바로 닫는다(실측) → 입력을 0.2초마다 개행으로 열어 두고, 답(Claude 훅 형식 JSON)만 출력. 앱이 없거나 답이 비면 출력 없이 종료(= 결정 없음 → 터미널 대화상자). 훅 `timeout` 620초, Gajae 대기 600초(먼저 놓음).
+  - **Claude Code 2.1.331은 훅이 기다리는 동안 자기 대화상자를 그린다**(실측: 카드 대기 중 화면에 대화상자, hc 상태 waiting) → 훅이 에이전트를 막지 않음. 대기 600초는 카드가 답할 수 있는 시간일 뿐.
+  - 짝짓기: PermissionRequest(tool_use_id 없음) ↔ 같은 세션의 직전 PreToolUse(같은 tool_name, 키 순서 무관 같은 tool_input). Code Mode(REPL 안 Bash)는 안쪽 `repl_…` id로 짝지어지고, transcript 행이 없으면 독립 카드 → PostToolUse의 출력으로 완료 표시(실측).
+  - 답: allow → `{behavior:"allow"}`, 거절 → `{behavior:"deny", message, interrupt}`(코멘트가 있으면 interrupt=false로 계속, 없으면 터미널의 No처럼 멈춤). 옵션은 allow_once/reject_once만.
+  - 해제(카드가 고아로 남지 않게): PostToolUse(실행됨), transcript의 tool_result(끝난 행), hc 상태가 blocked를 벗어남(그 시점까지의 요청), Stop/SessionEnd, 훅 연결 끊김(Claude 타임아웃·omp가 자기 대화상자로 답함), 터미널 종료, 600초. 실측: 터미널에서 Enter로 답한 요청의 카드가 닫힘. 사용자 설정(Code Mode, autoMode, 사용자 훅)을 그대로 둔 실행에서는 대화상자가 1.6~29초 뒤 Gajae 밖에서 승인됐고 카드도 그때 닫혔다(원인은 사용자 설정으로 추정, `--setting-sources project,local` 실행에서는 재현 안 됨).
+  - 명령 규칙: Bash(omp bash)의 command에 `matchCommandRule`(GJC와 같은 CommandRuleStore) 먼저 → 일치하면 카드 없이 즉시 답하고 autoDecision 표시. 카드의 "앞부분 항상 허용/거부"는 규칙 저장 후 답(저장 실패해도 답은 감).
+  - capabilities.approvals: 카탈로그 상한 && (이 앱이 훅과 함께 띄움[Claude ≥ 2.1.331, omp ≥ 19.1.1] 또는 PreToolUse/PermissionRequest 훅이 들어옴, omp는 재시작 뒤 argv의 `-e <확장>`) && 훅 채널이 듣는 중.
+  - omp: Ovis extension.ts/omp.ts 방식 `-e <omp-approvals.js>`. omp 19.1.1의 `tool_approval_requested`(call id)와 `tool_call`(입력)로 요청을 만들고 `ui.approve`를 감싸 omp 대화상자와 경주. **19.1.1에서 동작 실측**(카드 승인 → 실행). omp에 승인을 묻게 하려면 승인 모드가 필요해 launch 옵션 `permissionMode` → `--approval-mode`(always-ask 등)를 추가. 사용자의 omp 기본(yolo)은 아무것도 묻지 않는다.
+  - 행 id의 call id 부분은 id 검사(`[A-Za-z0-9._:-]`)에 맞게 정규화(omp의 `call_…|fc_…` → `_`).
 
 ### 5.7 메인 라우터 / 원격
 - `registerGjcIpcHandlers(controller: GjcSdkController)` → 핵심 `AgentHost` 인터페이스 + 선택 facet.
 - RemoteAccess의 host를 라우터로 교체하되:
   - **agentKind `shell`은 원격 목록·조작에서 서버 쪽 제외**(폰에서 임의 명령 실행 방지).
   - `resolveToolCall(toolId)`에 sessionId가 없으므로 toolId에 네임스페이스(`<sessionId>/<id>`) 부여.
+    - **P4 구현**: herdr 행 id는 이미 `<sessionId>:<call id>`(P3)라 `:`를 구분자로 씀(`/`는 IPC·원격 id 검사 `[A-Za-z0-9._:-]`가 거부). 라우터 `sessionOfTool`이 접두어로 소유 런타임을 찾고(목록에 없으면 런타임에 물음), 없으면 GJC로(기존 id 그대로 → 구버전 PWA도 같은 경로). 원격 `resolve-tool-call`은 도구 id의 세션이 원격 숨김(shell)이면 거부. 폰(터미널 없음)에서는 에이전트 세션을 채팅만으로 보여 줌.
 - GJC 전용 기능은 herdr 세션에서 `unsupported` 타입 오류 + UI 숨김.
 
 ### 5.8 온보딩 / 설정 (P5)
@@ -160,7 +172,7 @@ Main
 | P1 | hc 수명주기 + 셸 터미널(detach/kill/restart, 고아 정리, node-pty 폴백) | 앱 재시작 후 셸 터미널과 출력 유지 (**완료**: `npm run desktop:hc-terminal-smoke`가 앱 재시작 뒤 같은 pid·출력 유지를 실측) |
 | P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 (**완료**: `npm run desktop:hc-agent-smoke`가 실제 Claude Code로 사이드바 waiting→running→idle, 승인·완료 알림 요청, 앱 재시작 뒤 훅 수신을 실측. 단 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 거부됨) |
 | P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 (**완료**: `GAJAE_AGENT_SMOKE_PHASES=3,4 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku)와 omp(작은 모델)로 창에서 세션을 열고 채팅으로 전환해 보낸 메시지가 터미널 화면에 나타나고 답이 채팅에 나타남을, 전환 뒤에도 같은 id임을 실측. 2단계는 재시작 뒤 같은 기록과 `/clear` 뒤 새 기록 추종을 실측) |
-| P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 |
+| P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 (**완료**: `GAJAE_SMOKE_CLAUDE_ARGS="--setting-sources project,local" GAJAE_AGENT_SMOKE_PHASES=5,6 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku, `--permission-mode default`)로 창의 카드 승인, 앱 재시작 뒤 원격 프로토콜(페어링한 기기 HTTP)로 카드 확인·승인, 터미널에서 답한 요청의 카드 해제를 실측. `GAJAE_AGENT_SMOKE_PHASES=7`은 omp 19.1.1 승인을 실측) |
 | P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 |
 | P6 | 검색 색인·병렬 실행의 herdr 세션 지원 | — |
 

@@ -99,6 +99,11 @@ Portions of the agent runtime are adapted from
   `electron/herdr-core/transcript/omp-transcript.ts`
 - `server/session-history.ts` and `server/omp.ts` — omp's session folder
   names and its terminal breadcrumb, in `electron/herdr-core/omp-session.ts`
+- `server/approvals/extension.ts` and `server/approvals/omp.ts` — omp's
+  approval extension (wrapping its UI's `approve` and racing its own dialog),
+  in `ompApprovalExtension` of `electron/herdr-core/agent-hooks.ts`; and
+  `server/approvals/claude.ts` — Claude Code's PermissionRequest answer format,
+  in `electron/herdr-core/approvals.ts`
 
 ```
 MIT License
