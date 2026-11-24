@@ -6,6 +6,7 @@
  */
 
 import type { AgentKindId, AgentSession } from "./agent-contract.js";
+import type { AgentLaunchOptions } from "./agent-launch.js";
 
 export const TERMINAL_IPC = {
   start: "agent-control:terminal:start",
@@ -21,6 +22,7 @@ export const TERMINAL_IPC = {
   confirmSessionRemoval: "agent-control:terminal:confirm-session-removal",
   deleteSession: "agent-control:terminal:delete-session",
   killBackground: "agent-control:terminal:kill-background",
+  listAgents: "agent-control:terminal:list-agents",
 } as const;
 
 /** Terminal session ids carry this prefix, so a session row says which runtime owns it. */
@@ -46,11 +48,32 @@ export interface TerminalSessionRecord {
   coreId?: string;
   /** The session's terminal on that core (`t7`), while it has one. */
   terminalAddress?: string;
+  /** What the agent was started with (model, effort, permission mode). */
+  launch?: AgentLaunchOptions;
+  /** The agent's own session id (Claude Code's `session_id`), which a new terminal resumes. */
+  agentSessionRef?: string;
+  /** Where the agent writes that session's transcript, as it last reported. */
+  transcriptPath?: string;
+}
+
+/** Whether an agent can be started here, and where it was found. */
+export interface AgentAvailability {
+  id: AgentKindId;
+  name: string;
+  installed: boolean;
+  /** The executable, as an absolute path. */
+  binary?: string;
+  version?: string;
+  /** Why it cannot be started, for a disabled choice. */
+  reason?: string;
 }
 
 export interface TerminalSessionCreateInput {
   title: string;
   workspace: string;
+  /** The agent the terminal runs; a shell when unset. */
+  agentKind?: AgentKindId;
+  launch?: AgentLaunchOptions;
 }
 
 export interface TerminalStartRequest {
@@ -118,6 +141,8 @@ export interface TerminalDesktopBridge {
   deleteSession(sessionId: string): Promise<void>;
   /** Ends every terminal session's shell that keeps running in herdr-core; resolves how many. */
   killBackground(): Promise<number>;
+  /** The terminal agents and whether each can be started here. */
+  listAgents(): Promise<AgentAvailability[]>;
   onOutput(listener: (event: TerminalOutputEvent) => void): () => void;
   onExit(listener: (event: TerminalExitEvent) => void): () => void;
 }

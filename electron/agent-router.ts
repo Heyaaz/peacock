@@ -405,6 +405,11 @@ export class AgentRouter implements FullAgentHost {
     );
   }
 
+  /** Whether remote devices must not see or drive a session; only a runtime that says so hides one. */
+  hiddenFromRemote(sessionId: string): boolean {
+    return this.controllerFor(sessionId).hiddenFromRemote?.(sessionId) ?? false;
+  }
+
   /** A runtime without other hosts has none holding the session, so delete stops nothing. */
   sessionHostElsewhere(
     sessionId: string,

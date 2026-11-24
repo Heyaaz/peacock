@@ -100,7 +100,7 @@ const record = (id: string, extra: Partial<TerminalSessionRecord> = {}): Termina
   ...extra,
 });
 
-const SHELL = () => ({ file: "/bin/zsh", args: ["-l"] });
+const SHELL = async () => ({ argv: ["/bin/zsh", "-l"] });
 const noop = { onData: () => {}, onExit: () => {} };
 
 describe("HcSessionTerminals", () => {

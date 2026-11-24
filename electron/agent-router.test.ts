@@ -77,6 +77,7 @@ const ROUTING_MEMBERS = new Set([
   "runtimeOfController",
   "adopt",
   "facet",
+  "hiddenFromRemote",
 ]);
 
 type Mocked<T> = { [K in keyof T]: ReturnType<typeof vi.fn> };

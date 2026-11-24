@@ -1,9 +1,7 @@
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import type { AgentSession } from "../shared/agent-contract.js";
 import type { IpcSecurity } from "./ipc-security.js";
-import { recentLabel, timestampMs } from "./gjc-sdk-model.js";
 import { validDirectory } from "./settings-store.js";
 import { resolveShellCwd } from "./terminal-shell.js";
 import {
@@ -12,12 +10,18 @@ import {
   type LoginShellSession,
 } from "./terminal-session.js";
 import type { SessionTerminalProvider, TerminalEnd, TerminalHandle } from "./terminal-backend.js";
+import { terminalAgentSession } from "./terminal-session-row.js";
+export { terminalAgentSession } from "./terminal-session-row.js";
 import { hostText } from "./host-text.js";
 import { ReplayBuffer, createOutputBatcher, type OutputBatcher } from "./terminal-output.js";
 import type { TerminalSessionStore } from "./terminal-session-store.js";
+import { isAgentKindId } from "../shared/agent-contract.js";
+import { launchOptions } from "../shared/agent-launch.js";
 import {
   TERMINAL_IPC,
   isTerminalSessionId,
+  type AgentAvailability,
+  type TerminalSessionCreateInput,
   type TerminalExitEvent,
   type TerminalOutputEvent,
   type TerminalSessionInfo,
@@ -106,6 +110,8 @@ export class TerminalHost {
     if (key !== SURFACE_KEY && !stored) throw new Error("Terminal session not found");
     const current = this.windows.get(sender.id)?.get(key);
     if (current && key !== SURFACE_KEY && !request.restart) return this.rejoin(current, request);
+    if (process.env.GAJAE_DEBUG_HERDR)
+      console.log(`[terminal start] ${key} token=${token} restart=${request.restart === true} current=${current ? "yes" : "no"}`);
     if (stored && this.provider) return this.startProvided(sender, request, stored);
     this.kill(sender.id, key);
     const cwd = resolveShellCwd(stored?.workspace ?? request.cwd);
@@ -249,6 +255,8 @@ export class TerminalHost {
       });
       terminal.backend = "hc";
     } catch (error) {
+      // an agent session asked for that agent: an in-app shell instead would be a different thing
+      if ((stored.agentKind ?? "shell") !== "shell") throw error;
       this.log(`herdr-core could not open terminal session ${key}; using an in-app shell`, error);
       terminal.notice = fallbackNotice(error);
       handle = ptyHandle(
@@ -418,26 +426,6 @@ export function terminalStartRequest(value: unknown): TerminalStartRequest {
   };
 }
 
-/** A terminal session as a session row: idle, attached, and owned by this app. */
-export function terminalAgentSession(record: TerminalSessionRecord): AgentSession {
-  return {
-    id: record.id,
-    title: record.title,
-    subtitle: path.basename(record.workspace) || record.workspace,
-    workspace: record.workspace,
-    runtime: "terminal",
-    status: "idle",
-    updatedAt: recentLabel(record.createdAt),
-    updatedAtMs: timestampMs(record.createdAt),
-    pinned: false,
-    unread: false,
-    accent: "#56d4dd",
-    ownership: "gajae",
-    attachment: "attached",
-    agentKind: record.agentKind ?? "shell",
-  };
-}
-
 function terminalSessionId(value: unknown): string {
   if (typeof value !== "string" || !isTerminalSessionId(value))
     throw new Error("Terminal session ID is invalid");
@@ -462,6 +450,27 @@ const KILL_BACKGROUND_CONFIRMATION = {
   danger: true,
 };
 
+/** The terminal agent sessions' owner (HerdrAgentController): their rows, creation and agents. */
+export interface TerminalAgents {
+  listSessions(): AgentSession[];
+  createTerminalSession(input: TerminalSessionCreateInput): Promise<AgentSession>;
+  listAgents(): Promise<AgentAvailability[]>;
+  forget(sessionId: string): void;
+}
+
+const SHELL_ONLY: AgentAvailability[] = [{ id: "shell", name: "Shell", installed: true }];
+
+/** A create request's agent and launch options, checked; a shell when it names none. */
+function terminalCreateInput(value: Record<string, unknown>): TerminalSessionCreateInput {
+  if (typeof value.title !== "string") throw new Error("Session title is required");
+  if (!validDirectory(value.workspace)) throw new Error("Workspace must be an existing folder");
+  const agentKind = value.agentKind === undefined ? "shell" : value.agentKind;
+  if (!isAgentKindId(agentKind) || agentKind === "gjc") throw new Error("Terminal agent is invalid");
+  // an older client named the program here (`launch: "shell"`); the agent says that now
+  const launch = launchOptions(agentKind, typeof value.launch === "string" ? undefined : value.launch);
+  return { title: value.title, workspace: value.workspace, agentKind, ...(launch ? { launch } : {}) };
+}
+
 export function registerTerminalIpcHandlers(
   security: IpcSecurity,
   options?: {
@@ -469,6 +478,8 @@ export function registerTerminalIpcHandlers(
     store?: TerminalSessionStore;
     /** Where terminal sessions' shells live past the app (herdr-core); without it, in-app ptys. */
     provider?: SessionTerminalProvider;
+    /** Agent sessions' owner; without it only shells can be made. */
+    agents?: TerminalAgents;
   },
 ): {
   unregister(): void;
@@ -498,19 +509,25 @@ export function registerTerminalIpcHandlers(
       host.dispose(event.sender.id, typeof token === "number" ? token : undefined);
     }),
   );
+  const agents = options?.agents;
   ipcMain.handle(
     TERMINAL_IPC.listSessions,
-    security.guarded(() => (store?.list() ?? []).map(terminalAgentSession)),
+    security.guarded(() =>
+      agents ? agents.listSessions() : (store?.list() ?? []).map((record) => terminalAgentSession(record)),
+    ),
+  );
+  ipcMain.handle(
+    TERMINAL_IPC.listAgents,
+    security.guarded(() => (agents ? agents.listAgents() : SHELL_ONLY)),
   );
   ipcMain.handle(
     TERMINAL_IPC.createSession,
     security.guarded((_event: IpcMainInvokeEvent, input: unknown) => {
       const value = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
-      if (typeof value.title !== "string") throw new Error("Session title is required");
-      if (!validDirectory(value.workspace)) throw new Error("Workspace must be an existing folder");
-      return terminalAgentSession(
-        requireStore().create({ title: value.title, workspace: value.workspace }),
-      );
+      const request = terminalCreateInput(value);
+      if (agents) return agents.createTerminalSession(request);
+      if (request.agentKind !== "shell") throw new Error("Agent sessions need herdr-core");
+      return terminalAgentSession(requireStore().create({ title: request.title, workspace: request.workspace }));
     }),
   );
   ipcMain.handle(
@@ -536,6 +553,7 @@ export function registerTerminalIpcHandlers(
       await security.authorizeDestructive(event, removalConfirmation(record), `delete:${id}`);
       await host.closeSession(id, record);
       sessions.delete(id);
+      agents?.forget(id);
     }),
   );
   ipcMain.handle(
@@ -574,6 +592,7 @@ export function registerTerminalIpcHandlers(
         TERMINAL_IPC.confirmSessionRemoval,
         TERMINAL_IPC.deleteSession,
         TERMINAL_IPC.killBackground,
+        TERMINAL_IPC.listAgents,
       ])
         ipcMain.removeHandler(channel);
       ipcMain.removeListener(TERMINAL_IPC.input, onInput);

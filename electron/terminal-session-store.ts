@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isAgentKindId } from "../shared/agent-contract.js";
+import { launchOptions, type AgentLaunchOptions } from "../shared/agent-launch.js";
 import {
   TERMINAL_SESSION_PREFIX,
   type TerminalSessionCreateInput,
@@ -15,6 +16,14 @@ export interface TerminalBinding {
 }
 
 const TERMINAL_ADDRESS = /^[A-Za-z0-9_./-]{1,128}$/u;
+/** An agent's own session id: Claude Code's are UUIDs. */
+const AGENT_SESSION_REF = /^[A-Za-z0-9_-]{1,128}$/u;
+
+/** What an agent reported about its own session. */
+export interface AgentSessionReport {
+  agentSessionRef?: string;
+  transcriptPath?: string;
+}
 
 const TITLE_LIMIT = 200;
 
@@ -46,13 +55,21 @@ export class TerminalSessionStore {
     return session ? { ...session } : undefined;
   }
 
-  create(input: TerminalSessionCreateInput): TerminalSessionRecord {
+  create(
+    input: TerminalSessionCreateInput & { launch?: AgentLaunchOptions; agentSessionRef?: string },
+  ): TerminalSessionRecord {
+    const agentKind = input.agentKind ?? "shell";
+    const launch = launchOptions(agentKind, input.launch);
     const session: TerminalSessionRecord = {
       id: `${TERMINAL_SESSION_PREFIX}${randomUUID()}`,
       title: sessionTitle(input.title),
       workspace: path.resolve(input.workspace),
       createdAt: this.now().toISOString(),
-      agentKind: "shell",
+      agentKind,
+      ...(launch ? { launch } : {}),
+      ...(input.agentSessionRef && AGENT_SESSION_REF.test(input.agentSessionRef)
+        ? { agentSessionRef: input.agentSessionRef }
+        : {}),
     };
     this.sessions = [session, ...this.sessions];
     this.write();
@@ -64,6 +81,32 @@ export class TerminalSessionStore {
     if (!session) throw new Error("Terminal session not found");
     session.title = sessionTitle(title);
     this.write();
+  }
+
+  /** Records what the agent said about its own session; returns whether anything changed. */
+  reportAgentSession(sessionId: string, report: AgentSessionReport): boolean {
+    const session = this.sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return false;
+    let changed = false;
+    if (
+      report.agentSessionRef &&
+      AGENT_SESSION_REF.test(report.agentSessionRef) &&
+      report.agentSessionRef !== session.agentSessionRef
+    ) {
+      session.agentSessionRef = report.agentSessionRef;
+      changed = true;
+    }
+    if (
+      report.transcriptPath &&
+      path.isAbsolute(report.transcriptPath) &&
+      report.transcriptPath.length <= 4096 &&
+      report.transcriptPath !== session.transcriptPath
+    ) {
+      session.transcriptPath = report.transcriptPath;
+      changed = true;
+    }
+    if (changed) this.write();
+    return changed;
   }
 
   /** Records where the session's shell runs in herdr-core, or forgets it. */
@@ -135,6 +178,13 @@ function parseRecord(raw: unknown): TerminalSessionRecord[] {
     typeof value.createdAt !== "string"
   )
     return [];
+  const agentKind = isAgentKindId(value.agentKind) ? value.agentKind : "shell";
+  let launch: AgentLaunchOptions | undefined;
+  try {
+    launch = launchOptions(agentKind, value.launch);
+  } catch {
+    launch = undefined;
+  }
   const bound =
     typeof value.coreId === "string" &&
     /^[A-Za-z0-9]{1,128}$/u.test(value.coreId) &&
@@ -146,9 +196,18 @@ function parseRecord(raw: unknown): TerminalSessionRecord[] {
       title: value.title,
       workspace: value.workspace,
       createdAt: value.createdAt,
-      agentKind: isAgentKindId(value.agentKind) ? value.agentKind : "shell",
+      agentKind,
       ...(bound
         ? { coreId: value.coreId as string, terminalAddress: value.terminalAddress as string }
+        : {}),
+      ...(launch ? { launch } : {}),
+      ...(typeof value.agentSessionRef === "string" && AGENT_SESSION_REF.test(value.agentSessionRef)
+        ? { agentSessionRef: value.agentSessionRef }
+        : {}),
+      ...(typeof value.transcriptPath === "string" &&
+      path.isAbsolute(value.transcriptPath) &&
+      value.transcriptPath.length <= 4096
+        ? { transcriptPath: value.transcriptPath }
         : {}),
     },
   ];

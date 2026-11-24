@@ -480,3 +480,80 @@ describe("terminal sessions in herdr-core", () => {
     expect(provider.killAll).toHaveBeenCalled();
   });
 });
+
+describe("terminal agent sessions", () => {
+  function setup(options: { failOpen?: boolean } = {}) {
+    const directory = mkdtempSync(path.join(tmpdir(), "terminal-agent-sessions-"));
+    const store = new TerminalSessionStore(directory);
+    const ptys: LoginShellOptions[] = [];
+    const provider = {
+      open: vi.fn(async () => {
+        if (options.failOpen) throw new Error("Claude Code: 설치되어 있지 않습니다");
+        return { handle: vi.fn(), detach: vi.fn(), kill: vi.fn() };
+      }),
+      kill: vi.fn(async () => undefined),
+      killAll: vi.fn(async () => 0),
+    };
+    const agents = {
+      listSessions: vi.fn(() => store.list().map((record) => ({ id: record.id, agentKind: record.agentKind }) as unknown as AgentSession)),
+      createTerminalSession: vi.fn(async (input: { title: string; workspace: string; agentKind?: string }) => {
+        const record = store.create(input as never);
+        return { id: record.id, agentKind: record.agentKind } as unknown as AgentSession;
+      }),
+      listAgents: vi.fn(async () => [{ id: "claude" as const, name: "Claude Code", installed: true, binary: "/bin/claude" }]),
+      forget: vi.fn(),
+    };
+    const ipcSecurity = {
+      ...security(true),
+      preauthorize: vi.fn(async () => true),
+      authorizeDestructive: vi.fn(async () => undefined),
+    } as unknown as IpcSecurity;
+    registerTerminalIpcHandlers(ipcSecurity, {
+      store,
+      provider,
+      agents,
+      open: (sessionOptions) => {
+        ptys.push(sessionOptions);
+        return { handle: vi.fn(), dispose: vi.fn() } as unknown as LoginShellSession;
+      },
+    });
+    const event = { sender: { id: 41, isDestroyed: () => false, send: vi.fn() } } as unknown as IpcMainInvokeEvent;
+    const call = (channel: string, ...args: unknown[]) => handled.get(channel)!(event, ...args);
+    return { directory, store, agents, provider, ptys, call };
+  }
+
+  it("creates an agent session through the agents' owner, with checked launch options", async () => {
+    const { directory, agents, call } = setup();
+    await call(TERMINAL_IPC.createSession, { title: "c", workspace: directory, agentKind: "claude", launch: { model: "haiku" } });
+    expect(agents.createTerminalSession).toHaveBeenCalledWith({ title: "c", workspace: directory, agentKind: "claude", launch: { model: "haiku" } });
+    expect(() => call(TERMINAL_IPC.createSession, { title: "c", workspace: directory, agentKind: "gjc" })).toThrow(/invalid/u);
+    expect(() => call(TERMINAL_IPC.createSession, { title: "c", workspace: directory, agentKind: "omp", launch: { effort: "max" } })).toThrow(/does not take/u);
+    // an older client's `launch: "shell"` still makes a shell
+    await call(TERMINAL_IPC.createSession, { title: "s", workspace: directory, launch: "shell" });
+    expect(agents.createTerminalSession).toHaveBeenLastCalledWith({ title: "s", workspace: directory, agentKind: "shell" });
+  });
+
+  it("lists sessions and agents from the agents' owner, and forgets a deleted session", async () => {
+    const { directory, agents, call } = setup();
+    const created = (await call(TERMINAL_IPC.createSession, { title: "s", workspace: directory })) as AgentSession;
+    expect(await call(TERMINAL_IPC.listSessions)).toEqual([{ id: created.id, agentKind: "shell" }]);
+    expect(await call(TERMINAL_IPC.listAgents)).toEqual([{ id: "claude", name: "Claude Code", installed: true, binary: "/bin/claude" }]);
+    await call(TERMINAL_IPC.deleteSession, created.id);
+    expect(agents.forget).toHaveBeenCalledWith(created.id);
+  });
+
+  it("shows why an agent session could not start instead of opening a shell in its place", async () => {
+    const { directory, ptys, call } = setup({ failOpen: true });
+    const created = (await call(TERMINAL_IPC.createSession, { title: "c", workspace: directory, agentKind: "claude" })) as AgentSession;
+    await expect(call(TERMINAL_IPC.start, { token: 1, session: created.id })).rejects.toThrow("Claude Code: 설치되어 있지 않습니다");
+    expect(ptys).toHaveLength(0);
+  });
+
+  it("offers only the shell without the agents' owner, and refuses agent sessions there", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "terminal-agent-sessions-"));
+    registerTerminalIpcHandlers(security(true), { store: new TerminalSessionStore(directory) });
+    const event = { sender: { id: 42, isDestroyed: () => false, send: vi.fn() } } as unknown as IpcMainInvokeEvent;
+    expect(await handled.get(TERMINAL_IPC.listAgents)!(event)).toEqual([{ id: "shell", name: "Shell", installed: true }]);
+    expect(() => handled.get(TERMINAL_IPC.createSession)!(event, { title: "c", workspace: directory, agentKind: "claude" })).toThrow(/herdr-core/u);
+  });
+});

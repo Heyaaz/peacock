@@ -5,6 +5,7 @@ import type { CommandRuleMatch, ProjectCommandRules } from "./command-rules.js";
 import type { EnvironmentReport } from "./environment-check.js";
 import type { GjcSetting, GjcSettingChange } from "./gjc-settings.js";
 import type { QuickInputShortcutStatus } from "./quick-input.js";
+import type { AgentLaunchOptions } from "./agent-launch.js";
 
 /**
  * Where a session runs.
@@ -1041,6 +1042,12 @@ export interface CreateSessionInput {
    * cannot resolve), so a parallel attempt runs on its own preset from its first turn.
    */
   modelPreset?: string;
+  /** A herdr session's agent (`runtime: "herdr"`); a shell when unset. */
+  agentKind?: AgentKindId;
+  /** The screen a herdr session opens on; only `terminal` until the chat screen (P3). */
+  surface?: SessionSurface;
+  /** What a herdr session's agent starts with. */
+  launch?: AgentLaunchOptions;
 }
 
 export interface WorktreePull {

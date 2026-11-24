@@ -181,7 +181,11 @@ export type FullAgentHost = AgentHost & AgentFacets;
  * A runtime registered with the router next to GJC: the core calls, and any
  * facet it has. A facet it lacks is refused as unsupported for its sessions.
  */
-export type AgentRuntimeController = AgentHost & Partial<AgentFacets>;
+export type AgentRuntimeController = AgentHost &
+  Partial<AgentFacets> & {
+    /** A session a remote device may neither see nor drive (a shell, design §5.7). */
+    hiddenFromRemote?(sessionId: string): boolean;
+  };
 
 /**
  * A call the session's runtime does not offer, such as a GJC goal on a herdr

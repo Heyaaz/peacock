@@ -23,6 +23,9 @@ const ENGLISH: Readonly<Record<string, string>> = {
   "앱을 닫아도 계속 실행되던 터미널 세션의 셸과 그 안의 프로그램을 모두 종료합니다.":
     "Ends every terminal session's shell that kept running after the app closed, and every program in them.",
   "모두 종료": "End all",
+  "설치되어 있지 않습니다": "Not installed",
+  "실행 파일은 있지만 버전 확인에 실패했습니다": "Found, but its version check failed",
+  "알 수 없는 에이전트입니다": "Unknown agent",
   "herdr-core를 쓸 수 없어 앱 안에서 셸을 열었습니다. 앱을 닫으면 이 셸은 종료됩니다.":
     "herdr-core is unavailable, so this shell runs inside the app and ends when the app quits.",
   "이 세션에서 실행 중인 셸과 프로그램을 종료합니다.":

@@ -6,8 +6,8 @@ import {
   clampTerminalDimension,
   loginShellPlan,
   resolveShellCwd,
-  type LoginShellCommand,
 } from "../terminal-shell.js";
+import type { LaunchPlan } from "./agent-launch.js";
 import { CoreAttachSession } from "./attach-session.js";
 import type { HcConnection, HelloInfo } from "./connection.js";
 import type { Terminal } from "./hc-api.generated.js";
@@ -24,6 +24,13 @@ export interface TerminalBindingStore {
     sessionId: string,
     binding: { coreId: string; terminalAddress: string } | undefined,
   ): void;
+}
+
+/** A session's command when nobody says otherwise: the login shell. */
+export async function shellLaunch(): Promise<LaunchPlan> {
+  const shell = loginShellPlan()[0];
+  if (!shell) throw new Error("No login shell to run");
+  return { argv: [shell.file, ...shell.args] };
 }
 
 export interface HcCoreAccess {
@@ -53,7 +60,7 @@ export class HcSessionTerminals implements SessionTerminalProvider {
   constructor(
     private readonly core: HcCoreAccess,
     private readonly store: TerminalBindingStore,
-    private readonly shell: () => LoginShellCommand | undefined = () => loginShellPlan()[0],
+    private readonly launch: (record: TerminalSessionRecord) => Promise<LaunchPlan> = shellLaunch,
   ) {}
 
   async open(request: SessionTerminalRequest): Promise<TerminalHandle> {
@@ -67,15 +74,18 @@ export class HcSessionTerminals implements SessionTerminalProvider {
       await this.end(hc, terminal.address);
       terminal = undefined;
     }
+    if (process.env.GAJAE_DEBUG_HERDR)
+      console.log(`[herdr open] ${record.id} restart=${request.restart} bound=${address ?? "-"} live=${terminal ? "yes" : "no"}`);
     if (!terminal) {
-      const shell = this.shell();
-      if (!shell) throw new Error("No login shell to run");
+      const plan = await this.launch(record);
+      // hc reads a bare argv[0] as one of its templates: the program is always a path
+      if (!plan.argv[0]?.startsWith("/")) throw new Error("A terminal program must be an absolute path");
       const cols = clampTerminalDimension(request.cols ?? 80);
       const rows = clampTerminalDimension(request.rows ?? 24);
       const started = await hc.call("terminal.run", {
-        // hc reads a bare argv[0] as one of its templates: the program is always a path
-        argv: [shell.file, ...shell.args],
+        argv: plan.argv,
         cwd: resolveShellCwd(record.workspace),
+        ...(plan.env && Object.keys(plan.env).length > 0 ? { env: plan.env } : {}),
         labels: { [SESSION_LABEL]: record.id, [AGENT_LABEL]: record.agentKind ?? "shell" },
         no_parent: true,
         no_notify: true,

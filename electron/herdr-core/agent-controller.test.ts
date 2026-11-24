@@ -1,0 +1,248 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import type { AgentEvent } from "../../shared/agent-contract.js";
+import type { AgentAvailability } from "../../shared/terminal-ipc.js";
+import { TerminalSessionStore } from "../terminal-session-store.js";
+import { HerdrAgentController } from "./agent-controller.js";
+import type { ChannelHandlers, HcConnection, HelloInfo } from "./connection.js";
+
+function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[]; installed?: boolean } = {}) {
+  const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
+  const home = mkdtempSync(path.join(tmpdir(), "gajae-agents-home-"));
+  const store = new TerminalSessionStore(directory);
+  const events: AgentEvent[] = [];
+  let stream: ChannelHandlers | undefined;
+  const calls: { method: string; params: unknown }[] = [];
+  const hc = {
+    open: vi.fn(async (_method: string, _params: unknown, handlers: ChannelHandlers) => {
+      stream = handlers;
+      return { result: { seq: 0, terminals: options.snapshot?.(store) ?? [] }, channel: { close: async () => undefined } };
+    }),
+    call: vi.fn(async (method: string, params: unknown) => {
+      calls.push({ method, params });
+      return {};
+    }),
+  };
+  const endTerminal = vi.fn(async () => undefined);
+  const claim = vi.fn();
+  const detect = vi.fn(async (id: string): Promise<AgentAvailability> =>
+    options.installed === false
+      ? { id: id as AgentAvailability["id"], name: "Claude Code", installed: false, reason: "설치되어 있지 않습니다" }
+      : { id: id as AgentAvailability["id"], name: id, installed: true, binary: `/bin/${id}` },
+  );
+  const controller = new HerdrAgentController({
+    store,
+    core: {
+      connection: async () => hc as unknown as HcConnection,
+      core: { version: "0.1.18", core: { id: "core-1", name: "mac" }, methods: [], features: [] } as HelloInfo,
+      isRunning: () => true,
+    },
+    endTerminal,
+    detect,
+    listAgents: async () => [],
+    claudeSettingsPath: () => "/data/agent-hooks/claude-settings.json",
+    emit: (event) => events.push(event),
+    claim,
+    home,
+    log: () => undefined,
+  });
+  const push = (type: string, terminal: string, data: Record<string, unknown>) =>
+    stream!.onData(new TextEncoder().encode(`${JSON.stringify({ jsonrpc: "2.0", method: "event", params: { type, terminal, data, seq: 1 } })}\n`));
+  const statuses = () => events.flatMap((event) => (event.type === "session.updated" ? [event.session.status] : []));
+  const activities = () => events.flatMap((event) => (event.type === "session.activity" ? [event.category] : []));
+  return { controller, store, events, hc, calls, push, statuses, activities, endTerminal, claim, detect, directory, home };
+}
+
+const STATUS = (state: string | null) => ({ reported: true, records: {}, status: state === null ? null : { app: "claude-code", state } });
+
+describe("HerdrAgentController sessions", () => {
+  it("creates an agent session for an installed agent, claims it and announces it", async () => {
+    const { controller, claim, events, directory } = setup();
+    const session = await controller.createSession({ runtime: "herdr", agentKind: "claude", workspace: directory, title: "리뷰", isolation: "workspace", launch: { model: "haiku" } });
+    expect(session).toMatchObject({ id: expect.stringMatching(/^terminal-/u), runtime: "terminal", agentKind: "claude", status: "idle", title: "리뷰" });
+    expect(session.subtitle).toMatch(/^Claude Code · /u);
+    expect(claim).toHaveBeenCalledWith(session.id);
+    expect(events[0]).toEqual({ type: "session.created", session });
+  });
+
+  it("refuses an agent that is not installed, GJC, and a missing folder", async () => {
+    const missing = setup({ installed: false });
+    await expect(missing.controller.createTerminalSession({ title: "a", workspace: missing.directory, agentKind: "claude" })).rejects.toThrow("Claude Code: 설치되어 있지 않습니다");
+    const { controller, directory } = setup();
+    await expect(controller.createTerminalSession({ title: "a", workspace: directory, agentKind: "gjc" })).rejects.toThrow(/invalid/u);
+    await expect(controller.createTerminalSession({ title: "a", workspace: path.join(directory, "nope"), agentKind: "shell" })).rejects.toThrow(/existing folder/u);
+  });
+
+  it("launches Claude Code on the session id it recorded, with the hook settings", async () => {
+    const { controller, store, directory } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: directory, agentKind: "claude" });
+    const record = store.get(session.id)!;
+    const plan = await controller.launchPlan(record);
+    expect(plan.argv).toEqual(["/bin/claude", "--session-id", record.agentSessionRef, "--settings", "/data/agent-hooks/claude-settings.json"]);
+    expect(plan.env).toEqual({ GAJAE_SESSION_ID: session.id });
+  });
+
+  it("ends the terminal, forgets the session and tells everyone on delete", async () => {
+    const { controller, store, events, endTerminal, directory } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: directory, agentKind: "shell" });
+    await controller.deleteSession(session.id);
+    expect(endTerminal).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }));
+    expect(store.get(session.id)).toBeUndefined();
+    expect(events.at(-1)).toEqual({ type: "session.deleted", sessionId: session.id });
+  });
+
+  it("hides shells from remote devices, not agents", async () => {
+    const { controller, directory } = setup();
+    const shell = await controller.createTerminalSession({ title: "s", workspace: directory, agentKind: "shell" });
+    const agent = await controller.createTerminalSession({ title: "c", workspace: directory, agentKind: "codex" });
+    expect(controller.hiddenFromRemote(shell.id)).toBe(true);
+    expect(controller.hiddenFromRemote(agent.id)).toBe(false);
+    expect(controller.hiddenFromRemote("terminal-gone")).toBe(false);
+  });
+
+  it("refuses sending into a terminal agent until the chat screen exists", async () => {
+    const { controller } = setup();
+    await expect(controller.sendMessage("terminal-1")).rejects.toMatchObject({ code: "unsupported" });
+  });
+});
+
+describe("HerdrAgentController status", () => {
+  async function agentSession(fixture: ReturnType<typeof setup>) {
+    const session = await fixture.controller.createTerminalSession({ title: "작업", workspace: fixture.directory, agentKind: "claude" });
+    fixture.store.bindTerminal(session.id, { coreId: "core-1", terminalAddress: "t1" });
+    await fixture.controller.launchPlan(fixture.store.get(session.id)!);
+    await vi.waitFor(() => expect(fixture.hc.open).toHaveBeenCalled());
+    fixture.push("created", "t1", { address: "t1", state: "live", reported: false, labels: { "gajae.session": session.id } });
+    fixture.events.length = 0;
+    return session;
+  }
+
+  it("follows 7501 through working, waiting and done, and announces the wait and the finished turn", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    fixture.push("status", "t1", STATUS("blocked"));
+    fixture.push("status", "t1", STATUS(null));
+    fixture.push("status", "t1", STATUS("idle"));
+    fixture.push("status", "t1", STATUS("working"));
+    fixture.push("status", "t1", STATUS("done"));
+    // a brief null keeps waiting; done is idle with the turn announced
+    expect(fixture.statuses()).toEqual(["waiting", "idle", "running", "idle"]);
+    expect(fixture.activities()).toEqual(["permission", "completed"]);
+    expect(fixture.events.find((event) => event.type === "session.activity")).toEqual({
+      type: "session.activity",
+      sessionId: session.id,
+      title: "작업",
+      unread: true,
+      category: "permission",
+    });
+    expect((await fixture.controller.listSessions())[0]).toMatchObject({ status: "idle", unread: true, runRevision: 5 });
+    await fixture.controller.markSessionRead(session.id);
+    expect((await fixture.controller.listSessions())[0]!.unread).toBe(false);
+  });
+
+  it("announces an agent that died, not one Gajae ended", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    fixture.push("status", "t1", STATUS("working"));
+    fixture.push("finished", "t1", { exit_code: 1, reason: "exited" });
+    expect(fixture.statuses().at(-1)).toBe("failed");
+    expect(fixture.activities()).toEqual(["failed"]);
+
+    const second = setup();
+    const ended = await agentSession(second);
+    second.push("status", "t1", STATUS("working"));
+    const deleting = second.controller.deleteSession(ended.id);
+    second.push("finished", "t1", { exit_code: null, reason: "killed", signal: 1 });
+    await deleting;
+    expect(second.activities()).toEqual([]);
+    expect(session.id).not.toBe(ended.id);
+  });
+
+  it("takes what already was so from the snapshot without announcing it, then follows on", async () => {
+    const fixture = setup({
+      snapshot: (store) =>
+        store.list().map((record) => ({ address: "t3", state: "live", reported: true, status: { state: "blocked" }, labels: { "gajae.session": record.id } })),
+    });
+    const session = await fixture.controller.createTerminalSession({ title: "x", workspace: fixture.directory, agentKind: "codex" });
+    fixture.events.length = 0;
+    fixture.controller.start();
+    await vi.waitFor(() => expect(fixture.statuses()).toEqual(["waiting"]));
+    expect(fixture.activities()).toEqual([]);
+    fixture.push("status", "t3", STATUS("done"));
+    expect(fixture.activities()).toEqual(["completed"]);
+    expect((await fixture.controller.listSessions()).find((row) => row.id === session.id)?.status).toBe("idle");
+  });
+
+  it("stands hooks in for a program that does not report, and records the agent's session from SessionStart", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    fixture.controller.onHook({ event: "UserPromptSubmit", session: session.id, payload: {} });
+    fixture.controller.onHook({ event: "Stop", session: session.id, payload: {} });
+    expect(fixture.statuses()).toEqual(["running", "idle"]);
+    expect(fixture.activities()).toEqual(["completed"]);
+
+    fixture.controller.onHook({ event: "SessionStart", session: session.id, payload: { session_id: "new-ref", transcript_path: "/t/new-ref.jsonl", source: "clear" } });
+    expect(fixture.store.get(session.id)).toMatchObject({ agentSessionRef: "new-ref", transcriptPath: "/t/new-ref.jsonl" });
+
+    // once 7501 reports, hooks no longer move the status
+    fixture.push("status", "t1", STATUS("working"));
+    fixture.events.length = 0;
+    fixture.controller.onHook({ event: "Stop", session: session.id, payload: {} });
+    expect(fixture.events).toEqual([]);
+  });
+
+  it("finds a hook's session by the agent's own id when the terminal did not say", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    const ref = fixture.store.get(session.id)!.agentSessionRef!;
+    fixture.controller.onHook({ event: "SessionStart", payload: { session_id: ref, transcript_path: "/t/a.jsonl" } });
+    expect(fixture.store.get(session.id)!.transcriptPath).toBe("/t/a.jsonl");
+  });
+
+  it("catches up from Claude Code's pid file what the hooks said while the app was closed", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
+    const home = mkdtempSync(path.join(tmpdir(), "gajae-agents-home-"));
+    mkdirSync(path.join(home, ".claude", "sessions"), { recursive: true });
+    writeFileSync(path.join(home, ".claude", "sessions", "777.json"), JSON.stringify({ pid: 777, sessionId: "after-clear", cwd: directory }));
+    const store = new TerminalSessionStore(directory);
+    const record = store.create({ title: "x", workspace: directory, agentKind: "claude", agentSessionRef: "before" });
+    let stream: ChannelHandlers | undefined;
+    const controller = new HerdrAgentController({
+      store,
+      core: {
+        connection: async () =>
+          ({
+            open: async (_m: string, _p: unknown, handlers: ChannelHandlers) => {
+              stream = handlers;
+              return {
+                result: { seq: 0, terminals: [{ address: "t2", state: "live", reported: true, status: { state: "idle" }, labels: { "gajae.session": record.id }, foreground: { pid: 777 } }] },
+                channel: { close: async () => undefined },
+              };
+            },
+          }) as unknown as HcConnection,
+        core: { version: "0.1.18", core: { id: "core-1", name: "mac" }, methods: [], features: [] } as HelloInfo,
+        isRunning: () => true,
+      },
+      endTerminal: async () => undefined,
+      detect: async (id) => ({ id: id as AgentAvailability["id"], name: id, installed: true, binary: "/bin/x" }),
+      listAgents: async () => [],
+      emit: () => undefined,
+      home,
+      log: () => undefined,
+    });
+    controller.start();
+    await vi.waitFor(() => expect(store.get(record.id)!.agentSessionRef).toBe("after-clear"));
+    expect(store.get(record.id)!.transcriptPath).toMatch(/after-clear\.jsonl$/u);
+    expect(stream).toBeDefined();
+    controller.dispose();
+  });
+
+  it("interrupts the agent's turn on cancel", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    await fixture.controller.cancelRun(session.id);
+    expect(fixture.calls).toContainEqual({ method: "terminal.interrupt", params: { terminal: "t1" } });
+  });
+});

@@ -63,8 +63,12 @@ import { PARALLEL_IPC } from "../shared/parallel-ipc.js";
 import { registerTerminalIpcHandlers } from "./terminal-ipc-handlers.js";
 import { attachTerminalSmoke } from "./terminal-smoke.js";
 import { attachHcTerminalSmoke } from "./hc-terminal-smoke.js";
+import { attachHcAgentSmoke, type ShownNotification } from "./hc-agent-smoke.js";
 import { HcCore, hcSessionName } from "./herdr-core/core.js";
 import { HcSessionTerminals } from "./herdr-core/terminals.js";
+import { HerdrAgentController } from "./herdr-core/agent-controller.js";
+import { AgentHooks } from "./herdr-core/agent-hooks.js";
+import { AgentDetector } from "./herdr-core/agent-detect.js";
 import { installHerdrCore, readHcVersion } from "./herdr-core/install.js";
 import { coreEnvironment, corePath } from "./herdr-core/env.js";
 import { HC_BUNDLE, HC_VERSION } from "./herdr-core/version.js";
@@ -116,7 +120,9 @@ if (!app.isPackaged && (smokeMode || terminalSmokeMode || deepLinkSmokeMode)) {
 const mockBackend =
   !app.isPackaged &&
   !developmentUrl &&
-  (mockSmokeMode || terminalSmokeMode || deepLinkSmokeMode);
+  (mockSmokeMode || terminalSmokeMode || deepLinkSmokeMode) &&
+  // the agent smoke reads the real rail, where terminal sessions show their status
+  !process.argv.some((argument) => argument.startsWith("--hc-agent-smoke="));
 
 app.setName("Gajae");
 const isolatedUserData = process.env.GAJAE_USER_DATA_DIR?.trim();
@@ -190,6 +196,8 @@ const desktopEvents = new DesktopEventStream((message) =>
 // The most recent notification this process handed to macOS. The smoke run
 // asserts against it so "the app sends the notification" is a checked fact.
 let lastNotification: { body: string; at: number } | undefined;
+/** The last few announcements handed to macOS, for the smokes that check one was. */
+const shownNotifications: ShownNotification[] = [];
 // Each window names the session it is showing. Main uses it to suppress the
 // notification for a turn the user is already watching, which window focus
 // alone cannot tell: a focused window may be showing a different session.
@@ -285,6 +293,15 @@ function broadcastAgentEvent(event: AgentEvent): void {
   });
   notification.show();
   lastNotification = { body: sessionActivityBody(event, settingsStore.get().language), at: Date.now() };
+  const shown: ShownNotification = { sessionId: event.sessionId, category: event.category, body: lastNotification.body };
+  shownNotifications.push(shown);
+  if (shownNotifications.length > 20) shownNotifications.shift();
+  notification.once("show", () => {
+    shown.outcome = "shown";
+  });
+  notification.once("failed", () => {
+    shown.outcome = "failed";
+  });
 }
 
 /**
@@ -634,6 +651,12 @@ const hcTerminalSmokePhase = app.isPackaged
   : process.argv
       .find((argument) => argument.startsWith("--hc-terminal-smoke="))
       ?.slice("--hc-terminal-smoke=".length);
+/** `--hc-agent-smoke=<phase>`: one run of scripts/hc-agent-smoke.mjs. */
+const hcAgentSmokePhase = app.isPackaged
+  ? undefined
+  : process.argv
+      .find((argument) => argument.startsWith("--hc-agent-smoke="))
+      ?.slice("--hc-agent-smoke=".length);
 const hcSmokeRun = !app.isPackaged && (smokeMode || terminalSmokeMode || deepLinkSmokeMode);
 const hcSession = hcSessionName(
   app.isPackaged ? "packaged" : hcSmokeRun ? "smoke" : "development",
@@ -657,20 +680,67 @@ const hcCore =
             : path.join(app.getAppPath(), "build", "herdr-core", HC_VERSION, HC_BUNDLE);
           return installHerdrCore({ source, root: path.join(userDataDirectory, "bin", "herdr-core") });
         },
-        environment: () =>
-          (hcEnvironment ??= corePath(process.env).then((corePathValue) =>
-            coreEnvironment(process.env, { session: hcSession, path: corePathValue }),
-          )),
+        environment: () => hcCoreEnvironment(),
       })
     : undefined;
-const hcTerminals = hcCore ? new HcSessionTerminals(hcCore, terminalSessions) : undefined;
+// Agents are looked for on this process's PATH, then the login shell's (a Finder launch has none of
+// the user's folders), then where their installers put them.
+const agentDetector = new AgentDetector({
+  searchPath: async () => [
+    ...(process.env.PATH ?? "").split(path.delimiter),
+    ...(hcCore ? ((await hcCoreEnvironment()).PATH ?? "").split(path.delimiter) : []),
+  ],
+  home: homedir(),
+});
+function hcCoreEnvironment(): Promise<Record<string, string>> {
+  return (hcEnvironment ??= corePath(process.env).then((corePathValue) =>
+    coreEnvironment(process.env, { session: hcSession, path: corePathValue }),
+  ));
+}
+let herdrAgents: HerdrAgentController | undefined;
+// Hooks the agents run report on a socket the app listens on; the relay, the settings and the
+// token stay in userData, so agents started before a restart keep reporting after it.
+const agentHooks = hcCore
+  ? new AgentHooks(path.join(userDataDirectory, "agent-hooks"), (message) => herdrAgents?.onHook(message))
+  : undefined;
+let agentHooksReady = false;
+const hcTerminals = hcCore
+  ? new HcSessionTerminals(hcCore, terminalSessions, (record) => herdrAgents!.launchPlan(record))
+  : undefined;
+herdrAgents =
+  hcCore && hcTerminals
+    ? new HerdrAgentController({
+        store: terminalSessions,
+        core: hcCore,
+        endTerminal: (record) => hcTerminals.kill(record),
+        detect: (id) => agentDetector.detect(id),
+        listAgents: () => agentDetector.list(),
+        claudeSettingsPath: () => (agentHooksReady ? agentHooks?.claudeSettingsPath : undefined),
+        emit: (event) => broadcastAgentEvent(event),
+        claim: (sessionId) => agentRouter.claimSession(sessionId, "herdr"),
+        home: homedir(),
+      })
+    : undefined;
+if (herdrAgents) agentRouter.registerRuntime("herdr", herdrAgents);
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
   store: terminalSessions,
   provider: hcTerminals,
+  ...(herdrAgents
+    ? {
+        agents: {
+          listSessions: () => herdrAgents!.rows(),
+          createTerminalSession: (input) => herdrAgents!.createTerminalSession(input),
+          listAgents: () => herdrAgents!.listAgents(),
+          forget: (sessionId) => herdrAgents!.forget(sessionId),
+        },
+      }
+    : {}),
 });
 /** Quits from a smoke: views let go of their shells first, and a smoke's own core stops. */
 function exitWithTerminals(code: number): void {
   terminalIpc.disposeAll();
+  herdrAgents?.dispose();
+  agentHooks?.stop();
   hcCore?.dispose();
   app.exit(code);
 }
@@ -1479,7 +1549,15 @@ function createWindow(): BrowserWindow {
     });
   }
 
-  if (hcTerminalSmokePhase)
+  if (hcAgentSmokePhase)
+    attachHcAgentSmoke(window, {
+      phase: hcAgentSmokePhase,
+      resultPath: path.join(userDataDirectory, "hc-agent-smoke.json"),
+      store: terminalSessions,
+      notifications: () => shownNotifications,
+      exit: exitWithTerminals,
+    });
+  else if (hcTerminalSmokePhase)
     attachHcTerminalSmoke(window, {
       phase: hcTerminalSmokePhase,
       resultPath: path.join(userDataDirectory, "hc-terminal-smoke.json"),
@@ -1492,6 +1570,13 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   void remoteAccess?.start();
+  void agentHooks
+    ?.start()
+    .then(() => {
+      agentHooksReady = true;
+    })
+    .catch((error: unknown) => console.error("Agent hook channel could not start", error));
+  herdrAgents?.start();
   // only a core that already runs is checked: connecting would start one
   if (hcCore?.isRunning())
     void hcTerminals
@@ -1561,6 +1646,8 @@ app.on("before-quit", () => {
   terminalIpc.disposeAll();
   terminalIpc.unregister();
   // the core and its shells keep running; only a smoke run's own core stops
+  herdrAgents?.dispose();
+  agentHooks?.stop();
   hcCore?.dispose();
   unregisterEventStreamIpc();
   void desktopEvents.close();
