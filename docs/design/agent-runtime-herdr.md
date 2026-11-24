@@ -68,15 +68,15 @@ Main
 ### 5.1 herdr-core 수명주기
 - **hc 0.1.18 채택**(스파이크 ⑥): 번들 버전 = 타입 생성 기준 0.1.18. 공증된 `Herdr Core.app`을 통째로 번들하고(0.1.17은 비공증·hardened runtime 없음) userData 사본에서 실행. 공증 서명 단계는 이 번들을 재서명하지 않는다(P5에서 확인). 기능 유무는 hello의 `methods/features`로 판정.
 - 코어는 hc 명령 하나(`connect`·`server status`·`schema` 포함)가 없으면 launchd 임시 작업(`dev.herdr.core.<pid>.<ns>`)으로 띄우고 곧바로 떼어 낸다(PPID 1, LaunchAgents 흔적 없음).
-- userData 사본이 번들보다 새로울 수 있음 → 실행 중 버전을 매번 확인(`hc update --from`, 다운그레이드 금지).
-- **모드별 세션명**: `gajae` / `gajae-dev` / `gajae-smoke-<pid>` (상태가 `~/.local/state/herdr-core/<session>` 전역이라 dev/smoke 격리 필수).
+- **설치는 버전별 폴더**(P1 실측으로 변경): `userData/bin/herdr-core/<버전>/Herdr Core.app`에 ditto로 복사한다. 이미 설치된 서명 번들을 `hc update --from`으로 바꾸려 하면 hc가 "isn't writable by you"로 거부한다(0.1.18→0.1.19 실측). 대신 새 버전 폴더를 만들고, 실행 중 코어가 더 오래된 버전이면 새 바이너리로 `hc server restart`를 한다(실측: 코어만 새 버전으로 바뀌고 돌던 터미널은 이전 holder에서 유지). 더 새 버전 폴더가 이미 있으면 그것을 쓴다(다운그레이드 금지). 연결할 때마다 hello 버전을 확인한다.
+- **모드별 세션명**: `gajae` / `gajae-dev` / `gajae-smoke-<pid>` (상태가 `~/.local/state/herdr-core/<session>` 전역이라 dev/smoke 격리 필수). 세션명은 holder 소켓 경로(`<state>/<s>/<s>.holder.<8hex>.sock`, 103바이트 이하)에 두 번 들어가므로 짧아야 한다(P1 실측: 홈 경로가 18자일 때 세션명 19자까지). 스모크 세션명은 넘치면 `gs-<pid>`로 줄인다. 스모크가 스스로 이름 붙인 코어는 앱 종료 시 `server stop`하고 상태 폴더도 지운다. `GAJAE_HC_SESSION`으로 이름을 받은 코어는 호출한 쪽이 정리한다.
 - 환경: **허용 목록 필수**(Ovis `terminal-env.ts:18`). 실측상 터미널 env는 **코어를 처음 띄운 클라이언트의 env 전체**이고 `terminal.run` env는 그 위에 덮어쓰기만 된다(앱 env를 넘기면 `CLAUDECODE`·토큰·개인 변수가 모든 터미널로 샌다). 허용 목록: HOME, USER, LOGNAME, SHELL, LANG/LC_*, TMPDIR, SSH_AUTH_SOCK, __CF_USER_TEXT_ENCODING, **로그인 셸 PATH**(Finder 실행 앱은 launchd 기본 PATH). 오염 감지 시 Gajae의 깨끗한 env로 `server.restart` → 돌던 프로그램은 유지되고 새 터미널부터 교정(0.1.18 실측). 감지 방법은 P1에서 확정.
 - **빈 `NO_COLOR=""` 주입은 이식하지 않는다.**
 - macOS 실측에서 FD 누수 없음(libuv가 stdio만 넘기고, 코어는 launchd가 새로 띄움). FD 닫는 래퍼(`children.ts:18`)는 hc의 직접 실행 폴백 대비 **방어용**으로만 둔다. 존재 확인은 `--version`만(다른 명령은 코어를 띄움).
 - 앱 종료 시 코어·터미널 유지. 설정에 "백그라운드 터미널 모두 종료" 제공.
 
 ### 5.2 터미널
-- `LoginShellOptions`에 세션 식별자가 없으므로 `open` 시그니처를 바꾼다.
+- `LoginShellOptions`에 세션 식별자가 없으므로 `open` 시그니처를 바꾼다(P1: `SessionTerminalProvider.open({record, cols, rows, restart, onData, onExit})`, `electron/terminal-backend.ts`).
 - `TerminalHost`의 `dispose`를 **detach / kill(세션 삭제) / restart**로 분리. 창 닫기·앱 종료는 detach.
 - replay: hc history(최대 2000줄)를 1순위, 자체 512KB ReplayBuffer는 attach 이후 분량만.
 - 채팅 화면의 임시 셸(`SURFACE_KEY`)은 **node-pty 유지**(hc로 옮기면 뷰마다 죽지 않는 터미널이 샘).
@@ -145,7 +145,7 @@ Main
 |---|---|---|
 | P0 | 브랜치, `AgentHost`+`AgentRouter`(GJC만 위임), 타입 **추가만**, 카탈로그 골격 | 동작 변화 없음, 기존 테스트 통과 |
 | **P0.5 스파이크** (버리는 코드, **완료** → [spike-results.md](spike-results.md)) | ① 패키지 빌드에서 hc 시작→앱 종료→재접속, FD/env 확인(lsof, ps -E) ② launchd/TCC·백그라운드 항목 알림(ad-hoc·공증 서명 양쪽) ③ `--session-id`+훅으로 `transcript_path` 수신, 앱 재시작 후에도 ④ 셸 릴레이 동작 ⑤ hc 아래 Claude Code의 7501 보고와 승인 대화상자 중 send 거부 ⑥ hc 버전(0.1.17 vs 0.1.18) 확정 | 각 항목 결과 기록, 설계 확정 |
-| P1 | hc 수명주기 + 셸 터미널(detach/kill/restart, 고아 정리, node-pty 폴백) | 앱 재시작 후 셸 터미널과 출력 유지 |
+| P1 | hc 수명주기 + 셸 터미널(detach/kill/restart, 고아 정리, node-pty 폴백) | 앱 재시작 후 셸 터미널과 출력 유지 (**완료**: `npm run desktop:hc-terminal-smoke`가 앱 재시작 뒤 같은 pid·출력 유지를 실측) |
 | P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 |
 | P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 |
 | P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 |

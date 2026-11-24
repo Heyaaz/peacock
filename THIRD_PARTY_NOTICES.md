@@ -38,8 +38,10 @@ Portions of the desktop terminal are adapted from
   web-links addons, and refitting when the container changes
 - `src/lib/ws.ts` — acknowledging terminal output so the PTY reader can pause
 
-The Gajae terminal spawns `node-pty` in the Electron main process. It does not
-depend on herdr and does not ship herdr's sidecar.
+The chat screen's terminal, and a terminal session's shell when herdr-core is
+unavailable, run through `node-pty` in the Electron main process. Terminal
+sessions otherwise run in herdr-core (see below). Gajae does not ship herdr's
+web-UI sidecar or the herdr app itself.
 
 ```
 MIT License
@@ -73,6 +75,19 @@ Portions of the agent runtime are adapted from
 - `shared/agent-catalog.ts` and `shared/supported-agents.ts` — the agent
   names, the executables that mean an agent is installed, where each vendor's
   installer puts them, and the version flag, in Gajae's `shared/agent-catalog.ts`
+- `server/herdr-core/connection.ts` — herdr-core's framed protocol connection,
+  in `electron/herdr-core/connection.ts`
+- `server/herdr-core/attach-session.ts` and its tests — one viewer's attach
+  (display-query replies, credit flow control, cursor-mode tracking), in
+  `electron/herdr-core/attach-session.ts`
+- `scripts/hc-types.ts` — the type generator, in `scripts/hc-types.mjs`
+- `app/electron/scripts/runtimes.ts` — the pinned, checksum-verified download,
+  in `scripts/herdr-core-pin.mjs` and `scripts/fetch-herdr-core.mjs`
+- `app/electron/src/children.ts` — closing inherited descriptors before hc runs
+  and installing the core into the app's data folder, in
+  `electron/herdr-core/env.ts` and `electron/herdr-core/install.ts`
+- `server/herdr-core/terminal-env.ts` — reading an `env -0` block, in
+  `electron/herdr-core/env.ts`
 
 ```
 MIT License
@@ -97,6 +112,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## herdr-core
+
+The macOS app bundles `Herdr Core.app` from herdr-core 0.1.18
+(https://github.com/herdrdev/herdr-core, release archive
+`herdr-core-macos-aarch64.tar.gz`, SHA-256
+`77d8af092e25ae650f4424d6dad27514f6916a11d807fb0752858cd27c21e4fc`), signed and
+notarized by Herdr, Inc. and shipped unmodified in `Contents/Resources`. Terminal
+sessions' shells run in it so they outlive the app. It is licensed under the
+Apache License, Version 2.0; its `LICENSE` and its own `THIRD-PARTY-NOTICES`
+(what hc includes, such as Ghostty's libghostty-vt) ship beside it in
+`Contents/Resources/herdr-core-licenses/`, and `herdr-core --licenses` prints
+them too. `electron/herdr-core/hc-api.generated.ts` is generated from hc's own
+OpenRPC schema (Apache-2.0).
 
 ## omo-ui-macosapp
 
