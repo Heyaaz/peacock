@@ -1589,6 +1589,23 @@ describe("mergeDiscoveredSessions", () => {
     ]);
   });
 
+  it("keeps a row that appeared after the listing began, which the listing could not know", () => {
+    // A terminal agent session arrives by event while a slow first discovery is still
+    // running; the discovery answer predates it and must not take it off the rail.
+    const listedSince = 1_000;
+    expect(
+      mergeDiscoveredSessions(
+        [
+          { ...session("created-later", "idle"), updatedAtMs: 1_500 },
+          { ...session("gone", "idle"), updatedAtMs: 500 },
+        ],
+        [],
+        null,
+        listedSince,
+      ).map((entry) => entry.id),
+    ).toEqual(["created-later"]);
+  });
+
   it("keeps the focused session when a refresh momentarily misses it", () => {
     // Losing the open conversation from the list moves focus to another session,
     // so a refresh that does not report it must not drop it.

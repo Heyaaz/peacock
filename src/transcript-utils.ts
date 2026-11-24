@@ -1495,11 +1495,13 @@ export function mergeDiscoveredSessions<
     unread: boolean;
     status?: string;
     runRevision?: number;
+    updatedAtMs?: number;
   },
 >(
   current: readonly T[],
   discovered: readonly T[],
   protectedId?: string | null,
+  listedSince?: number,
 ): T[] {
   const known = new Map(current.map((session) => [session.id, session]));
   const discoveredIds = new Set(discovered.map((session) => session.id));
@@ -1508,12 +1510,17 @@ export function mergeDiscoveredSessions<
   // it would otherwise drop the open conversation and move focus elsewhere.
   // Anything else discovery stopped reporting is gone and must leave the list
   // instead of lingering as a dead row.
+  // A row that appeared after the listing began (a session.created event during a
+  // slow first discovery) is not missing from it: the listing predates the row.
   const retained = current.filter(
     (session) =>
       !discoveredIds.has(session.id) &&
       (session.status === "starting" ||
         session.status === "failed" ||
-        session.id === protectedId),
+        session.id === protectedId ||
+        (listedSince !== undefined &&
+          session.updatedAtMs !== undefined &&
+          session.updatedAtMs >= listedSince)),
   );
   const merged = discovered.map((session) => {
     const existing = known.get(session.id);

@@ -180,6 +180,7 @@ export function useSessionSync(context: SessionSyncContext): void {
     const loadSessions = (initial: boolean): void => {
       if (listing || !active) return;
       listing = true;
+      const listedSince = Date.now();
       let listed: readonly AgentSession[] = [];
       void backend
         .listSessions()
@@ -190,7 +191,7 @@ export function useSessionSync(context: SessionSyncContext): void {
           );
           for (const session of listed) observeSessionRun(session);
           setSessions((current) =>
-            mergeDiscoveredSessions(current, listed, selectedIdRef.current),
+            mergeDiscoveredSessions(current, listed, selectedIdRef.current, listedSince),
           );
           if (initial)
             setSelectedId((selected) =>
