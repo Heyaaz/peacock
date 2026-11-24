@@ -152,6 +152,7 @@ describe("the comparison view", () => {
     } as unknown as AgentBackend;
     const bridge: ParallelDesktopBridge = {
       list: async () => [current],
+      agents: async () => [],
       start: vi.fn(),
       adopt: vi.fn(async (_groupId: string, attemptId: string) => {
         calls.push(`adopt ${attemptId}`);

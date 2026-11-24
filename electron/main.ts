@@ -603,7 +603,15 @@ const unregisterRemoteIpc = registerRemoteIpcHandlers(remoteAccess, ipcSecurity)
 const unregisterRepoIpc = registerRepoIpcHandlers(repoService, ipcSecurity);
 parallelRuns = new ParallelRunService({
   store: sessionMetadata,
-  host: agentRouter,
+  // GJC's attempts go through the router as before; a terminal agent's (P6) start and wait in herdr
+  host: {
+    createSession: (input) => agentRouter.createSession(input),
+    sendMessage: (sessionId, input) => agentRouter.sendMessage(sessionId, input),
+    hideSession: (sessionId) => agentRouter.hideSession(sessionId),
+    listAgents: () => (herdrAgents ? herdrAgents.listAgents() : Promise.resolve([])),
+    sendWhenReady: (sessionId, text) =>
+      herdrAgents ? herdrAgents.sendWhenReady(sessionId, text) : Promise.reject(new Error("herdr-core is not available")),
+  },
   notify: (groups) => {
     for (const window of BrowserWindow.getAllWindows())
       if (!window.isDestroyed()) window.webContents.send(PARALLEL_IPC.changed, groups);
@@ -697,6 +705,8 @@ const agentDetector = new AgentDetector({
     ...(hcCore ? ((await hcCoreEnvironment()).PATH ?? "").split(path.delimiter) : []),
   ],
   home: homedir(),
+  // version flags run with the login shell's PATH too: a script-installed agent needs its interpreter
+  loginPath: async () => (hcCore ? (await hcCoreEnvironment()).PATH : undefined),
   // an executable set in the settings wins (GJC's: GJC_BIN, then its setting)
   executableOf: (id) =>
     (id === "gjc" ? gjcExecutableOf(settingsStore.get(), process.env) : settingsStore.get().agents[id]?.executable) || undefined,
@@ -731,6 +741,11 @@ herdrAgents =
         store: terminalSessions,
         core: hcCore,
         endTerminal: (record) => hcTerminals.kill(record),
+        // a parallel run's attempt starts its terminal with no window: open it and let go at once
+        startTerminal: async (record) => {
+          const handle = await hcTerminals.open({ record, restart: false, onData: () => undefined, onExit: () => undefined });
+          handle.detach();
+        },
         detect: (id) => agentDetector.detect(id),
         listAgents: () => agentDetector.list(),
         claudeSettingsPath: () => (agentHooksReady ? agentHooks?.claudeSettingsPath : undefined),

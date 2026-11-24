@@ -526,7 +526,7 @@ function changedFilesFromRows(rows: unknown[]): DiffSnapshot["files"] {
 }
 
 /** Splits `git diff` output into files the way GJC's `diff.list_files` does. */
-function changedFilesFromDiff(stdout: string): DiffSnapshot["files"] {
+export function changedFilesFromDiff(stdout: string): DiffSnapshot["files"] {
   return stdout
     .split(/^diff --git /mu)
     .filter(Boolean)

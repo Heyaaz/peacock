@@ -646,6 +646,7 @@ const remote: RemoteDesktopBridge = Object.freeze({
 });
 const parallel: ParallelDesktopBridge = Object.freeze({
   list: () => ipcRenderer.invoke(PARALLEL_IPC.list),
+  agents: () => ipcRenderer.invoke(PARALLEL_IPC.agents),
   start: (input: ParallelStartInput) => ipcRenderer.invoke(PARALLEL_IPC.start, input),
   adopt: (groupId: string, attemptId: string) =>
     ipcRenderer.invoke(PARALLEL_IPC.adopt, groupId, attemptId),

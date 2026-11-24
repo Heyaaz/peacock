@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { validDirectory } from "../settings-store.js";
 import type {
+  DiffSnapshot,
   AgentEvent,
   AgentSession,
   BackendConnection,
@@ -38,6 +39,7 @@ import { HcError, type Channel, type HcConnection, type HelloInfo } from "./conn
 import type { Terminal } from "./hc-api.generated.js";
 import { newestOmpSession, ompBreadcrumb, ompSessionHeader } from "./omp-session.js";
 import { SESSION_LABEL } from "./terminals.js";
+import { workspaceDiff } from "./workspace-diff.js";
 import { HerdrTranscripts, type TranscriptLocation } from "./transcript/transcripts.js";
 
 /** How long a lost event stream waits before it subscribes again. */
@@ -68,6 +70,8 @@ export interface HerdrAgentControllerOptions {
   core: { connection(): Promise<HcConnection>; readonly core: HelloInfo | undefined; isRunning(): boolean };
   /** Ends a session's terminal (HcSessionTerminals.kill). */
   endTerminal(record: TerminalSessionRecord): Promise<void>;
+  /** Starts a session's terminal with no window showing it (P6: a parallel run's attempts). */
+  startTerminal?(record: TerminalSessionRecord): Promise<void>;
   detect(id: TerminalSessionRecord["agentKind"] & string): Promise<AgentAvailability>;
   listAgents(): Promise<AgentAvailability[]>;
   /** Claude Code's hook settings, once the hook channel is up. */
@@ -88,7 +92,13 @@ export interface HerdrAgentControllerOptions {
   log?(message: string, error?: unknown): void;
   /** Transcript reading (tests shorten the poll). */
   transcripts?: { pollMs?: number; initialBytes?: number };
+  /** How long a request waits for its agent to be ready, and how often it looks (tests shorten them). */
+  readiness?: { timeoutMs?: number; pollMs?: number };
 }
+
+/** How long a parallel run's request waits for its agent: a folder-trust dialog waits on the user. */
+const READY_TIMEOUT_MS = 10 * 60_000;
+const READY_POLL_MS = 500;
 
 const EMPTY_PAGE: TranscriptPage = { items: [], hasMoreBefore: false, hasMoreAfter: false, requests: [] };
 
@@ -305,6 +315,46 @@ export class HerdrAgentController implements AgentRuntimeController {
       throw error;
     }
     return "prompt";
+  }
+
+  /**
+   * A request for a session no window may be showing (P6: a parallel run's attempts). Starts its
+   * terminal when it has none, waits until the agent reports it is at its prompt (idle, and
+   * herdr-core can type into it), and types the request in. A dialog the agent shows (Claude
+   * Code's folder trust in a new worktree) is the user's to answer: the request waits for it, and a
+   * refusal typed nothing, so it is tried again. What is left when the wait runs out is reported.
+   */
+  async sendWhenReady(sessionId: string, text: string): Promise<MessageDelivery> {
+    const record = this.options.store.get(sessionId);
+    if (!record || !this.hasChat(sessionId)) throw new AgentUnsupportedError("sending messages", sessionId);
+    if (!this.addressOf(sessionId)) {
+      if (!this.options.startTerminal) throw new Error("The agent's terminal is not running: open its terminal first");
+      await this.options.startTerminal(record);
+    }
+    const deadline = Date.now() + (this.options.readiness?.timeoutMs ?? READY_TIMEOUT_MS);
+    const pollMs = this.options.readiness?.pollMs ?? READY_POLL_MS;
+    let refused: MessageDelivery | undefined;
+    for (;;) {
+      if (this.disposed || !this.options.store.get(sessionId)) throw new Error("The session ended before its request was sent");
+      const current = this.options.store.get(sessionId)!;
+      if (this.statuses.get(sessionId) === "idle" && this.capabilities(current).send && this.addressOf(sessionId)) {
+        const delivery = await this.sendMessage(sessionId, { text, images: [], files: [] });
+        if (delivery === "prompt") return delivery;
+        refused = delivery;
+      }
+      if (Date.now() >= deadline) {
+        const status = this.facts.get(sessionId)?.status;
+        return refused ?? { kind: "not_executed", detail: `The agent was not ready for the request: ${status?.msg || status?.kind || this.statuses.get(sessionId) || "no state reported"}` };
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+
+  /** The changes in the session's folder (P6: a parallel run's comparison reads each attempt's). */
+  async getDiff(sessionId: string): Promise<DiffSnapshot> {
+    const record = this.options.store.get(sessionId);
+    if (!record) throw new AgentUnsupportedError("reading changes", sessionId);
+    return workspaceDiff(sessionId, record.workspace);
   }
 
   // ---- approvals (design §5.6)

@@ -1,7 +1,10 @@
 import { ipcMain } from "electron";
 import { statSync } from "node:fs";
 import path from "node:path";
+import { isAgentKindId } from "../shared/agent-contract.js";
+import { launchOptions, launchOptionsFault } from "../shared/agent-launch.js";
 import {
+  PARALLEL_AGENT_DEFAULT_MODEL,
   PARALLEL_ATTEMPT_MAX,
   PARALLEL_ATTEMPT_MIN,
   PARALLEL_PROMPT_LIMIT,
@@ -47,12 +50,33 @@ export function parallelStartInput(value: unknown): ParallelStartInput {
     throw new Error(
       `Parallel run needs ${PARALLEL_ATTEMPT_MIN}-${PARALLEL_ATTEMPT_MAX} model presets`,
     );
+  const agentKind = candidate.agentKind ?? "gjc";
+  if (!isAgentKindId(agentKind)) throw new Error("Parallel run agent is invalid");
+  if (agentKind === "gjc") {
+    if (candidate.launch !== undefined) throw new Error("A GJC parallel run takes model presets, not launch options");
+  } else {
+    // a terminal agent's attempt runs a model of its own, or the agent's default
+    for (const preset of presets as string[]) {
+      const model = preset.trim();
+      const fault = model === PARALLEL_AGENT_DEFAULT_MODEL ? undefined : launchOptionsFault(agentKind, { model });
+      if (fault) throw new Error(fault);
+    }
+    if (candidate.launch !== undefined) {
+      if (!candidate.launch || typeof candidate.launch !== "object" || Array.isArray(candidate.launch) || "model" in candidate.launch)
+        throw new Error("Parallel run launch options are invalid");
+      const fault = launchOptionsFault(agentKind, candidate.launch);
+      if (fault) throw new Error(fault);
+    }
+  }
+  const launch = agentKind !== "gjc" && candidate.launch !== undefined ? launchOptions(agentKind, candidate.launch) : undefined;
   return {
     title,
     workspace: path.resolve(workspace),
     prompt,
     ...(typeof candidate.branch === "string" ? { branch: candidate.branch } : {}),
     presets: presets.map((preset) => preset.trim()),
+    ...(agentKind !== "gjc" ? { agentKind } : {}),
+    ...(launch && Object.keys(launch).length > 0 ? { launch } : {}),
   };
 }
 
@@ -64,6 +88,7 @@ export function registerParallelIpcHandlers(
     ipcMain.handle(channel, security.guarded(handler));
   };
   handle(PARALLEL_IPC.list, () => service.list());
+  handle(PARALLEL_IPC.agents, () => service.agents());
   handle(PARALLEL_IPC.start, (_event, input: unknown) =>
     service.start(parallelStartInput(input)),
   );

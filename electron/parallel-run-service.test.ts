@@ -609,3 +609,106 @@ describe("ParallelRunService hardening", () => {
     expect(service.list()[0]!.state).toEqual({ kind: "comparing" });
   });
 });
+
+describe("ParallelRunService with a terminal agent (P6)", () => {
+  const AGENTS = [
+    { id: "claude" as const, name: "Claude Code", installed: true, binary: "/bin/claude" },
+    { id: "omp" as const, name: "Oh My Pi", installed: false, reason: "설치되어 있지 않습니다" },
+    { id: "codex" as const, name: "Codex", installed: true, binary: "/bin/codex" },
+    { id: "shell" as const, name: "Shell", installed: true },
+  ];
+
+  it("offers GJC and the installed agents that take chat input, and says why not for the rest", async () => {
+    const service = new ParallelRunService({
+      store: memoryStore(),
+      host: { createSession: vi.fn(), sendMessage: vi.fn(), hideSession: vi.fn(), listAgents: async () => AGENTS, sendWhenReady: vi.fn() },
+      git: freshRepository,
+    });
+    const options = await service.agents();
+    expect(options.map((option) => [option.id, option.supported])).toEqual([
+      ["claude", true],
+      ["omp", false],
+      ["codex", false],
+      ["gjc", true],
+      ["shell", false],
+    ]);
+    expect(options.find((option) => option.id === "omp")!.reason).toBe("설치되어 있지 않습니다");
+    expect(options.find((option) => option.id === "codex")!.reason).toContain("채팅 입력");
+    await expect(service.start({ ...START, presets: ["default", "default"], agentKind: "codex" })).rejects.toThrow("채팅 입력");
+    await expect(service.start({ ...START, presets: ["default", "default"], agentKind: "omp" })).rejects.toThrow("설치되어 있지 않습니다");
+  });
+
+  it("makes each attempt's worktree, opens Claude Code there and sends the request once it is ready", async () => {
+    const gitCalls: string[][] = [];
+    const git: GitRunner = async (cwd, args) => {
+      gitCalls.push([cwd, ...args]);
+      return freshRepository(cwd, args);
+    };
+    const created: CreateSessionInput[] = [];
+    const host: ParallelRunHost = {
+      createSession: vi.fn(async (input: CreateSessionInput) => {
+        created.push(input);
+        if (input.launch?.model === "opus") throw new Error("Claude Code: not installed");
+        return { ...session(`terminal-${created.length}`, input), runtime: "herdr", agentKind: "claude", workspace: input.workspace, worktree: undefined } as AgentSession;
+      }),
+      sendMessage: vi.fn(),
+      hideSession: vi.fn(),
+      listAgents: async () => AGENTS,
+      sendWhenReady: vi.fn(async () => "prompt" as const),
+    };
+    const store = memoryStore();
+    const service = new ParallelRunService({ store, host, git, newId: () => "abcdef12-0000" });
+    await service.start({ ...START, presets: ["default", "haiku", "opus"], agentKind: "claude", launch: { permissionMode: "acceptEdits" } });
+    await service.idle();
+    const group = service.list()[0]!;
+    expect(group.agentKind).toBe("claude");
+    const worktree = (id: string) => `/${"repo.gajae-worktrees"}/best-of-abcdef12-${id}`;
+    expect(created.map((input) => [input.runtime, input.agentKind, input.workspace, input.isolation, input.launch])).toEqual([
+      ["herdr", "claude", worktree("1"), "workspace", { permissionMode: "acceptEdits" }],
+      ["herdr", "claude", worktree("2"), "workspace", { permissionMode: "acceptEdits", model: "haiku" }],
+      ["herdr", "claude", worktree("3"), "workspace", { permissionMode: "acceptEdits", model: "opus" }],
+    ]);
+    expect(gitCalls.filter((call) => call[1] === "worktree" && call[2] === "add").map((call) => call.slice(3))).toEqual([
+      ["-b", "gajae/best-of-abcdef12-1", worktree("1")],
+      ["-b", "gajae/best-of-abcdef12-2", worktree("2")],
+      ["-b", "gajae/best-of-abcdef12-3", worktree("3")],
+    ]);
+    // the attempt whose session could not be made leaves no worktree or branch behind
+    expect(gitCalls).toContainEqual(["/repo", "worktree", "remove", "--force", worktree("3")]);
+    expect(gitCalls).toContainEqual(["/repo", "branch", "-D", "gajae/best-of-abcdef12-3"]);
+    expect(group.attempts.map((attempt) => attempt.state.kind)).toEqual(["started", "started", "failed"]);
+    expect(group.attempts[0]!.state).toEqual({ kind: "started", sessionId: "terminal-1", worktreePath: worktree("1") });
+    expect(host.sendWhenReady).toHaveBeenCalledTimes(2);
+    expect(host.sendWhenReady).toHaveBeenNthCalledWith(1, "terminal-1", START.prompt);
+    expect(host.sendMessage).not.toHaveBeenCalled();
+    expect(store.groups.get(group.id)?.agentKind).toBe("claude");
+  });
+
+  it("fails an attempt whose agent never took the request, with what it was waiting on", async () => {
+    const host: ParallelRunHost = {
+      createSession: vi.fn(async (input: CreateSessionInput) => ({ ...session(input.launch?.model ? "terminal-b" : "terminal-a", input), runtime: "herdr", agentKind: "claude", workspace: input.workspace }) as AgentSession),
+      sendMessage: vi.fn(),
+      hideSession: vi.fn(),
+      listAgents: async () => AGENTS,
+      sendWhenReady: vi.fn(async (sessionId: string) =>
+        sessionId === "terminal-b" ? { kind: "not_executed" as const, detail: "Do you trust the files in this folder?" } : ("prompt" as const),
+      ),
+    };
+    const service = new ParallelRunService({ store: memoryStore(), host, git: freshRepository });
+    await service.start({ ...START, presets: ["default", "haiku"], agentKind: "claude" });
+    await service.idle();
+    const [first, second] = service.list()[0]!.attempts;
+    expect(first!.state.kind).toBe("started");
+    expect(second!.state).toMatchObject({ kind: "failed", reason: "Do you trust the files in this folder?", sessionId: "terminal-b" });
+  });
+
+  it("names a terminal agent's session ending in the cleanup confirmation", () => {
+    const text = parallelCleanupConfirmation({
+      groupId: "g",
+      agentKind: "claude",
+      items: [{ attemptId: "1", branch: "b-1", worktreePath: "/wt/1", uncommittedFiles: 0, branchExists: true, unpushedCommits: 0, sessionId: "terminal-1" }],
+    });
+    expect(text.detail).toContain("세션의 터미널을 끝내고 목록에서 지웁니다");
+    expect(text.detail).toContain("Claude Code의 기록 파일은 지우지 않습니다");
+  });
+});

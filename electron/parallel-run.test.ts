@@ -146,6 +146,10 @@ describe("parallel group records on disk", () => {
       parseParallelGroup({ ...group, state: { kind: "adopted", attemptId: "9" } }),
     ).toBeUndefined();
     expect(parseParallelGroup({ ...group, attempts: group.attempts.slice(0, 1) })).toBeUndefined();
+    // P6: a terminal agent's group keeps its agent; one no parallel run can drive is no record
+    expect(parseParallelGroup({ ...group, agentKind: "claude" })).toEqual({ ...group, agentKind: "claude" });
+    expect(parseParallelGroup({ ...group, agentKind: "gjc" })).toEqual(group);
+    expect(parseParallelGroup({ ...group, agentKind: "shell" })).toBeUndefined();
     expect(
       parseParallelGroup({
         ...group,
@@ -184,6 +188,24 @@ describe("the IPC boundary", () => {
     ["a control character in a preset", { presets: ["codex-pro", "codex\u0000eco"] }],
   ])("refuses %s", (_label, override) => {
     expect(() => parallelStartInput({ ...valid, ...override })).toThrow();
+  });
+
+  it("takes a terminal agent with a model or its default per attempt, and its other launch options", () => {
+    expect(parallelStartInput({ ...valid, agentKind: "claude", presets: ["default", "haiku"], launch: { permissionMode: "acceptEdits" } })).toEqual({
+      title: "로그인",
+      workspace,
+      prompt: "고쳐 줘",
+      branch: "feat/login",
+      presets: ["default", "haiku"],
+      agentKind: "claude",
+      launch: { permissionMode: "acceptEdits" },
+    });
+    expect(parallelStartInput({ ...valid, agentKind: "gjc" })).not.toHaveProperty("agentKind");
+    expect(() => parallelStartInput({ ...valid, agentKind: "claude", presets: ["default", "bad model!"] })).toThrow();
+    expect(() => parallelStartInput({ ...valid, agentKind: "claude", presets: ["default", "haiku"], launch: { model: "opus" } })).toThrow("launch options");
+    expect(() => parallelStartInput({ ...valid, agentKind: "omp", presets: ["default", "default"], launch: { permissionMode: "plan" } })).toThrow();
+    expect(() => parallelStartInput({ ...valid, launch: { permissionMode: "plan" } })).toThrow("GJC");
+    expect(() => parallelStartInput({ ...valid, agentKind: "robot" })).toThrow("agent");
   });
 
   it("lets a single create name its preset, and refuses one that is not a preset id", () => {

@@ -1,19 +1,27 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
+import { AGENT_CATALOG } from "../shared/agent-catalog.js";
 import type {
   AgentEvent,
+  AgentKindId,
   AgentSession,
   CreateSessionInput,
   MessageDelivery,
 } from "../shared/agent-contract.js";
+import type { AgentLaunchOptions } from "../shared/agent-launch.js";
+import type { AgentAvailability } from "../shared/terminal-ipc.js";
 import {
   applyParallelEvent,
   attemptSessionId,
+  PARALLEL_AGENT_DEFAULT_MODEL,
   PARALLEL_ATTEMPT_MAX,
   PARALLEL_ATTEMPT_MIN,
+  parallelAgentSupport,
   parallelAttemptBranch,
+  type ParallelAgentOption,
   type ParallelCleanupItem,
   type ParallelCleanupPlan,
   type ParallelGroup,
@@ -38,6 +46,13 @@ export interface ParallelRunHost {
     input: ResolvedMessageInput,
   ): Promise<MessageDelivery>;
   hideSession(sessionId: string): void;
+  /** The terminal agents found here (P6); without it only GJC runs attempts. */
+  listAgents?(): Promise<AgentAvailability[]>;
+  /**
+   * Starts a terminal agent's session where no window shows it, waits until the agent
+   * can take a request (a folder-trust dialog waits for the user), and types it in (P6).
+   */
+  sendWhenReady?(sessionId: string, text: string): Promise<MessageDelivery>;
 }
 
 export interface ParallelGroupStore {
@@ -108,6 +123,17 @@ export class ParallelRunService {
     return [...this.groups.values()].sort((a, b) => b.createdAt - a.createdAt);
   }
 
+  /** Every agent with whether a parallel run can use it here, and why not (P6). */
+  async agents(): Promise<ParallelAgentOption[]> {
+    const found = (await this.options.host.listAgents?.().catch(() => undefined)) ?? [];
+    return AGENT_CATALOG.map((entry) => {
+      // GJC is GJC's own controller: it is offered as before, whatever the terminal detection says
+      if (entry.id === "gjc") return { id: entry.id, name: entry.name, supported: true };
+      const agent = found.find((candidate) => candidate.id === entry.id);
+      return parallelAgentSupport(agent ?? { id: entry.id, name: entry.name, installed: false, reason: "이 Mac에서 터미널 에이전트를 실행할 수 없습니다" });
+    });
+  }
+
   /** Resolves when every creation and send this service started has settled. */
   async idle(): Promise<void> {
     while (this.pending.size > 0) await Promise.allSettled([...this.pending]);
@@ -121,6 +147,12 @@ export class ParallelRunService {
       throw new Error(
         `병렬 실행은 시도를 ${PARALLEL_ATTEMPT_MIN}-${PARALLEL_ATTEMPT_MAX}개로 나눠야 합니다.`,
       );
+    const agentKind = input.agentKind ?? "gjc";
+    if (agentKind !== "gjc") {
+      const support = (await this.agents()).find((option) => option.id === agentKind);
+      if (!support?.supported) throw new Error(support?.reason ?? "이 에이전트는 병렬 실행에 쓸 수 없습니다");
+      if (!this.options.host.sendWhenReady) throw new Error("이 Mac에서 터미널 에이전트를 실행할 수 없습니다");
+    }
     const root = await this.repositoryRoot(input.workspace);
     const id = this.options.newId?.() ?? randomUUID();
     const base = input.branch ?? `gajae/best-of-${id.slice(0, 8)}`;
@@ -153,13 +185,14 @@ export class ParallelRunService {
       id,
       title: input.title,
       prompt: input.prompt,
+      ...(agentKind !== "gjc" ? { agentKind } : {}),
       workspace: input.workspace,
       createdAt: this.options.now?.() ?? Date.now(),
       attempts,
       state: { kind: "draft" },
     };
     this.save(group);
-    this.track(this.run(group));
+    this.track(agentKind === "gjc" ? this.run(group) : this.runTerminalAgents(group, root, agentKind, input.launch));
     return group;
   }
 
@@ -235,6 +268,7 @@ export class ParallelRunService {
     }
     return {
       groupId,
+      ...(group.agentKind ? { agentKind: group.agentKind } : {}),
       ...(kept ? { keptBranch: kept.branch } : {}),
       items,
     };
@@ -358,6 +392,86 @@ export class ParallelRunService {
       this.send(group.id, attempt.id, session.id, group.prompt);
     }
     this.failAttempt(group.id, undefined, INTERRUPTED_REASON);
+  }
+
+  /**
+   * A terminal agent's attempts (P6). GJC makes its worktree itself; for a terminal agent
+   * the run makes it, the same way and in the same place (`<repo>.gajae-worktrees/`), and
+   * opens the agent's session there. Each request goes in once the agent can take it.
+   */
+  private async runTerminalAgents(
+    group: ParallelGroup,
+    root: string,
+    agentKind: AgentKindId,
+    launch: Omit<AgentLaunchOptions, "model"> | undefined,
+  ): Promise<void> {
+    for (const attempt of group.attempts) {
+      const worktreePath = path.join(
+        path.dirname(root),
+        `${path.basename(root)}.gajae-worktrees`,
+        `best-of-${group.id.slice(0, 8)}-${attempt.id}`,
+      );
+      try {
+        await this.git(root, ["worktree", "add", "-b", attempt.branch, worktreePath]);
+      } catch (error) {
+        this.failAttempt(group.id, attempt.id, messageOf(error));
+        continue;
+      }
+      const model = attempt.preset === PARALLEL_AGENT_DEFAULT_MODEL ? undefined : attempt.preset;
+      const options = { ...launch, ...(model ? { model } : {}) };
+      let session: AgentSession;
+      try {
+        session = await this.options.host.createSession({
+          runtime: "herdr",
+          agentKind,
+          title: `${group.title} · #${attempt.id} ${attempt.preset}`,
+          workspace: worktreePath,
+          isolation: "workspace",
+          ...(Object.keys(options).length > 0 ? { launch: options } : {}),
+        });
+      } catch (error) {
+        // nothing ran in the worktree this run just made: it and its branch go with the attempt
+        await this.git(root, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
+        await this.git(root, ["branch", "-D", attempt.branch]).catch(() => undefined);
+        this.failAttempt(group.id, attempt.id, messageOf(error));
+        continue;
+      }
+      try {
+        this.apply(group.id, { type: "attempt.created", attemptId: attempt.id, sessionId: session.id, worktreePath });
+      } catch (error) {
+        this.failAttempt(group.id, attempt.id, messageOf(error));
+        continue;
+      }
+      this.sendWhenReady(group.id, attempt.id, session.id, group.prompt);
+    }
+    this.failAttempt(group.id, undefined, INTERRUPTED_REASON);
+  }
+
+  /**
+   * One request per terminal agent attempt. A refusal (the agent showed a dialog) typed
+   * nothing, so the host may try again until the agent takes it; what it finally answers
+   * is what the attempt shows.
+   */
+  private sendWhenReady(groupId: string, attemptId: string, sessionId: string, prompt: string): void {
+    const send = this.options.host.sendWhenReady;
+    if (!send) return;
+    const fail = (reason: string): void => {
+      const attempt = this.groups.get(groupId)?.attempts.find((entry) => entry.id === attemptId);
+      if (attempt?.state.kind !== "started") return;
+      try {
+        this.apply(groupId, { type: "attempt.failed", attemptId, reason });
+      } catch (error) {
+        if (!(error instanceof ParallelTransitionError)) throw error;
+      }
+    };
+    this.track(
+      send(sessionId, prompt).then(
+        (delivery) => {
+          if (typeof delivery === "object") fail(delivery.detail);
+        },
+        (error: unknown) => fail(messageOf(error)),
+      ),
+    );
   }
 
   /** Fails one attempt, or with no id every attempt still being created; never throws. */

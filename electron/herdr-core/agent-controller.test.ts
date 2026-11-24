@@ -33,7 +33,14 @@ function hookChannel() {
   return channel;
 }
 
-function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[]; installed?: boolean } = {}) {
+function setup(
+  options: {
+    snapshot?: (store: TerminalSessionStore) => unknown[];
+    installed?: boolean;
+    startTerminal?: (record: { id: string }) => Promise<void>;
+    readiness?: { timeoutMs?: number; pollMs?: number };
+  } = {},
+) {
   const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
   const home = mkdtempSync(path.join(tmpdir(), "gajae-agents-home-"));
   const store = new TerminalSessionStore(directory);
@@ -73,6 +80,8 @@ function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[];
     claim,
     home,
     log: () => undefined,
+    ...(options.startTerminal ? { startTerminal: options.startTerminal } : {}),
+    ...(options.readiness ? { readiness: options.readiness } : {}),
   });
   const push = (type: string, terminal: string, data: Record<string, unknown>) =>
     stream!.onData(new TextEncoder().encode(`${JSON.stringify({ jsonrpc: "2.0", method: "event", params: { type, terminal, data, seq: 1 } })}\n`));
@@ -303,6 +312,41 @@ describe("HerdrAgentController status", () => {
     await expect(
       fixture.controller.sendMessage(session.id, { text: "x", images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "" } as never], files: [] }),
     ).rejects.toThrow(/text only/u);
+  });
+
+  it("starts a parallel attempt's terminal with no window, waits out the folder-trust dialog, then types the request once", async () => {
+    const started: string[] = [];
+    let fixture: ReturnType<typeof setup>;
+    fixture = setup({
+      readiness: { pollMs: 5, timeoutMs: 2000 },
+      startTerminal: async (record) => {
+        started.push(record.id);
+        // the terminal hc runs: bound, reported, and first showing Claude Code's trust dialog
+        fixture.store.bindTerminal(record.id, { coreId: "core-1", terminalAddress: "t9" });
+        await fixture.controller.launchPlan(fixture.store.get(record.id)!);
+        await vi.waitFor(() => expect(fixture.hc.open).toHaveBeenCalled());
+        fixture.push("created", "t9", { address: "t9", state: "live", reported: false, labels: { "gajae.session": record.id } });
+        fixture.push("status", "t9", { reported: true, records: {}, status: { app: "claude-code", state: "blocked", kind: "permission", msg: "trust this folder" } });
+      },
+    });
+    const session = await fixture.controller.createTerminalSession({ title: "시도", workspace: fixture.directory, agentKind: "claude" });
+    const sent = fixture.controller.sendWhenReady(session.id, "  Reply OK  ");
+    await vi.waitFor(() => expect(started).toEqual([session.id]));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // nothing typed while the dialog waits on the user
+    expect(fixture.calls.filter((call) => call.method === "terminal.send")).toEqual([]);
+    fixture.push("status", "t9", STATUS("idle"));
+    expect(await sent).toBe("prompt");
+    expect(fixture.calls.filter((call) => call.method === "terminal.send").map((call) => call.params)).toEqual([{ terminal: "t9", text: "Reply OK" }]);
+  });
+
+  it("reports what the agent still waits on when it never gets ready", async () => {
+    const fixture = setup({ readiness: { pollMs: 5, timeoutMs: 60 } });
+    const session = await agentSession(fixture);
+    fixture.push("status", "t1", { reported: true, status: { app: "claude-code", state: "blocked", kind: "permission", msg: "trust this folder" } });
+    expect(await fixture.controller.sendWhenReady(session.id, "go")).toEqual({ kind: "not_executed", detail: expect.stringContaining("trust this folder") });
+    const shell = await fixture.controller.createTerminalSession({ title: "셸", workspace: fixture.directory, agentKind: "shell" });
+    await expect(fixture.controller.sendWhenReady(shell.id, "ls")).rejects.toMatchObject({ code: "unsupported" });
   });
 
   it("reads the Claude Code transcript as chat rows, and follows the file a /clear moves it to", async () => {

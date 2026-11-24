@@ -1,6 +1,12 @@
+import { agentCatalogEntry } from "./agent-catalog.js";
+import { isAgentKindId, type AgentKindId } from "./agent-contract.js";
+import type { AgentAvailability } from "./terminal-ipc.js";
+
 /**
  * Best-of-N: one request run as 2-4 attempts, each in its own managed worktree on
- * its own model preset, compared side by side and resolved by adopting one.
+ * its own model preset, compared side by side and resolved by adopting one. The
+ * attempts run GJC, or (P6) a terminal agent that takes chat input: Claude Code or
+ * omp, each in a terminal opened in its worktree.
  *
  * The group is one durable record whose state only moves through
  * `applyParallelEvent`, so the rail, the comparison view and the cleanup all read
@@ -41,6 +47,8 @@ export interface ParallelGroup {
   id: string;
   title: string;
   prompt: string;
+  /** The agent every attempt runs (P6); unset is GJC, as every group before P6. */
+  agentKind?: AgentKindId;
   /** The folder the user picked; every attempt's worktree comes from its repository. */
   workspace: string;
   createdAt: number;
@@ -204,6 +212,34 @@ export function safeModelPreset(value: unknown): value is string {
   );
 }
 
+/** An attempt's preset for a terminal agent that runs on the agent's own default model. */
+export const PARALLEL_AGENT_DEFAULT_MODEL = "default";
+
+/** The agents whose attempts a parallel run can drive: GJC, and the terminal agents that take chat input. */
+const parallelAgentKinds: ReadonlySet<AgentKindId> = new Set(["gjc", "claude", "omp"]);
+
+/** Whether a parallel run can use an agent here, and why not when it cannot (P6). */
+export interface ParallelAgentOption {
+  id: AgentKindId;
+  name: string;
+  supported: boolean;
+  reason?: string;
+}
+
+/**
+ * Judges one agent as the attempts' runtime: it has to take a request typed into it
+ * (send) and be installed. A shell runs whatever is typed, and codex has no transcript
+ * reader to show a result in, so neither can be one.
+ */
+export function parallelAgentSupport(agent: Pick<AgentAvailability, "id" | "name" | "installed" | "reason">): ParallelAgentOption {
+  const name = agent.id === "shell" ? "셸" : agentCatalogEntry(agent.id).name;
+  if (agent.id === "shell") return { id: agent.id, name, supported: false, reason: "셸은 병렬 실행에 쓸 수 없습니다" };
+  if (!parallelAgentKinds.has(agent.id))
+    return { id: agent.id, name, supported: false, reason: `${name}은(는) 채팅 입력을 받지 않아 병렬 실행에 쓸 수 없습니다` };
+  if (!agent.installed) return { id: agent.id, name, supported: false, reason: agent.reason ?? "설치되어 있지 않습니다" };
+  return { id: agent.id, name, supported: true };
+}
+
 /** Every attempt gets a fresh branch: `-1`, `-2`, … after the base name. */
 export function parallelAttemptBranch(base: string, attemptId: string): string {
   return `${base}-${attemptId}`;
@@ -295,10 +331,13 @@ export function parseParallelGroup(value: unknown): ParallelGroup | undefined {
     !attempts.some((attempt) => attempt.id === state.attemptId)
   )
     return undefined;
+  if (raw.agentKind !== undefined && (!isAgentKindId(raw.agentKind) || !parallelAgentKinds.has(raw.agentKind)))
+    return undefined;
   return {
     id: raw.id,
     title: raw.title,
     prompt: raw.prompt,
+    ...(raw.agentKind !== undefined && raw.agentKind !== "gjc" ? { agentKind: raw.agentKind as AgentKindId } : {}),
     workspace: raw.workspace,
     createdAt: raw.createdAt,
     attempts,
@@ -324,6 +363,8 @@ export interface ParallelCleanupItem {
 
 export interface ParallelCleanupPlan {
   groupId: string;
+  /** The agent the attempts ran (P6); unset is GJC. */
+  agentKind?: AgentKindId;
   /** The adopted attempt's branch, which the cleanup never touches. */
   keptBranch?: string;
   items: ParallelCleanupItem[];
@@ -351,7 +392,12 @@ export function parallelCleanupConfirmation(plan: ParallelCleanupPlan): {
           ? `  브랜치 삭제: ${item.branch} (push하지 않은 커밋 ${item.unpushedCommits}개가 사라집니다)`
           : `  브랜치 삭제: ${item.branch}`,
       );
-    if (item.sessionId) lines.push("  세션은 목록에서 숨깁니다. GJC의 기록은 지우지 않습니다.");
+    if (item.sessionId)
+      lines.push(
+        plan.agentKind && plan.agentKind !== "gjc"
+          ? `  세션의 터미널을 끝내고 목록에서 지웁니다. ${agentCatalogEntry(plan.agentKind).name}의 기록 파일은 지우지 않습니다.`
+          : "  세션은 목록에서 숨깁니다. GJC의 기록은 지우지 않습니다.",
+      );
   }
   if (plan.keptBranch)
     lines.push("", `채택한 브랜치 ${plan.keptBranch}와 그 worktree는 그대로 둡니다.`);

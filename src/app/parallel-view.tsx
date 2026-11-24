@@ -2,8 +2,10 @@ import { Check, GitCompare, MessageSquare, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DiffSnapshot } from "../../shared/agent-contract";
 import type { ParallelDesktopBridge } from "../../shared/parallel-ipc";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
 import {
   attemptSessionId,
+  PARALLEL_AGENT_DEFAULT_MODEL,
   type ParallelAttempt,
   type ParallelGroup,
 } from "../../shared/parallel-run";
@@ -164,6 +166,7 @@ export function ParallelView({
       <header className="parallel-view__header">
         <GitCompare size={16} aria-hidden="true" />
         <strong>{sessionTitleText(group.title)}</strong>
+        {group.agentKind && <small className="parallel-view__agent">{agentCatalogEntry(group.agentKind).name}</small>}
         <small data-state={group.state.kind}>{parallelStateLabel(group.state)}</small>
         <span className="parallel-view__actions">
           {(group.state.kind === "running" || group.state.kind === "comparing") && (
@@ -224,7 +227,9 @@ export function ParallelView({
               <header className="parallel-attempt__header">
                 <span className="parallel-attempt__title">
                   <strong>#{attempt.id}</strong>
-                  <span>{attempt.preset}</span>
+                  <span>
+                    {group.agentKind && attempt.preset === PARALLEL_AGENT_DEFAULT_MODEL ? t("기본 모델") : attempt.preset}
+                  </span>
                   {adoptedId === attempt.id && (
                     <em className="parallel-attempt__adopted">
                       <Check size={11} aria-hidden="true" /> {t("채택함")}
