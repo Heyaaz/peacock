@@ -12,6 +12,8 @@ const SEARCH_CONTENT_EVENTS = new Set<AgentEvent["type"]>([
   "session.deleted",
   "transcript.appended",
   "transcript.synced",
+  // a terminal agent's rows went away or moved to another file (P6)
+  "transcript.invalidated",
   "message.delta",
   "message.updated",
   "thought.delta",

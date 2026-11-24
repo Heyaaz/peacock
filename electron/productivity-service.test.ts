@@ -240,4 +240,31 @@ describe('ProductivityService', () => {
       rmSync(directory, { recursive: true, force: true })
     }
   })
+
+  it('searches Claude Code and omp transcripts but no shell or codex, and notices a transcript that grew unannounced', async () => {
+    const herdr = (id: string, agentKind: AgentSession['agentKind'], title: string): AgentSession => ({ ...session(id, title), runtime: 'herdr', agentKind })
+    const rows: Record<string, TranscriptItem[]> = {
+      'terminal-claude': [item('c1', 'message', 'claude reviewed the parser')],
+      'terminal-omp': [item('o1', 'message', 'omp reviewed the lexer')],
+      'terminal-shell': [item('x1', 'message', 'shell reviewed nothing')],
+      'terminal-codex': [item('k1', 'message', 'codex reviewed nothing')],
+    }
+    const revisions: Record<string, string> = { 'terminal-claude': 'a', 'terminal-omp': 'a' }
+    const read = vi.fn(async (id: string) => rows[id] ?? [])
+    const service = new ProductivityService({
+      listSessions: async () => [session('s1', 'First'), herdr('terminal-claude', 'claude', 'Claude 작업'), herdr('terminal-omp', 'omp', 'omp 작업'), herdr('terminal-shell', 'shell', '셸'), herdr('terminal-codex', 'codex', 'Codex')],
+      getTranscript: async (id) => (id === 's1' ? [item('m1', 'message', 'alpha searchable')] : read(id)),
+      getTranscriptRevision: async (id) => revisions[id],
+    }, ':memory:')
+    expect((await service.searchTranscripts('reviewed')).map((hit) => hit.sessionId).sort()).toEqual(['terminal-claude', 'terminal-omp'])
+    expect(read).not.toHaveBeenCalledWith('terminal-shell')
+    expect(read).not.toHaveBeenCalledWith('terminal-codex')
+    // nothing announced the new row: the revision check finds it
+    rows['terminal-claude'] = [...rows['terminal-claude']!, item('c2', 'message', 'claude found a regression')]
+    revisions['terminal-claude'] = 'b'
+    read.mockClear()
+    await new Promise((resolve) => setTimeout(resolve, 1050))
+    expect((await service.searchTranscripts('regression')).map((hit) => hit.itemId)).toEqual(['c2'])
+    expect(read.mock.calls.map(([id]) => id)).toEqual(['terminal-claude'])
+  })
 })

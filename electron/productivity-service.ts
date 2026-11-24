@@ -4,7 +4,8 @@ import { request as httpsRequest } from 'node:https'
 import { lookup } from 'node:dns/promises'
 import { BlockList, isIP } from 'node:net'
 import { DatabaseSync } from 'node:sqlite'
-import type { AgentSession, TranscriptItem } from '../shared/agent-contract.js'
+import { agentCatalogEntry } from '../shared/agent-catalog.js'
+import { runsInTerminal, type AgentSession, type TranscriptItem } from '../shared/agent-contract.js'
 import type { GlobalSearchResult, LinkPreview } from '../shared/productivity-ipc.js'
 
 /**
@@ -54,7 +55,26 @@ function openSearchDatabase(dbPath: string): DatabaseSync {
 export interface ProductivitySource {
   listSessions(): Promise<AgentSession[]>
   getTranscript(sessionId: string): Promise<TranscriptItem[]>
+  /**
+   * What a terminal agent's transcript holds now (P6). Its file grows while no window
+   * follows it, and nothing announces that, so search compares this before answering.
+   */
+  getTranscriptRevision?(sessionId: string): Promise<string | undefined>
 }
+
+/**
+ * What search reads (P6): GJC's conversations and the terminal agents with a chat
+ * view (Claude Code, omp), read from their own transcript files. A shell, or an
+ * agent with no transcript reader (codex), has nothing to index.
+ */
+export function searchable(session: AgentSession): boolean {
+  if (!runsInTerminal(session)) return true
+  const kind = session.agentKind ?? 'shell'
+  return kind !== 'shell' && agentCatalogEntry(kind).surfaces.includes('chat')
+}
+
+/** How often search looks at the terminal agents' transcripts for unannounced growth. */
+const FOLLOW_CHECK_MS = 1000
 
 export interface LinkResponse {
   statusCode: number
@@ -156,6 +176,9 @@ export class ProductivityService {
   private searchFullRebuild = true
   private searchGeneration = 0
   private searchRebuild?: Promise<void>
+  /** The revision each terminal agent's rows were indexed at. */
+  private readonly indexedRevisions = new Map<string, string | undefined>()
+  private lastFollowCheck = 0
 
   constructor(private readonly source: ProductivitySource, dbPath: string, options: { transport?: LinkTransport; resolver?: AddressResolver } = {}) {
     this.transport = options.transport || defaultTransport
@@ -240,8 +263,9 @@ export class ProductivityService {
     this.searchFullRebuild = false
     this.searchDirtySessions = new Set()
     try {
-      const sessions = await this.source.listSessions()
+      const sessions = (await this.source.listSessions()).filter(searchable)
       const present = new Set(sessions.map((session) => session.id))
+      if (full) this.indexedRevisions.clear()
       this.db.exec('BEGIN'); try {
         const remove = this.db.prepare('DELETE FROM productivity_search WHERE sessionId = ?')
         if (full) this.db.exec('DELETE FROM productivity_search')
@@ -249,7 +273,7 @@ export class ProductivityService {
         const insert = this.db.prepare('INSERT INTO productivity_search (itemId,sessionId,sessionTitle,workspace,kind,displayText,searchText) VALUES (?,?,?,?,?,?,?)')
         let inserted = 0
         const targets = full ? sessions : sessions.filter((session) => dirty.has(session.id))
-        for (const session of targets) for (const item of await this.source.getTranscript(session.id)) {
+        for (const session of targets) for (const item of await this.indexedTranscript(session)) {
           const text = displayText(item)
           insert.run(item.id, session.id, session.title, session.workspace, item.kind, text, `${session.title} ${session.workspace} ${item.kind} ${text}`.toLocaleLowerCase())
           // A large history used to be inserted in one synchronous pass, blocking the
@@ -259,7 +283,10 @@ export class ProductivityService {
           if (++inserted % 200 === 0) await new Promise<void>((resolve) => setImmediate(resolve))
         }
         // A dirty session that disappeared from discovery has no rows left to index.
-        if (!full) for (const sessionId of dirty) if (!present.has(sessionId)) remove.run(sessionId)
+        if (!full) for (const sessionId of dirty) if (!present.has(sessionId)) {
+          remove.run(sessionId)
+          this.indexedRevisions.delete(sessionId)
+        }
         this.db.exec('COMMIT')
         this.searchStale = this.searchGeneration !== generation || this.searchFullRebuild || this.searchDirtySessions.size > 0
       } catch (error) { this.db.exec('ROLLBACK'); throw error }
@@ -273,7 +300,35 @@ export class ProductivityService {
     }
   }
 
+  /** A session's rows, noting the revision a terminal agent's transcript was read at. */
+  private async indexedTranscript(session: AgentSession): Promise<TranscriptItem[]> {
+    // read before the rows: growth during the read is seen by the next check, not lost
+    const revision = runsInTerminal(session) ? await this.source.getTranscriptRevision?.(session.id) : undefined
+    const items = await this.source.getTranscript(session.id)
+    if (runsInTerminal(session)) this.indexedRevisions.set(session.id, revision)
+    return items
+  }
+
+  /**
+   * Marks the terminal agents whose transcript moved on since it was indexed (P6). GJC
+   * announces every change as an event; a terminal agent's file only announces itself
+   * while a window follows it.
+   */
+  private async checkFollowedTranscripts(): Promise<void> {
+    const revisionOf = this.source.getTranscriptRevision?.bind(this.source)
+    if (!revisionOf || Date.now() - this.lastFollowCheck < FOLLOW_CHECK_MS) return
+    this.lastFollowCheck = Date.now()
+    const sessions = (await this.source.listSessions()).filter((session) => runsInTerminal(session) && searchable(session))
+    for (const session of sessions) {
+      const revision = await revisionOf(session.id).catch(() => undefined)
+      if (!this.indexedRevisions.has(session.id) || this.indexedRevisions.get(session.id) !== revision) this.invalidateSearch(session.id)
+    }
+  }
+
   async searchTranscripts(query: string, limit = 50): Promise<GlobalSearchResult[]> {
+    // only a source with terminal agents waits on the check; GJC's alone starts its rebuild at once
+    if (this.source.getTranscriptRevision && Date.now() - this.lastFollowCheck >= FOLLOW_CHECK_MS)
+      await this.checkFollowedTranscripts()
     // A failed rebuild leaves the stale flag set and propagates the error. Reporting
     // an empty or old index as a successful search would make a broken source look
     // like "no matches"; the caller must be able to distinguish the two.

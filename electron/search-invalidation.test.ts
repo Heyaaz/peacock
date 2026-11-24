@@ -33,6 +33,11 @@ const CONTENT_EVENTS: Array<{ type: AgentEvent["type"]; withId: unknown; without
     withoutId: { type: "transcript.synced", items: [] },
   },
   {
+    type: "transcript.invalidated",
+    withId: { type: "transcript.invalidated", sessionId: "s1" },
+    withoutId: { type: "transcript.invalidated" },
+  },
+  {
     type: "message.delta",
     withId: { type: "message.delta", sessionId: "s1", messageId: "m", delta: "a", streaming: true },
     withoutId: { type: "message.delta", messageId: "m", delta: "a", streaming: true },
