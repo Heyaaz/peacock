@@ -28,6 +28,7 @@ import {
 } from "../shared/agent-contract.js";
 import { GJC_IPC } from "../shared/gjc-ipc.js";
 import { GjcSdkController } from "./gjc-sdk-controller.js";
+import { AgentRouter } from "./agent-router.js";
 import { registerGjcIpcHandlers } from "./gjc-ipc-handlers.js";
 import { DesktopEventStream } from "./desktop-event-stream.js";
 import { DESKTOP_IPC, type SessionShortcut } from "../shared/settings-ipc.js";
@@ -435,10 +436,13 @@ const gjcController = new GjcSdkController({
   artifactDirectory: path.join(userDataDirectory, "artifacts"),
   emit: broadcastAgentEvent,
 });
+// Every session call goes through the router. Until another runtime registers,
+// it hands each one to the GJC controller unchanged.
+const agentRouter = new AgentRouter(gjcController);
 export const ipcSecurity = new IpcSecurity(
   !app.isPackaged && (smokeMode || terminalSmokeMode) ? async () => true : overlayDestructiveConfirmation,
 );
-const unregisterGjcIpc = registerGjcIpcHandlers(gjcController, attachmentStore, ipcSecurity);
+const unregisterGjcIpc = registerGjcIpcHandlers(agentRouter, attachmentStore, ipcSecurity);
 // One authorized invoke hands a window this process launched the event stream endpoint.
 // It goes through the same sender verification every gjc channel uses, so a frame or
 // window this process did not open cannot read the token.
@@ -556,7 +560,7 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
 const unregisterDesktopServicesIpc =
   registerDesktopServicesIpcHandlers(desktopManagement, ipcSecurity);
 productivityService = new ProductivityService(
-  gjcController,
+  agentRouter,
   path.join(userDataDirectory, "productivity.sqlite"),
 );
 const unregisterProductivityIpc =
@@ -568,20 +572,20 @@ remoteAccess = new RemoteAccessService({
   webRoot: path.join(app.getAppPath(), "dist/web"),
   version: app.getVersion(),
   workspace: () => workspace,
-  host: gjcController,
+  host: agentRouter,
   log: (message) => console.log(`remote access: ${message}`),
 });
 const unregisterRemoteIpc = registerRemoteIpcHandlers(remoteAccess, ipcSecurity);
 const unregisterRepoIpc = registerRepoIpcHandlers(repoService, ipcSecurity);
 parallelRuns = new ParallelRunService({
   store: sessionMetadata,
-  host: gjcController,
+  host: agentRouter,
   notify: (groups) => {
     for (const window of BrowserWindow.getAllWindows())
       if (!window.isDestroyed()) window.webContents.send(PARALLEL_IPC.changed, groups);
   },
 });
-void gjcController
+void agentRouter
   .listSessions()
   .then((sessions) => parallelRuns?.restore(sessions))
   .catch(() => undefined);
@@ -1439,7 +1443,7 @@ app.whenReady().then(() => {
     );
   installApplicationMenu();
   // Sessions the runtime reported before the first event still count as working.
-  void gjcController
+  void agentRouter
     .listSessions()
     .then((sessions) => desktopIntegration.seed(sessions))
     .catch((error) =>
@@ -1494,7 +1498,7 @@ app.on("before-quit", () => {
   unregisterEventStreamIpc();
   void desktopEvents.close();
   void remoteAccess?.dispose();
-  gjcController.dispose();
+  agentRouter.dispose();
   desktopIntegration.dispose();
   quickInputShortcut.dispose();
   quickInput?.dispose();

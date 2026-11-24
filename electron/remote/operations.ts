@@ -27,7 +27,7 @@ import {
 /**
  * The operations a remote device may run, expressed once for every transport.
  *
- * The host passes the same `GjcSdkController` the Electron IPC layer uses, so a
+ * The host passes the same `AgentRouter` the Electron IPC layer uses, so a
  * phone and the desktop drive one runtime instead of two views of it. What is
  * deliberately *not* here is as important as what is: session creation, deletion,
  * compaction, git commits and pushes keep their native confirmation dialog and

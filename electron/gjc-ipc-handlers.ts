@@ -23,7 +23,7 @@ import {
   destructiveSlashAction,
   destructiveSlashMessage,
 } from "./gjc-sdk-controller.js";
-import type { GjcSdkController } from "./gjc-sdk-controller.js";
+import type { FullAgentHost } from "./agent-host.js";
 import { AttachmentStore } from "./attachment-store.js";
 import { fileAttachment } from "./settings-ipc-handlers.js";
 import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
@@ -171,7 +171,7 @@ export async function withResolvedMessageInput<T>(
 }
 
 export function registerGjcIpcHandlers(
-  controller: GjcSdkController,
+  controller: FullAgentHost,
   attachments: AttachmentStore,
   security: IpcSecurity,
 ): () => void {
