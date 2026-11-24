@@ -89,11 +89,14 @@ Main
 - `terminal.run`의 program은 **절대 경로 강제**(argv[0]이 hc 템플릿 이름으로 해석될 수 있음, Ovis `adapter.ts:880`).
 - 실행 옵션 검증: Ovis `launch-rules.ts`/`agentLaunchMode.ts` 축소 이식.
 - Claude Code는 `--session-id <uuid>`로 시작해 세션을 Gajae가 정한다(실측: SessionStart의 `session_id`가 그 값). 새 폴더 첫 실행은 작업 공간 신뢰 대화상자(`blocked/permission "trust this folder"`)가 먼저 뜬다.
+- (P2) 세션 ID는 `terminal-<uuid>` 그대로(셸·에이전트 공통): 렌더러와 터미널 IPC가 이미 이 접두사로 라우팅한다. 레코드는 `TerminalSessionStore`에 `agentKind`·`launch`·`agentSessionRef`·`transcriptPath`를 더해 저장한다. 행의 `runtime`은 렌더러 호환을 위해 P5까지 `"terminal"`로 두고, 라우터 소유권(`registerRuntime("herdr")`)으로 구분한다. 터미널이 끝난 에이전트를 다시 열면 기록이 있을 때 `--resume <agentSessionRef>`로 시작한다.
+- (P2) 에이전트 터미널에는 `GAJAE_SESSION_ID`를 넣어, 훅이 `/clear`로 바뀐 `session_id`와 상관없이 Gajae 세션을 가리키게 한다. 에이전트 세션은 herdr-core가 없으면 앱 안 셸로 폴백하지 않고 오류를 보인다.
 
 ### 5.4 훅 채널 (P2부터)
 - 실행 시 주입: Claude는 `--settings <file>`로 SessionStart / UserPromptSubmit / Stop / PermissionRequest(P4) / PostToolUse(P4) 훅, omp는 `-e <extension>`.
 - SessionStart로 `session_id`, `transcript_path`를 받는다 → 기록 위치 1순위. `/clear`·`/resume`로 세션이 바뀌어도 다시 보고됨.
 - 턴 시작/종료를 훅으로 받아 OSC 7501 의존을 줄인다.
+- (P2) 소켓 위치: `userData/agent-hooks/h.sock`이 100바이트 이하면 거기, 아니면 `$TMPDIR/gajae-hooks-<해시>/h.sock`. 릴레이·settings·토큰은 `userData/agent-hooks/`(0700/0600)에 둔다. 앱을 다시 켠 뒤 살아 있던 Claude Code의 `/clear` 훅이 들어오는 것을 실측했다.
 - **릴레이**: `/bin/sh` + `/usr/bin/nc -U -w 2` + 토큰(실측 동작). **소켓만** 짧은 고정 경로(예: `$TMPDIR/<짧은 이름>/h.sock` ≈ 58바이트, 폴더 0700, 소켓 0600)에 두고, 실행 중인 에이전트가 참조하는 릴레이 스크립트·settings·토큰은 영속 경로(userData, 0700/0600)에 둔다. 메시지는 한 연결에 한 줄(payload의 날 줄바꿈 제거), 수신 측은 첫 줄을 받고 닫는다. 수신 측이 없으면 릴레이는 즉시 exit 0(에이전트 비차단), 이벤트는 유실 → 시작 시 보정(§5.5). 0700 unix socket이면 AES 봉인 생략.
 - **훅 키와 설정 파일은 0600으로 영속화**, 소켓 경로 고정. 앱 재시작 후에도 살아 있는 세션의 훅이 계속 동작. hc `removed` 이벤트에서 정리. (Ovis 허브는 키가 메모리에만 있고 시작 시 파일을 지움 → 그대로 이식하면 안 됨)
 
@@ -146,7 +149,7 @@ Main
 | P0 | 브랜치, `AgentHost`+`AgentRouter`(GJC만 위임), 타입 **추가만**, 카탈로그 골격 | 동작 변화 없음, 기존 테스트 통과 |
 | **P0.5 스파이크** (버리는 코드, **완료** → [spike-results.md](spike-results.md)) | ① 패키지 빌드에서 hc 시작→앱 종료→재접속, FD/env 확인(lsof, ps -E) ② launchd/TCC·백그라운드 항목 알림(ad-hoc·공증 서명 양쪽) ③ `--session-id`+훅으로 `transcript_path` 수신, 앱 재시작 후에도 ④ 셸 릴레이 동작 ⑤ hc 아래 Claude Code의 7501 보고와 승인 대화상자 중 send 거부 ⑥ hc 버전(0.1.17 vs 0.1.18) 확정 | 각 항목 결과 기록, 설계 확정 |
 | P1 | hc 수명주기 + 셸 터미널(detach/kill/restart, 고아 정리, node-pty 폴백) | 앱 재시작 후 셸 터미널과 출력 유지 (**완료**: `npm run desktop:hc-terminal-smoke`가 앱 재시작 뒤 같은 pid·출력 유지를 실측) |
-| P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 |
+| P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 (**완료**: `npm run desktop:hc-agent-smoke`가 실제 Claude Code로 사이드바 waiting→running→idle, 승인·완료 알림 요청, 앱 재시작 뒤 훅 수신을 실측. 단 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 거부됨) |
 | P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 |
 | P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 |
 | P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 |

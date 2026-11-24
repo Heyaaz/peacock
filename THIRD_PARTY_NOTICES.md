@@ -88,6 +88,10 @@ Portions of the agent runtime are adapted from
   `electron/herdr-core/env.ts` and `electron/herdr-core/install.ts`
 - `server/herdr-core/terminal-env.ts` — reading an `env -0` block, in
   `electron/herdr-core/env.ts`
+- `shared/launch-rules.ts` — the effort levels each agent CLI takes and the
+  model-name rule, in `shared/agent-launch.ts`
+- `server/agent-catalog-detect.ts` — finding an agent's executable on PATH,
+  then where its installer puts it, in `electron/herdr-core/agent-detect.ts`
 
 ```
 MIT License
