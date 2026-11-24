@@ -12,17 +12,31 @@ import type { AgentKindId } from "../../shared/agent-contract.js";
 import type { AgentAvailability } from "../../shared/terminal-ipc.js";
 import { hostText } from "../host-text.js";
 
-export type VersionRunner = (binary: string, args: readonly string[]) => Promise<string | null>;
+/** Runs an agent's version flag; `searchPath` is the PATH it runs with. */
+export type VersionRunner = (binary: string, args: readonly string[], searchPath?: string) => Promise<string | null>;
 
-const runVersion: VersionRunner = (binary, args) =>
+const runVersion: VersionRunner = (binary, args, searchPath) =>
   new Promise((resolve) => {
     execFile(
       binary,
       [...args],
-      { timeout: 5000, env: { HOME: process.env.HOME ?? "", PATH: process.env.PATH ?? "/usr/bin:/bin" } },
+      { timeout: 5000, env: { HOME: process.env.HOME ?? "", PATH: searchPath ?? process.env.PATH ?? "/usr/bin:/bin" } },
       (error, stdout) => resolve(error ? null : String(stdout)),
     );
   });
+
+/**
+ * The PATH a version flag runs with (P6): the executable's own folder, the login shell's PATH, then
+ * this process's. An agent installed as a script (codex is `#!/usr/bin/env node`) needs its
+ * interpreter, which a Finder-launched app's PATH does not have; npm and Homebrew put it next to
+ * the script, and the user's shell knows where it is otherwise.
+ */
+export function versionSearchPath(binary: string, loginPath: string | undefined, processPath: string | undefined): string {
+  const seen = new Set<string>();
+  return [path.dirname(binary), ...(loginPath ?? "").split(path.delimiter), ...(processPath ?? "/usr/bin:/bin").split(path.delimiter)]
+    .filter((directory) => path.isAbsolute(directory) && !seen.has(directory) && seen.add(directory))
+    .join(path.delimiter);
+}
 
 /** The first dotted version in what a version flag printed ("2.1.331 (Claude Code)", "omp v19.1.1"). */
 export function parseAgentVersion(output: string): string | undefined {
@@ -48,6 +62,8 @@ export interface AgentDetectorOptions {
   catalog?: readonly AgentCatalogEntry[];
   /** The executable the settings name for an agent: it wins over every search. */
   executableOf?: (id: AgentKindId) => string | undefined;
+  /** The login shell's PATH, for running version flags (see versionSearchPath). */
+  loginPath?: () => Promise<string | undefined>;
 }
 
 /**
@@ -114,7 +130,8 @@ export class AgentDetector {
   private async cachedVersion(binary: string, mtimeMs: number, args: readonly string[]): Promise<string | null> {
     const cached = this.versions.get(binary);
     if (cached && cached.mtimeMs === mtimeMs) return cached.version;
-    const output = await this.version(binary, args);
+    const loginPath = await this.options.loginPath?.().catch(() => undefined);
+    const output = await this.version(binary, args, versionSearchPath(binary, loginPath, process.env.PATH));
     const version = output === null ? null : (parseAgentVersion(output) ?? "");
     this.versions.set(binary, { mtimeMs, version });
     return version;

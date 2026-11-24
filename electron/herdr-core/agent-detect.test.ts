@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { AgentDetector, parseAgentVersion } from "./agent-detect.js";
+import { AgentDetector, parseAgentVersion, versionSearchPath } from "./agent-detect.js";
 
 function fakeBin(directory: string, name: string): string {
   mkdirSync(directory, { recursive: true });
@@ -58,6 +58,18 @@ describe("AgentDetector", () => {
     expect(await detector.detect("claude")).toMatchObject({ installed: false, configured: true, binary: settings.claude, reason: expect.any(String) });
     settings.claude = "claude";
     expect(await detector.detect("claude")).toMatchObject({ installed: false, configured: true });
+  });
+
+  it("runs a version flag with the executable's folder and the login shell's PATH, for a script that needs its interpreter", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "gajae-detect-"));
+    fakeBin(path.join(root, "brew", "bin"), "codex");
+    const version = vi.fn(async (_binary: string, _args: readonly string[], _path?: string) => "codex-cli 0.163.0");
+    const detector = new AgentDetector({ searchPath: async () => [path.join(root, "brew", "bin")], home: root, version, loginPath: async () => "/opt/login/bin:relative" });
+    expect(await detector.detect("codex")).toMatchObject({ installed: true, version: "0.163.0" });
+    const used = version.mock.calls[0]![2]!.split(":");
+    expect(used.slice(0, 2)).toEqual([path.join(root, "brew", "bin"), "/opt/login/bin"]);
+    expect(used).not.toContain("relative");
+    expect(versionSearchPath("/a/bin/x", "/b:/a/bin", "/usr/bin:/b")).toBe("/a/bin:/b:/usr/bin");
   });
 
   it("always offers the shell", async () => {
