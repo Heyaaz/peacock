@@ -1,11 +1,17 @@
 import type { GlobalSearchResult } from "../../shared/productivity-ipc";
 import type {
   AgentKindId,
+  AgentPreferencesMap,
   HistorySession,
   ImageAttachment,
+  NewSessionChoice,
+  SessionSurface,
   SessionWorkLink,
   WorktreePull,
 } from "../../shared/agent-contract";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
+import { initialAgent } from "./agent-choice";
+import { CLAUDE_PERMISSION_MODES, OMP_APPROVAL_MODES, type AgentLaunchOptions } from "../../shared/agent-launch";
 import type { AgentAvailability } from "../../shared/terminal-ipc";
 import type { NewSessionPrefill, WorkspaceInspection } from "../../shared/settings-ipc";
 import { DEFAULT_SESSION_TITLE } from "../../shared/session-title";
@@ -23,7 +29,7 @@ import { t } from "../i18n";
 import { directoryName, sessionTitleText } from "./format";
 
 
-/** What a new session opens: GJC in the app, or a terminal for any CLI. */
+/** What a new session opens: GJC in the app, or a terminal for any other agent. */
 export type NewSessionKind = "gjc" | "terminal";
 
 export interface NewSessionInput {
@@ -33,6 +39,12 @@ export interface NewSessionInput {
   kind?: NewSessionKind;
   /** A terminal session's agent; unset means a shell. */
   agentKind?: AgentKindId;
+  /** The screen a terminal agent's session opens on. */
+  surface?: SessionSurface;
+  /** What a terminal agent starts with: the settings' defaults, with the dialog's permission mode. */
+  launch?: AgentLaunchOptions;
+  /** The dialog chose this agent and screen: it comes first next time. */
+  remember?: boolean;
   isolation?: "workspace" | "worktree";
   worktreeBranch?: string;
   worktreeBranchExisting?: boolean;
@@ -46,31 +58,49 @@ export interface NewSessionDialogProps {
   defaultWorkspace: string;
   prefill?: NewSessionPrefill;
   /**
-   * The kind the settings choose for new sessions. A prefilled request, such as
-   * a CI fix or a quick-input prompt, is GJC work and always opens the app.
+   * The agent and screen last chosen. Unset until one is chosen: then the first
+   * installed of Claude Code, omp, codex and GJC comes first. A prefilled request,
+   * such as a CI fix or a quick-input prompt, is GJC work and always opens GJC.
    */
-  kind?: NewSessionKind;
+  choice?: NewSessionChoice;
+  /** Each agent's new-session defaults (model, effort, permission mode) from the settings. */
+  agentDefaults?: AgentPreferencesMap;
+  /** Whether the backend runs terminal sessions (the desktop's GJC backend); otherwise only GJC is offered. */
+  terminalSessions?: boolean;
   onCancel: () => void;
   /** A promise keeps the dialog open until it settles; a rejection is shown in it. */
   onCreate: (input: NewSessionInput) => void | Promise<void>;
 }
 
+/** The permission modes the dialog offers for an agent; empty for one that takes none. */
+function permissionModes(agentKind: AgentKindId): readonly string[] {
+  if (agentKind === "claude") return CLAUDE_PERMISSION_MODES;
+  if (agentKind === "omp") return OMP_APPROVAL_MODES;
+  return [];
+}
+
 export function NewSessionDialog({
   defaultWorkspace,
   prefill,
-  kind = "gjc",
+  choice,
+  agentDefaults = {},
+  terminalSessions = false,
   onCancel,
   onCreate,
 }: NewSessionDialogProps) {
   const defaultTitle = t("새 세션");
   const terminalBridge = window.agentControlDesktop?.terminal;
-  // A handed-over request is GJC work; otherwise either kind can be picked here when the
-  // desktop can run terminal agents. The settings only choose which one comes first.
-  const canSwitch = !prefill && typeof terminalBridge?.listAgents === "function";
-  const [mode, setMode] = useState<NewSessionKind>(kind);
-  const terminal = mode === "terminal" && !prefill;
+  // A handed-over request is GJC work; otherwise any agent installed here can be picked
+  // when the backend runs terminal sessions (not a remote device, not the sample data).
+  // The last choice only comes first.
+  const canPick = !prefill && terminalSessions && typeof terminalBridge?.listAgents === "function";
   const [agents, setAgents] = useState<AgentAvailability[]>([]);
-  const [agentKind, setAgentKind] = useState<AgentKindId>("shell");
+  const [agentKind, setAgentKind] = useState<AgentKindId>(prefill || !canPick ? "gjc" : (choice?.agentKind ?? "gjc"));
+  const [surface, setSurface] = useState<SessionSurface>(choice?.surface ?? "chat");
+  const [permissionMode, setPermissionMode] = useState<string>(
+    choice ? (agentDefaults[choice.agentKind]?.launch?.permissionMode ?? "") : "",
+  );
+  const terminal = agentKind !== "gjc" && !prefill;
   const [title, setTitle] = useState(prefill?.title || defaultTitle);
   const [workspace, setWorkspace] = useState(
     prefill?.workspace || defaultWorkspace,
@@ -106,19 +136,30 @@ export function NewSessionDialog({
   }, [workspace, settingsBridge]);
 
   useEffect(() => {
-    if (!terminal || typeof terminalBridge?.listAgents !== "function") return;
+    if (!canPick) return;
     let current = true;
-    terminalBridge.listAgents().then(
+    terminalBridge!.listAgents().then(
       (found) => {
-        // GJC runs in the chat; every other agent can run in a terminal
-        if (current) setAgents(found.filter((agent) => agent.id !== "gjc"));
+        if (!current) return;
+        setAgents(found);
+        chooseAgent(initialAgent(found, choice), choice);
       },
       () => undefined,
     );
     return () => {
       current = false;
     };
-  }, [terminal, terminalBridge]);
+    // the first answer decides the starting agent; later renders keep the user's pick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canPick, terminalBridge]);
+
+  /** Picks an agent, with the screen and permission mode it starts on. */
+  function chooseAgent(next: AgentKindId, remembered?: NewSessionChoice): void {
+    setAgentKind(next);
+    const entry = agentCatalogEntry(next);
+    setSurface(remembered?.agentKind === next && entry.surfaces.includes(remembered.surface) ? remembered.surface : entry.defaultSurface);
+    setPermissionMode(agentDefaults[next]?.launch?.permissionMode ?? "");
+  }
 
   // An answer for a folder the user has since left must not decide anything.
   const info = inspection?.workspace === workspace ? inspection.info : undefined;
@@ -126,6 +167,8 @@ export function NewSessionDialog({
   const showIsolation =
     !terminal &&
     (info?.git === true || isolation === "worktree" || prefill?.mainCheckout === true);
+  const agentEntry = agentCatalogEntry(agentKind);
+  const modes = permissionModes(agentKind);
 
   function cancel(): void {
     // The images were issued to this window for the new session; a dismissed
@@ -167,6 +210,9 @@ export function NewSessionDialog({
       if (submitting) return;
       setSubmitError("");
       setSubmitting(true);
+      // the settings' defaults, with the permission mode this dialog chose ("" follows the agent's own)
+      const { permissionMode: _default, ...defaults } = agentDefaults[agentKind]?.launch ?? {};
+      const launch: AgentLaunchOptions = { ...defaults, ...(permissionMode ? { permissionMode } : {}) };
       void Promise.resolve(
         onCreate({
           title:
@@ -176,6 +222,9 @@ export function NewSessionDialog({
           workspace,
           kind: "terminal",
           ...(agentKind !== "shell" ? { agentKind } : {}),
+          surface,
+          ...(Object.keys(launch).length > 0 ? { launch } : {}),
+          remember: true,
         }),
       )
         .catch((error: unknown) =>
@@ -208,6 +257,8 @@ export function NewSessionDialog({
       // waits in the new session's composer.
       initialPrompt: prefill?.prompt?.trim() || undefined,
       initialImages: images.length > 0 ? images : undefined,
+      // a handed-over request is GJC work, not a choice of what new sessions open
+      ...(canPick ? { remember: true } : {}),
     });
   }
 
@@ -215,7 +266,7 @@ export function NewSessionDialog({
     <div className="modal-backdrop" role="presentation" onMouseDown={cancel}>
       <form
         className="new-session-dialog"
-        aria-label={terminal ? t("새 터미널 세션") : t("새 세션")}
+        aria-label={t("새 세션")}
         onSubmit={submit}
         onMouseDown={(event) => event.stopPropagation()}
       >
@@ -224,10 +275,10 @@ export function NewSessionDialog({
             <Plus size={18} />
           </span>
           <div>
-            <h2>{terminal ? t("새 터미널 세션") : t("새 세션")}</h2>
+            <h2>{t("새 세션")}</h2>
             <p>
               {terminal
-                ? t("터미널을 열 폴더를 선택하세요.")
+                ? t`${agentKind === "shell" ? t("셸") : agentEntry.name}을(를) 실행할 폴더를 선택하세요.`
                 : t("Gajae가 확인하고 수정할 프로젝트를 선택하세요.")}
             </p>
           </div>
@@ -235,35 +286,9 @@ export function NewSessionDialog({
             <X size={18} />
           </button>
         </header>
-        {canSwitch && (
-          <div className="session-kind-switch" role="group" aria-label={t("세션 종류")}>
-            <button
-              type="button"
-              aria-pressed={mode === "gjc"}
-              onClick={() => setMode("gjc")}
-            >
-              {t("GJC 채팅")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={mode === "terminal"}
-              onClick={() => setMode("terminal")}
-            >
-              {t("터미널")}
-            </button>
-          </div>
-        )}
-        <label>
-          <span>{t("세션 이름")}</span>
-          <input
-            autoFocus
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-        {terminal && agents.length > 0 && (
+        {canPick && agents.length > 0 && (
           <fieldset className="agent-options">
-            <legend>{t("실행할 에이전트")}</legend>
+            <legend>{t("에이전트")}</legend>
             {agents.map((agent) => (
               <label
                 key={agent.id}
@@ -272,11 +297,11 @@ export function NewSessionDialog({
               >
                 <input
                   type="radio"
-                  name="terminal-agent"
+                  name="session-agent"
                   value={agent.id}
                   checked={agentKind === agent.id}
                   disabled={!agent.installed}
-                  onChange={() => setAgentKind(agent.id)}
+                  onChange={() => chooseAgent(agent.id)}
                 />{" "}
                 {agent.id === "shell" ? t("셸") : agent.name}
                 {agent.installed
@@ -287,6 +312,45 @@ export function NewSessionDialog({
               </label>
             ))}
           </fieldset>
+        )}
+        {terminal && agentEntry.surfaces.length > 1 && (
+          <div className="session-kind-switch" role="group" aria-label={t("처음 열 화면")}>
+            {agentEntry.surfaces.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={surface === option}
+                onClick={() => setSurface(option)}
+              >
+                {option === "chat" ? t("채팅") : t("터미널")}
+              </button>
+            ))}
+          </div>
+        )}
+        <label>
+          <span>{t("세션 이름")}</span>
+          <input
+            autoFocus
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+        {terminal && modes.length > 0 && (
+          <label>
+            <span>{t("권한 모드")}</span>
+            <select
+              aria-label={t("권한 모드")}
+              value={permissionMode}
+              onChange={(event) => setPermissionMode(event.target.value)}
+            >
+              <option value="">{t("에이전트 설정 따름")}</option>
+              {modes.map((mode) => (
+                <option key={mode} value={mode}>
+                  {mode}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         {showIsolation && (
           <fieldset className="isolation-options">

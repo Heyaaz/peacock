@@ -9189,3 +9189,34 @@ button.diff-line-number:hover {
 .command-rules > p {
   margin: 0;
 }
+
+/* Settings > Agents: one panel per agent, what was found and what its sessions start with. */
+.agent-settings__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-settings__header .ready-badge {
+  margin-left: auto;
+}
+.agent-settings__path {
+  display: block;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-settings__launch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.agent-settings__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+/* First-run setup's agent list: the chosen one is marked. */
+.onboarding-agents button[aria-pressed="true"] {
+  border-color: var(--accent-bright);
+}

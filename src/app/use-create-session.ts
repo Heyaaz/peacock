@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { AgentSession, TranscriptItem } from "../backend/types";
+import type { NewSessionChoice } from "../../shared/agent-contract";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
 import type { AgentBackend } from "../backend/agent-backend";
 import type { NewSessionPrefill } from "../../shared/settings-ipc";
 import { cacheTranscript } from "../transcript-utils";
@@ -18,20 +20,30 @@ export function useCreateSession(
   setSessions: Dispatch<SetStateAction<AgentSession[]>>,
   setSelectedId: Dispatch<SetStateAction<string | null>>,
   setTranscripts: Dispatch<SetStateAction<Record<string, TranscriptItem[]>>>,
+  /** A terminal session was created, to open on the screen its dialog chose. */
+  onTerminalCreated?: (session: AgentSession, choice: NewSessionChoice) => void,
+  /** What the dialog chose, to come first next time. */
+  rememberChoice?: (choice: NewSessionChoice) => void,
 ) {
   const createSession = useCallback(
     (input: NewSessionInput): void | Promise<void> => {
       if (input.kind === "terminal") {
         setAppError("");
+        const agentKind = input.agentKind ?? "shell";
+        const choice: NewSessionChoice = { agentKind, surface: input.surface ?? agentCatalogEntry(agentKind).defaultSurface };
         return backend
           .createSession({
-            runtime: "terminal",
+            runtime: "herdr",
             title: input.title,
             workspace: input.workspace,
             isolation: "workspace",
             ...(input.agentKind ? { agentKind: input.agentKind } : {}),
+            ...(input.launch ? { launch: input.launch } : {}),
+            surface: choice.surface,
           })
           .then((session) => {
+            onTerminalCreated?.(session, choice);
+            if (input.remember) rememberChoice?.(choice);
             setSessions((current) => [
               session,
               ...current.filter((item) => item.id !== session.id),
@@ -43,6 +55,7 @@ export function useCreateSession(
             throw new Error(humanErrorMessage(error));
           });
       }
+      if (input.remember) rememberChoice?.({ agentKind: "gjc", surface: "chat" });
       const draftId = `draft-${crypto.randomUUID()}`;
       const draft: AgentSession = {
         id: draftId,

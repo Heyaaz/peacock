@@ -317,6 +317,62 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "셸이 종료되었습니다": "The shell exited",
   앱: "App",
   CLI: "CLI",
+  "에이전트":
+    "Agents",
+  "처음 열 화면":
+    "Starting screen",
+  "권한 모드":
+    "Permission mode",
+  "에이전트 설정 따름":
+    "Follow the agent's own setting",
+  "{0}을(를) 실행할 폴더를 선택하세요.":
+    "Choose the folder to run {0} in.",
+  "이 Mac에서 찾은 에이전트와 새 세션이 시작될 에이전트·실행 옵션을 설정합니다.":
+    "The agents found on this Mac, and the agent and options new sessions start with.",
+  "새 세션 기본값":
+    "New session default",
+  "새 세션을 처음 열 에이전트와 화면입니다. 새 세션 창에서 고르면 그 선택이 다음 기본값이 됩니다.":
+    "The agent and screen a new session opens on. A choice made in the new session dialog becomes the next default.",
+  "자동 (설치된 첫 에이전트)":
+    "Automatic (first installed agent)",
+  "설치됨":
+    "Installed",
+  "설정한 실행 파일: {0}":
+    "Executable from Settings: {0}",
+  "찾은 위치: {0}":
+    "Found at: {0}",
+  "GJC의 실행 파일, 모델 프로필, 도구 승인, 업데이트와 AI 로그인은 GJC 탭에 있습니다.":
+    "GJC's executable, model profile, tool approval, update and AI sign-in are in the GJC tab.",
+  "GJC 설정 열기":
+    "Open GJC settings",
+  "실행 파일":
+    "Executable",
+  "비워 두면 PATH와 설치 위치에서 찾습니다":
+    "Leave blank to find it on PATH and where its installer puts it",
+  "자동으로 찾기":
+    "Find automatically",
+  "기본 모델":
+    "Default model",
+  "기본 effort":
+    "Default effort",
+  "{0} 기본 effort":
+    "{0} default effort",
+  "{0} 기본 권한 모드":
+    "{0} default permission mode",
+  "기본 권한 모드":
+    "Default permission mode",
+  "로그인 셸(SHELL)을 엽니다. 따로 설정할 것이 없습니다.":
+    "Opens your login shell (SHELL). Nothing to set.",
+  "어떤 에이전트로 시작할까요?":
+    "Which agent do you want to start with?",
+  "이 Mac에서 찾은 에이전트입니다. 고른 에이전트로 새 세션이 열리고, 설정에서 언제든 바꿀 수 있습니다.":
+    "These are the agents found on this Mac. New sessions open with the one you choose; you can change it in Settings at any time.",
+  "에이전트를 찾는 중…":
+    "Looking for agents…",
+  "설치되어 있지 않습니다 · 고르면 설치합니다":
+    "Not installed · choosing it installs it",
+  "이 에이전트로 시작":
+    "Start with this agent",
   "승인 카드에서 답하거나 터미널에서 답하세요.":
     "Answer on the approval card or in the terminal.",
   "터미널에서 응답을 기다리고 있어 보내지 않았습니다: {0}":
