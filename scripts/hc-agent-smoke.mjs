@@ -1,7 +1,10 @@
 /**
  * Runs a real Claude Code (haiku, one short prompt) in a terminal session across an app restart:
- * statuses, notifications and hooks (scripts its electron side: electron/hc-agent-smoke.ts).
- * Both runs share one throwaway userData and one hc session, stopped at the end whatever happened.
+ * statuses, notifications, hooks, and the chat reading its transcript across `/clear` (scripts
+ * its electron side: electron/hc-agent-smoke.ts). `GAJAE_AGENT_SMOKE_PHASES=3,4` runs the chat
+ * phases instead: a message sent from the chat composer to Claude Code (3) and to omp (4), one
+ * short prompt each to a small model. The runs share one throwaway userData and one hc session,
+ * stopped at the end whatever happened.
  */
 import { execFile, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
