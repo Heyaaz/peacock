@@ -121,7 +121,95 @@ describe("new session dialog", () => {
   });
 });
 
+const SIDEBAR_PROPS = {
+  connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/repo" },
+  selectedId: null,
+  grouping: "status",
+  onGroupingChange: () => undefined,
+  collapsedProjects: new Set<string>(),
+  onToggleProject: () => undefined,
+  projects: [],
+  projectId: "__all__",
+  onProjectChange: noop,
+  onOpenRepository: noop,
+  onOpenProjects: noop,
+  inboxCount: 0,
+  inboxOpen: false,
+  onToggleInbox: noop,
+  onOpenProjectGithub: noop,
+  onOpenProjectFolder: noop,
+  searchQuery: "",
+  onSearchChange: noop,
+  onSearchOpen: noop,
+  onSelect: noop,
+  onCreate: noop,
+  onFork: noop,
+  onResume: noop,
+  onResumePicker: noop,
+  onRename: noop,
+  onDelete: noop,
+  onHide: noop,
+  onSettings: noop,
+  workspaceLabel: "",
+  onWorkspaceLabelChange: noop,
+  updateStatus: null,
+  updateBusy: false,
+  onUpdate: noop,
+  parallelGroups: [],
+  openParallelGroupId: null,
+  onOpenParallelGroup: noop,
+} as unknown as Parameters<typeof Sidebar>[0];
+
+describe("terminal agents in the new session dialog", () => {
+  const submit = (node: HTMLElement) =>
+    act(async () =>
+      node.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+
+  it("switches to a terminal and opens the chosen agent, leaving one that is missing disabled", async () => {
+    const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
+    Object.assign(window, {
+      agentControlDesktop: {
+        terminal: {
+          listAgents: async () => [
+            { id: "claude", name: "Claude Code", installed: true, binary: "/bin/claude", version: "2.1.331" },
+            { id: "omp", name: "Oh My Pi", installed: false, reason: "설치되어 있지 않습니다" },
+            { id: "gjc", name: "GJC", installed: true },
+            { id: "shell", name: "Shell", installed: true },
+          ],
+        },
+      },
+    });
+    const node = await mount(createElement(NewSessionDialog, { defaultWorkspace: "/work/repo", onCancel: noop, onCreate }));
+    expect(node.querySelector("h2")?.textContent).toBe("새 세션");
+    const terminalButton = [...node.querySelectorAll<HTMLButtonElement>(".session-kind-switch button")].find((button) => button.textContent === "터미널")!;
+    await act(async () => terminalButton.click());
+    await act(async () => undefined);
+    expect(node.querySelector("h2")?.textContent).toBe("새 터미널 세션");
+    const options = [...node.querySelectorAll<HTMLInputElement>('input[name="terminal-agent"]')];
+    expect(options.map((option) => option.value)).toEqual(["claude", "omp", "shell"]);
+    expect(options.find((option) => option.value === "omp")!.disabled).toBe(true);
+    expect(node.textContent).toContain("설치되어 있지 않습니다");
+    await act(async () => options.find((option) => option.value === "claude")!.click());
+    await submit(node);
+    Reflect.deleteProperty(window, "agentControlDesktop");
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ title: "repo", workspace: "/work/repo", kind: "terminal", agentKind: "claude" });
+  });
+});
+
 describe("terminal session row", () => {
+  it("shows an agent session's status instead of the terminal mark", async () => {
+    const node = await mount(
+      createElement(Sidebar, {
+        ...SIDEBAR_PROPS,
+        sessions: [row("terminal-2", { runtime: "terminal", agentKind: "claude", status: "waiting", title: "Claude" })],
+      }),
+    );
+    const sessionRow = node.querySelector<HTMLElement>(".session-row")!;
+    expect(sessionRow.querySelector(".session-state-dot--waiting")).not.toBeNull();
+    expect(sessionRow.querySelector('[aria-label="터미널 세션"]')).toBeNull();
+  });
+
   it("marks the row as a terminal and leaves only rename and delete in its menu", async () => {
     const node = await mount(
       createElement(Sidebar, {

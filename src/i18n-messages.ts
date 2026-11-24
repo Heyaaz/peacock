@@ -1147,4 +1147,9 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "터미널 {0}개를 종료했습니다": "Ended {0} terminals",
   "실행 중인 백그라운드 터미널이 없습니다": "No background terminals are running",
   "터미널을 종료하지 못했습니다": "Could not end the terminals",
+  "세션 종류": "Session kind",
+  "GJC 채팅": "GJC chat",
+  "실행할 에이전트": "Agent to run",
+  셸: "Shell",
+  "사용할 수 없음": "Unavailable",
 };

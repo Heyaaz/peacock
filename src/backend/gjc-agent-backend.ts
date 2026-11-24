@@ -72,13 +72,21 @@ export class GjcAgentBackend implements AgentBackend {
       this.bridge.listSessions(),
       this.terminal?.listSessions().catch(() => []) ?? [],
     ]);
-    return [...sessions, ...terminals];
+    // herdr sessions reach the GJC list through the main process's router too; the terminal
+    // bridge's row is the one this window shows
+    const terminalIds = new Set(terminals.map((session) => session.id));
+    return [...sessions.filter((session) => !terminalIds.has(session.id)), ...terminals];
   }
 
   createSession(input: CreateSessionInput): Promise<AgentSession> {
     if (input.runtime === "terminal") {
       if (!this.terminal) return Promise.reject(new Error("Terminal sessions need the desktop app"));
-      return this.terminal.createSession({ title: input.title ?? "", workspace: input.workspace });
+      return this.terminal.createSession({
+        title: input.title ?? "",
+        workspace: input.workspace,
+        ...(input.agentKind ? { agentKind: input.agentKind } : {}),
+        ...(input.launch ? { launch: input.launch } : {}),
+      });
     }
     if (input.runtime !== "gjc")
       return Promise.reject(new Error("Hermes is not connected yet"));

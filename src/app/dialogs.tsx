@@ -1,10 +1,12 @@
 import type { GlobalSearchResult } from "../../shared/productivity-ipc";
 import type {
+  AgentKindId,
   HistorySession,
   ImageAttachment,
   SessionWorkLink,
   WorktreePull,
 } from "../../shared/agent-contract";
+import type { AgentAvailability } from "../../shared/terminal-ipc";
 import type { NewSessionPrefill, WorkspaceInspection } from "../../shared/settings-ipc";
 import { DEFAULT_SESSION_TITLE } from "../../shared/session-title";
 import {
@@ -29,6 +31,8 @@ export interface NewSessionInput {
   workspace: string;
   /** Unset means a GJC conversation. */
   kind?: NewSessionKind;
+  /** A terminal session's agent; unset means a shell. */
+  agentKind?: AgentKindId;
   isolation?: "workspace" | "worktree";
   worktreeBranch?: string;
   worktreeBranchExisting?: boolean;
@@ -59,7 +63,14 @@ export function NewSessionDialog({
   onCreate,
 }: NewSessionDialogProps) {
   const defaultTitle = t("새 세션");
-  const terminal = kind === "terminal" && !prefill;
+  const terminalBridge = window.agentControlDesktop?.terminal;
+  // A handed-over request is GJC work; otherwise either kind can be picked here when the
+  // desktop can run terminal agents. The settings only choose which one comes first.
+  const canSwitch = !prefill && typeof terminalBridge?.listAgents === "function";
+  const [mode, setMode] = useState<NewSessionKind>(kind);
+  const terminal = mode === "terminal" && !prefill;
+  const [agents, setAgents] = useState<AgentAvailability[]>([]);
+  const [agentKind, setAgentKind] = useState<AgentKindId>("shell");
   const [title, setTitle] = useState(prefill?.title || defaultTitle);
   const [workspace, setWorkspace] = useState(
     prefill?.workspace || defaultWorkspace,
@@ -93,6 +104,21 @@ export function NewSessionDialog({
       current = false;
     };
   }, [workspace, settingsBridge]);
+
+  useEffect(() => {
+    if (!terminal || typeof terminalBridge?.listAgents !== "function") return;
+    let current = true;
+    terminalBridge.listAgents().then(
+      (found) => {
+        // GJC runs in the chat; every other agent can run in a terminal
+        if (current) setAgents(found.filter((agent) => agent.id !== "gjc"));
+      },
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [terminal, terminalBridge]);
 
   // An answer for a folder the user has since left must not decide anything.
   const info = inspection?.workspace === workspace ? inspection.info : undefined;
@@ -149,6 +175,7 @@ export function NewSessionDialog({
               : trimmedTitle,
           workspace,
           kind: "terminal",
+          ...(agentKind !== "shell" ? { agentKind } : {}),
         }),
       )
         .catch((error: unknown) =>
@@ -208,6 +235,24 @@ export function NewSessionDialog({
             <X size={18} />
           </button>
         </header>
+        {canSwitch && (
+          <div className="session-kind-switch" role="group" aria-label={t("세션 종류")}>
+            <button
+              type="button"
+              aria-pressed={mode === "gjc"}
+              onClick={() => setMode("gjc")}
+            >
+              {t("GJC 채팅")}
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === "terminal"}
+              onClick={() => setMode("terminal")}
+            >
+              {t("터미널")}
+            </button>
+          </div>
+        )}
         <label>
           <span>{t("세션 이름")}</span>
           <input
@@ -216,6 +261,33 @@ export function NewSessionDialog({
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
+        {terminal && agents.length > 0 && (
+          <fieldset className="agent-options">
+            <legend>{t("실행할 에이전트")}</legend>
+            {agents.map((agent) => (
+              <label
+                key={agent.id}
+                className={agent.installed ? undefined : "agent-options__unavailable"}
+                title={agent.installed ? (agent.binary ?? agent.name) : agent.reason}
+              >
+                <input
+                  type="radio"
+                  name="terminal-agent"
+                  value={agent.id}
+                  checked={agentKind === agent.id}
+                  disabled={!agent.installed}
+                  onChange={() => setAgentKind(agent.id)}
+                />{" "}
+                {agent.id === "shell" ? t("셸") : agent.name}
+                {agent.installed
+                  ? agent.version
+                    ? <small>{agent.version}</small>
+                    : null
+                  : <small>{agent.reason ?? t("사용할 수 없음")}</small>}
+              </label>
+            ))}
+          </fieldset>
+        )}
         {showIsolation && (
           <fieldset className="isolation-options">
             <legend>{t("작업 방식")}</legend>

@@ -1420,6 +1420,40 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.session-kind-switch {
+  display: flex;
+  gap: 6px;
+}
+.session-kind-switch button {
+  flex: 1;
+  height: 30px;
+  border: 1px solid #353941;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.session-kind-switch button[aria-pressed="true"] {
+  background: #292d34;
+  border-color: #6b7280;
+}
+.agent-options {
+  display: grid;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.agent-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-options small {
+  color: #8b929c;
+}
+.agent-options__unavailable {
+  opacity: 0.55;
+}
 .terminal-pane__notice {
   flex: 0 0 auto;
   margin: 0;

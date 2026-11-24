@@ -29,6 +29,7 @@ export function useCreateSession(
             title: input.title,
             workspace: input.workspace,
             isolation: "workspace",
+            ...(input.agentKind ? { agentKind: input.agentKind } : {}),
           })
           .then((session) => {
             setSessions((current) => [

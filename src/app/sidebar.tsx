@@ -298,7 +298,7 @@ export function SessionRow({
         )}
         {/* The state used to sit between the title and the clock as a word, which
             pushed the title aside for something the group header already says. */}
-        {session.runtime === "terminal" ? (
+        {session.runtime === "terminal" && (session.agentKind ?? "shell") === "shell" ? (
           <SquareTerminal
             className="session-row__terminal"
             size={13}
