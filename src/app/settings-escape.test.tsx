@@ -22,7 +22,7 @@ const loaded: AgentControlPreferences = {
   workspaceLabel: "개인 Workspace",
   modelPreset: "codex-medium",
   permissionHandling: "prompt",
-  gjcExecutable: "",
+  agents: {},
   thoughtsExpanded: false,
   toolViewMode: "reasoning",
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,

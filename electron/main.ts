@@ -23,6 +23,7 @@ import {
   type AgentControlPreferences,
   type AgentEvent,
   announcesSessionActivity,
+  gjcExecutableOf,
   notificationDelivery,
   sessionActivityBody,
 } from "../shared/agent-contract.js";
@@ -451,7 +452,7 @@ function installApplicationMenu(): void {
 
 const gjcController = new GjcSdkController({
   workspace,
-  executable: process.env.GJC_BIN || preferences.gjcExecutable || undefined,
+  executable: gjcExecutableOf(preferences, process.env) || undefined,
   modelPreset,
   permissionHandling: preferences.permissionHandling,
   sessionMetadata,
@@ -479,11 +480,10 @@ const unregisterEventStreamIpc = (() => {
   return () => ipcMain.removeHandler(GJC_IPC.eventStream);
 })();
 const desktopManagement = new ManagementService(
-  process.env.GJC_BIN || preferences.gjcExecutable || "gjc",
+  gjcExecutableOf(preferences, process.env) || "gjc",
 );
 const automationExecutable =
-  process.env.GJC_BIN ||
-  preferences.gjcExecutable ||
+  gjcExecutableOf(preferences, process.env) ||
   path.join(homedir(), ".bun/bin/gjc");
 const automationService = new AutomationService({
   directory: path.join(userDataDirectory, "automations"),
@@ -522,12 +522,11 @@ async function applyRuntimePreferences(
   updated: AgentControlPreferences,
 ): Promise<boolean> {
   desktopManagement.setExecutable(
-    process.env.GJC_BIN || updated.gjcExecutable || "gjc",
+    gjcExecutableOf(updated, process.env) || "gjc",
   );
   await automationService.setGjcExecutable(
     path.resolve(
-      process.env.GJC_BIN ||
-        updated.gjcExecutable ||
+      gjcExecutableOf(updated, process.env) ||
         path.join(homedir(), ".bun/bin/gjc"),
     ),
   );
@@ -556,9 +555,11 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
       const report = await checkEnvironment(
         hostEnvironmentContext({
           // The same overrides the runtime controller starts with.
-          gjcExecutable: process.env.GJC_BIN || current.gjcExecutable || undefined,
+          gjcExecutable: gjcExecutableOf(current, process.env) || undefined,
           modelPreset:
             process.env.AGENT_CONTROL_GJC_PRESET?.trim() || current.modelPreset,
+          // GJC and what it needs are required only while it is the agent new sessions open
+          gjcRequired: current.newSession?.agentKind === "gjc",
         }),
       );
       if (launchCheckSatisfied(report.rows) && !desktopState.get().environmentReady)
@@ -624,7 +625,7 @@ const unregisterOnboardingIpc = registerOnboardingIpcHandlers(
     markDone: () => desktopState.update({ onboarded: true }),
     locateGjc: () =>
       resolveGjcExecutable(
-        process.env.GJC_BIN || settingsStore.get().gjcExecutable || undefined,
+        gjcExecutableOf(settingsStore.get(), process.env) || undefined,
       ),
     run: runCommand,
     environment: () => runtimeEnvironment(),
@@ -641,6 +642,11 @@ const unregisterOnboardingIpc = registerOnboardingIpcHandlers(
     openExternal: async (url) => {
       if (new URL(url).protocol === "https:") await shell.openExternal(url);
     },
+    newSession: () => settingsStore.get().newSession,
+    chooseNewSession: (choice) => {
+      settingsStore.setNewSession(choice);
+    },
+    listAgents: () => agentDetector.list(),
   }),
   ipcSecurity,
 );
@@ -691,6 +697,9 @@ const agentDetector = new AgentDetector({
     ...(hcCore ? ((await hcCoreEnvironment()).PATH ?? "").split(path.delimiter) : []),
   ],
   home: homedir(),
+  // an executable set in the settings wins (GJC's: GJC_BIN, then its setting)
+  executableOf: (id) =>
+    (id === "gjc" ? gjcExecutableOf(settingsStore.get(), process.env) : settingsStore.get().agents[id]?.executable) || undefined,
 });
 function hcCoreEnvironment(): Promise<Record<string, string>> {
   return (hcEnvironment ??= corePath(process.env).then((corePathValue) =>
@@ -1285,6 +1294,11 @@ function createWindow(): BrowserWindow {
             // The dialog is a deferred chunk; give the import a beat on a cold run.
             await wait(500);
             assert(document.querySelector('[role="dialog"]'), 'Settings dialog did not open');
+            // the dialog opens on the agents (P5); GJC's own settings are a tab away
+            assert(document.querySelector('.agents-settings') && document.querySelector('.agent-settings[aria-label="Claude Code"]'), 'Agents settings did not render');
+            assert(!document.querySelector('.settings-panel select'), 'Native select renders in the agents settings');
+            Array.from(document.querySelectorAll('[role="dialog"] button')).find((button) => button.textContent?.trim() === 'GJC')?.click();
+            await wait(100);
             assert(document.querySelectorAll('.backend-card').length === 1, 'GJC settings card did not render');
             assert(document.querySelector('.backend-logo img'), 'Gajae icon did not render in settings');
             assert(document.querySelector('input[list="gjc-model-profiles"]'), 'Custom profile field did not render');

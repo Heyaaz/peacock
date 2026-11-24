@@ -47,6 +47,19 @@ describe("AgentDetector", () => {
     expect(version).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the executable the settings name over every search, and says when it cannot run", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "gajae-detect-"));
+    fakeBin(path.join(root, "bin"), "claude");
+    const chosen = fakeBin(path.join(root, "elsewhere"), "claude-nightly");
+    const settings: Record<string, string> = { claude: chosen };
+    const detector = new AgentDetector({ searchPath: async () => [path.join(root, "bin")], home: root, version: async () => "2.2.0", executableOf: (id) => settings[id] });
+    expect(await detector.detect("claude")).toEqual({ id: "claude", name: "Claude Code", installed: true, binary: chosen, configured: true, version: "2.2.0" });
+    settings.claude = path.join(root, "missing", "claude");
+    expect(await detector.detect("claude")).toMatchObject({ installed: false, configured: true, binary: settings.claude, reason: expect.any(String) });
+    settings.claude = "claude";
+    expect(await detector.detect("claude")).toMatchObject({ installed: false, configured: true });
+  });
+
   it("always offers the shell", async () => {
     const detector = new AgentDetector({ searchPath: async () => [], home: "/nowhere", version: async () => null });
     expect(await detector.detect("shell")).toEqual({ id: "shell", name: "Shell", installed: true });

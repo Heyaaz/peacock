@@ -7,14 +7,15 @@ import {
   NOTIFICATION_SOUNDS,
 } from "../../shared/agent-contract";
 import type {
+  AgentPreferencesMap,
   GjcUpdateStatus,
   ManagementSnapshot,
-  NewSessionKind,
+  NewSessionChoice,
   NotificationCategory,
   NotificationPreferences,
 } from "../../shared/agent-contract";
 import type { AgentControlPreferences, BackendConnection } from "../backend/types";
-import { Bell, CalendarClock, ChartNoAxesColumn, Check, Command, FolderOpen, Monitor, Palette, Server, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Stethoscope, X } from "lucide-react";
+import { Bell, Bot, CalendarClock, ChartNoAxesColumn, Check, Command, FolderOpen, Monitor, Palette, Server, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Stethoscope, X } from "lucide-react";
 import {
   DEFAULT_DESKTOP_INTEGRATION,
   type DesktopIntegrationPreferences,
@@ -31,7 +32,7 @@ import { QuickInputShortcutRow } from "./quick-input-shortcut-row";
 import { EnvironmentCheckPanel } from "./environment-check-panel";
 import { GjcSettingsPanel } from "./gjc-settings-panel";
 import { CommandRulesPanel } from "./command-rules-panel";
-import { BackgroundTerminalsRow } from "./background-terminals-row";
+import { AgentsSettingsPanel } from "./agents-settings-panel";
 const RemoteAccessPanel = lazy(() =>
   import("./remote-access-panel").then((mod) => ({ default: mod.RemoteAccessPanel })),
 );
@@ -61,6 +62,7 @@ export interface SettingsDialogProps {
 }
 
 export type SettingsTab =
+  | "agents"
   | "gjc"
   | "gjcAdvanced"
   | "appearance"
@@ -204,7 +206,7 @@ export function SettingsDialog({
   updateError,
   onCheckUpdate,
   onInstallUpdate,
-  initialTab = "gjc",
+  initialTab = "agents",
   onLogin,
 }: SettingsDialogProps) {
   const detectedPreset = connection.modelPreset ?? DEFAULT_MODEL_PRESET;
@@ -213,14 +215,13 @@ export function SettingsDialog({
     workspaceLabel: t("내 작업 공간"),
     modelPreset: detectedPreset,
     permissionHandling: "prompt",
-    gjcExecutable: "",
+    agents: {},
     thoughtsExpanded,
     toolViewMode: DEFAULT_TOOL_VIEW_MODE,
     notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     desktopIntegration: DEFAULT_DESKTOP_INTEGRATION,
     language: getLanguage(),
     runningSubmission: "queue",
-    newSessionKind: "app",
   };
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => readStoredTheme());
@@ -270,8 +271,9 @@ export function SettingsDialog({
   const runtimeDirty =
     preferences.modelPreset !== original.modelPreset ||
     preferences.permissionHandling !== original.permissionHandling ||
-    preferences.gjcExecutable !== original.gjcExecutable;
+    (preferences.agents?.gjc?.executable ?? "") !== (original.agents?.gjc?.executable ?? "");
   const tabTitle = {
+    agents: t("에이전트"),
     gjc: "GJC",
     gjcAdvanced: t("고급 설정"),
     appearance: t("모양"),
@@ -286,6 +288,7 @@ export function SettingsDialog({
     automations: t("자동화"),
   }[tab];
   const tabDescription = {
+    agents: t("이 Mac에서 찾은 에이전트와 새 세션이 시작될 에이전트·실행 옵션을 설정합니다."),
     gjc: t("GJC 실행 파일과 새 세션이 시작될 모델 프로필·도구 승인 방식을 설정합니다."),
     gjcAdvanced: t("GJC가 세션에서 쓰는 켜고 끄는 설정과 숫자 설정을 바꿉니다."),
     appearance: t("앱의 테마와 표시 언어를 설정합니다."),
@@ -363,25 +366,24 @@ export function SettingsDialog({
     }
   }
 
-  async function persistNewSessionKind(value: NewSessionKind): Promise<void> {
-    if (!settingsBridge) return;
-    const previous = preferencesRef.current.newSessionKind;
-    const optimistic = { ...preferencesRef.current, newSessionKind: value };
-    preferencesRef.current = optimistic;
-    setPreferences(optimistic);
-    setSaveError("");
-    try {
-      const saved = await settingsBridge.setNewSessionKind(value);
-      const current = { ...preferencesRef.current, newSessionKind: saved };
-      preferencesRef.current = current;
-      setPreferences(current);
-      setOriginal((original) => ({ ...original, newSessionKind: saved }));
-    } catch (error) {
-      const restored = { ...preferencesRef.current, newSessionKind: previous };
-      preferencesRef.current = restored;
-      setPreferences(restored);
-      setSaveError(settingsErrorMessage(error));
-    }
+  /** A field the agents tab saved on its own channel: the dialog's copy and its baseline follow it. */
+  function adoptSaved(change: { agents?: AgentPreferencesMap; newSession?: NewSessionChoice | null }): void {
+    const apply = (value: AgentControlPreferences): AgentControlPreferences => {
+      const next = { ...value };
+      if (change.agents) {
+        // GJC's executable is still the dialog's own edit until saved with the GJC settings
+        const gjcExecutable = value.agents?.gjc?.executable;
+        next.agents = { ...change.agents, ...(gjcExecutable ? { gjc: { ...change.agents.gjc, executable: gjcExecutable } } : {}) };
+      }
+      if (change.newSession !== undefined) {
+        if (change.newSession) next.newSession = change.newSession;
+        else delete next.newSession;
+      }
+      return next;
+    };
+    preferencesRef.current = apply(preferencesRef.current);
+    setPreferences(preferencesRef.current);
+    setOriginal((current) => apply(current));
   }
 
   async function persistDesktopIntegration(
@@ -547,6 +549,13 @@ export function SettingsDialog({
       >
         <nav>
           <h2>{t("설정")}</h2>
+          <button
+            type="button"
+            className={tab === "agents" ? "is-active" : ""}
+            onClick={() => setTab("agents")}
+          >
+            <Bot size={17} /> {t("에이전트")}
+          </button>
           <button
             type="button"
             className={tab === "gjc" ? "is-active" : ""}
@@ -844,6 +853,17 @@ export function SettingsDialog({
             </div>
           )}
 
+          {tab === "agents" && (
+            <AgentsSettingsPanel
+              key={loaded ? "loaded" : "fallback"}
+              bridge={settingsBridge}
+              agents={preferences.agents ?? {}}
+              newSession={preferences.newSession}
+              onAgents={(agents) => adoptSaved({ agents })}
+              onNewSession={(choice) => adoptSaved({ newSession: choice ?? null })}
+              onOpenGjc={() => setTab("gjc")}
+            />
+          )}
           {tab === "gjcAdvanced" && (
             <GjcSettingsPanel bridge={settingsBridge} />
           )}
@@ -962,37 +982,23 @@ export function SettingsDialog({
                     }
                   />
                 </label>
-                <label>
-                  <span>
-                    <strong>{t("새 세션 종류")}</strong>
-                    <small>
-                      {t("새 세션을 앱 화면의 GJC 채팅으로 열지, 그 폴더의 터미널(CLI)로 열지 고릅니다.")}
-                    </small>
-                  </span>
-                  <Dropdown
-                    value={preferences.newSessionKind}
-                    ariaLabel={t("새 세션 종류")}
-                    options={[
-                      { value: "app", label: t("앱") },
-                      { value: "cli", label: t("CLI") },
-                    ]}
-                    onChange={(value) => void persistNewSessionKind(value as NewSessionKind)}
-                  />
-                </label>
-                <BackgroundTerminalsRow />
                 <label className="settings-field-wide">
                   <span>
                     <strong>{t("GJC 실행 파일")}</strong>
                     <small>{t("비워 두면 로컬 설치를 자동으로 찾습니다")}</small>
                   </span>
                   <input
-                    value={preferences.gjcExecutable}
+                    value={preferences.agents?.gjc?.executable ?? ""}
                     placeholder="Auto-detect (~/.bun/bin/gjc)"
                     onChange={(event) =>
-                      editPreferences((current) => ({
-                        ...current,
-                        gjcExecutable: event.target.value,
-                      }))
+                      editPreferences((current) => {
+                        const { executable: _previous, ...gjc } = current.agents?.gjc ?? {};
+                        const executable = event.target.value;
+                        return {
+                          ...current,
+                          agents: { ...current.agents, gjc: { ...gjc, ...(executable ? { executable } : {}) } },
+                        };
+                      })
                     }
                   />
                 </label>

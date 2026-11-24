@@ -46,6 +46,8 @@ export interface AgentDetectorOptions {
   home: string;
   version?: VersionRunner;
   catalog?: readonly AgentCatalogEntry[];
+  /** The executable the settings name for an agent: it wins over every search. */
+  executableOf?: (id: AgentKindId) => string | undefined;
 }
 
 /**
@@ -72,6 +74,14 @@ export class AgentDetector {
     if (!entry) return { id, name: id, installed: false, reason: hostText("알 수 없는 에이전트입니다") };
     // the login shell is always there; the terminal decides which one
     if (entry.binaries.length === 0) return { id, name: entry.name, installed: true };
+    const configured = this.options.executableOf?.(id);
+    if (configured) {
+      const found = path.isAbsolute(configured) ? await executable(configured) : undefined;
+      const version = found ? await this.cachedVersion(configured, found.mtimeMs, entry.versionArgs) : null;
+      if (version === null)
+        return { id, name: entry.name, installed: false, binary: configured, configured: true, reason: hostText("설정한 실행 파일을 쓸 수 없습니다") };
+      return { id, name: entry.name, installed: true, binary: configured, configured: true, ...(version ? { version } : {}) };
+    }
     const directories = [
       ...(await this.options.searchPath()),
       ...entry.installDirs.map((directory) =>

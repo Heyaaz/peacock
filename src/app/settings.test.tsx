@@ -31,21 +31,20 @@ const fallback: AgentControlPreferences = {
   workspaceLabel: "개인 Workspace",
   modelPreset: "codex-medium",
   permissionHandling: "prompt",
-  gjcExecutable: "",
+  agents: {},
   thoughtsExpanded: false,
   toolViewMode: "reasoning",
   notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
   desktopIntegration: DEFAULT_DESKTOP_INTEGRATION,
   language: "ko",
   runningSubmission: "queue",
-  newSessionKind: "app",
 };
 
 const loaded: AgentControlPreferences = {
   ...fallback,
   workspace: "/loaded",
   modelPreset: "codex-pro",
-  gjcExecutable: "/opt/gjc",
+  agents: { gjc: { executable: "/opt/gjc" } },
   permissionHandling: "always-allow",
 };
 
@@ -106,7 +105,7 @@ describe("settings save completion", () => {
   const saved: AgentControlPreferences = {
     ...loaded,
     modelPreset: "saved-profile",
-    gjcExecutable: "",
+    agents: {},
   };
   const newer: AgentControlPreferences = {
     ...loaded,
@@ -201,6 +200,7 @@ describe("settings AI sign-in entry", () => {
     vi.stubGlobal("window", { agentControlDesktop: undefined });
     return renderToStaticMarkup(
       createElement(SettingsDialog, {
+        initialTab: "gjc",
         connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
         thoughtsExpanded: false,
         onToggleThoughtsExpanded: () => undefined,
@@ -243,6 +243,7 @@ describe("settings reasoning-card toggle", () => {
       act(async () => {
         root.render(
           createElement(SettingsDialog, {
+            initialTab: "gjc",
             connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
             thoughtsExpanded,
             onToggleThoughtsExpanded,
@@ -277,6 +278,7 @@ describe("settings reasoning-card toggle", () => {
 describe("settings command rules", () => {
   const dialog = () =>
     createElement(SettingsDialog, {
+      initialTab: "gjc",
       connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
       thoughtsExpanded: false,
       onToggleThoughtsExpanded: () => undefined,

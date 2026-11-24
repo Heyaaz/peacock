@@ -3,7 +3,7 @@ import { open, stat } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { AgentControlPreferences, FileAttachment, ImageAttachment, UiLanguage } from '../shared/agent-contract.js'
+import { gjcExecutableOf, type AgentControlPreferences, type FileAttachment, type ImageAttachment, type UiLanguage } from '../shared/agent-contract.js'
 import { SETTINGS_IPC, type WorkspaceInspection } from '../shared/settings-ipc.js'
 import { isGitRepository } from './git-exclude.js'
 import { broadFolders, isBroadWorkspace } from './workspace-scope.js'
@@ -241,8 +241,11 @@ export function registerSettingsIpcHandlers(
   }))
   ipcMain.handle(SETTINGS_IPC.setRunningSubmission, security.guarded((_event, value: unknown) =>
     store.setRunningSubmission(value)))
-  ipcMain.handle(SETTINGS_IPC.setNewSessionKind, security.guarded((_event, value: unknown) =>
-    store.setNewSessionKind(value)))
+  // read again where they are used: the agent detector, the environment check, onboarding
+  ipcMain.handle(SETTINGS_IPC.setNewSession, security.guarded((_event, value: unknown) =>
+    store.setNewSession(value)))
+  ipcMain.handle(SETTINGS_IPC.setAgentPreferences, security.guarded((_event, agentKind: unknown, value: unknown) =>
+    store.setAgentPreferences(agentKind, value)))
   ipcMain.handle(SETTINGS_IPC.setViewedSession, security.guarded((event, sessionId: unknown) => {
     if (sessionId !== null && (typeof sessionId !== 'string' || !sessionId))
       throw new Error('Viewed session must be a session ID or null')
@@ -259,7 +262,7 @@ export function registerSettingsIpcHandlers(
     const runtimeReconnected = await onPreferencesSaved?.(saved) ?? false
     return { preferences: saved, runtimeReconnected }
   }))
-  const executable = () => store.get().gjcExecutable || process.env.GJC_BIN || 'gjc'
+  const executable = () => gjcExecutableOf(store.get(), process.env) || 'gjc'
   ipcMain.handle(SETTINGS_IPC.checkGjcUpdate, security.guarded(() => checkGjcUpdate(executable())))
   ipcMain.handle(SETTINGS_IPC.listGjcSettings, security.guarded(() => listGjcSettings(executable())))
   ipcMain.handle(SETTINGS_IPC.applyGjcSettings, security.guarded(async (event, changes: unknown) => {

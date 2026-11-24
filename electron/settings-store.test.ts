@@ -77,26 +77,77 @@ describe('SettingsStore', () => {
       workspaceLabel: '내 작업 공간',
       modelPreset: 'codex-medium',
       permissionHandling: 'prompt',
-      gjcExecutable: '',
+      agents: {},
       thoughtsExpanded: false,
       toolViewMode: 'reasoning',
       notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
       desktopIntegration: DEFAULT_DESKTOP_INTEGRATION,
       language: 'ko',
       runningSubmission: 'queue',
-      newSessionKind: 'app',
+      // a stored file from before the choice existed: every new session was a GJC chat
+      newSession: { agentKind: 'gjc', surface: 'chat' },
     })
   })
 
-  it('saves what a new session opens on its own channel, and reads junk as the app', () => {
+  it('leaves a first run with no choice of agent, and keeps it unchosen across a save', () => {
     const root = temporaryDirectory()
     const userData = path.join(root, 'user-data')
     const store = new SettingsStore(userData, root)
-    expect(store.get().newSessionKind).toBe('app')
-    expect(store.setNewSessionKind('cli')).toBe('cli')
-    expect(new SettingsStore(userData, root).get().newSessionKind).toBe('cli')
-    expect(() => store.setNewSessionKind('terminal')).toThrow(/app or cli/)
-    expect(parsePreferences({ newSessionKind: 'terminal' }, root).newSessionKind).toBe('app')
+    expect(store.get().newSession).toBeUndefined()
+    store.setWorkspaceLabel('Anything')
+    expect(JSON.parse(readFileSync(path.join(userData, 'agent-control-settings.json'), 'utf8')).newSession).toBeNull()
+    expect(new SettingsStore(userData, root).get().newSession).toBeUndefined()
+  })
+
+  it('migrates newSessionKind: app is the GJC chat, cli a shell terminal', () => {
+    const root = temporaryDirectory()
+    expect(parsePreferences({ newSessionKind: 'app' }, root).newSession).toEqual({ agentKind: 'gjc', surface: 'chat' })
+    expect(parsePreferences({ newSessionKind: 'cli' }, root).newSession).toEqual({ agentKind: 'shell', surface: 'terminal' })
+    expect(parsePreferences({ newSessionKind: 'cli', newSession: { agentKind: 'claude', surface: 'chat' } }, root).newSession).toEqual({ agentKind: 'claude', surface: 'chat' })
+    // a screen the agent does not have is no choice: the first installed agent comes first again
+    expect(parsePreferences({ newSession: { agentKind: 'gjc', surface: 'terminal' } }, root).newSession).toBeUndefined()
+    expect(parsePreferences(undefined, root).newSession).toBeUndefined()
+  })
+
+  it('saves what a new session opens on its own channel, and forgets it on null', () => {
+    const root = temporaryDirectory()
+    const userData = path.join(root, 'user-data')
+    const store = new SettingsStore(userData, root)
+    expect(store.setNewSession({ agentKind: 'claude', surface: 'terminal' })).toEqual({ agentKind: 'claude', surface: 'terminal' })
+    expect(new SettingsStore(userData, root).get().newSession).toEqual({ agentKind: 'claude', surface: 'terminal' })
+    expect(() => store.setNewSession({ agentKind: 'shell', surface: 'chat' })).toThrow(/screen it has/)
+    expect(() => store.setNewSession({ agentKind: 'vim', surface: 'terminal' })).toThrow(/screen it has/)
+    expect(store.setNewSession(null)).toBeNull()
+    expect(new SettingsStore(userData, root).get().newSession).toBeUndefined()
+  })
+
+  it('moves the GJC executable to agents.gjc.executable, and keeps each agent apart', () => {
+    const root = temporaryDirectory()
+    const userData = path.join(root, 'user-data')
+    const gjc = path.join(root, 'gjc')
+    const claude = path.join(root, 'claude')
+    for (const file of [gjc, claude]) {
+      writeFileSync(file, '#!/bin/sh\n')
+      chmodSync(file, 0o700)
+    }
+    mkdirSync(userData, { recursive: true })
+    writeFileSync(path.join(userData, 'agent-control-settings.json'), JSON.stringify({ workspace: root, gjcExecutable: gjc, newSessionKind: 'app' }))
+    const store = new SettingsStore(userData, root)
+    expect(store.get().agents).toEqual({ gjc: { executable: gjc } })
+    expect(store.get()).not.toHaveProperty('gjcExecutable')
+    expect(store.setAgentPreferences('claude', { executable: claude, launch: { model: 'haiku', permissionMode: 'default' } })).toEqual({
+      gjc: { executable: gjc },
+      claude: { executable: claude, launch: { model: 'haiku', permissionMode: 'default' } },
+    })
+    expect(() => store.setAgentPreferences('claude', { launch: { permissionMode: 'yolo' } })).toThrow(/not one claude takes/)
+    expect(() => store.setAgentPreferences('omp', { executable: path.join(root, 'missing') })).toThrow(/executable absolute path/)
+    expect(() => store.setAgentPreferences('gjc', { executable: gjc })).toThrow(/GJC settings/)
+    expect(store.setAgentPreferences('claude', { executable: '', launch: {} })).toEqual({ gjc: { executable: gjc } })
+    // GJC's executable is saved with the runtime settings, the other agents' stay as they are
+    store.setAgentPreferences('omp', { launch: { permissionMode: 'always-ask' } })
+    const saved = store.save({ ...store.get(), agents: {} })
+    expect(saved.agents).toEqual({ omp: { launch: { permissionMode: 'always-ask' } } })
+    expect(new SettingsStore(userData, root).get().agents).toEqual(saved.agents)
   })
 
   it('accepts a configured custom GJC model profile', () => {
@@ -141,11 +192,11 @@ describe('SettingsStore', () => {
       workspaceLabel: 'Client projects',
       modelPreset: 'my-custom-profile',
       permissionHandling: 'auto',
-      gjcExecutable: executable,
+      agents: { gjc: { executable } },
       thoughtsExpanded: true,
     })
 
-    expect(saved).toEqual({ workspace, workspaceLabel: '내 작업 공간', modelPreset: 'my-custom-profile', permissionHandling: 'auto', gjcExecutable: executable, thoughtsExpanded: false, toolViewMode: 'reasoning', notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES, desktopIntegration: DEFAULT_DESKTOP_INTEGRATION, language: 'ko', runningSubmission: 'queue', newSessionKind: 'app' })
+    expect(saved).toEqual({ workspace, workspaceLabel: '내 작업 공간', modelPreset: 'my-custom-profile', permissionHandling: 'auto', agents: { gjc: { executable } }, thoughtsExpanded: false, toolViewMode: 'reasoning', notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES, desktopIntegration: DEFAULT_DESKTOP_INTEGRATION, language: 'ko', runningSubmission: 'queue' })
     expect(new SettingsStore(userData, root).get()).toEqual(saved)
     expect(store.setWorkspaceLabel('Renamed workspace')).toBe('Renamed workspace')
     expect(new SettingsStore(userData, root).get().workspaceLabel).toBe('Renamed workspace')
@@ -215,7 +266,7 @@ describe('SettingsStore', () => {
       workspaceLabel: 'Accepted workspace',
       modelPreset: 'codex-medium',
       permissionHandling: 'prompt',
-      gjcExecutable: '',
+      agents: {},
       thoughtsExpanded: false,
     })
     const temporaryPath = path.join(userData, 'agent-control-settings.json.tmp')
@@ -260,7 +311,7 @@ describe('SettingsStore', () => {
   it('saves a settings file that never carried the preference and refuses a junk one', () => {
     const root = temporaryDirectory()
     const store = new SettingsStore(path.join(root, 'user-data'), root)
-    const base = { workspace: root, workspaceLabel: 'Private workspace', modelPreset: 'codex-medium', permissionHandling: 'prompt', gjcExecutable: '' }
+    const base = { workspace: root, workspaceLabel: 'Private workspace', modelPreset: 'codex-medium', permissionHandling: 'prompt', agents: {} }
 
     expect(store.validate(base).thoughtsExpanded).toBe(false)
     expect(store.validate({ ...base, thoughtsExpanded: true }).thoughtsExpanded).toBe(true)
@@ -295,7 +346,7 @@ describe('SettingsStore', () => {
   it('validates a density value that is present', () => {
     const root = temporaryDirectory()
     const store = new SettingsStore(path.join(root, 'user-data'), root)
-    const base = { workspace: root, workspaceLabel: 'Private workspace', modelPreset: 'codex-medium', permissionHandling: 'prompt', gjcExecutable: '' }
+    const base = { workspace: root, workspaceLabel: 'Private workspace', modelPreset: 'codex-medium', permissionHandling: 'prompt', agents: {} }
 
     expect(store.validate(base).toolViewMode).toBe('reasoning')
     expect(store.validate({ ...base, toolViewMode: 'basic' }).toolViewMode).toBe('basic')
@@ -310,7 +361,7 @@ describe('SettingsStore', () => {
       workspaceLabel: 'Private workspace',
       modelPreset: 'codex-medium',
       permissionHandling: 'prompt',
-      gjcExecutable: '',
+      agents: {},
       thoughtsExpanded: false,
     })).toThrow('Workspace must be an existing absolute directory')
   })

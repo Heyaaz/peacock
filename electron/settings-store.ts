@@ -12,18 +12,25 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import type {
   AgentControlPreferences,
+  AgentKindId,
+  AgentPreferences,
+  AgentPreferencesMap,
   GjcPermissionHandling,
-  NewSessionKind,
+  NewSessionChoice,
   NotificationPreferences,
   ToolViewMode,
   UiLanguage,
 } from '../shared/agent-contract.js'
 import {
+  AGENT_KIND_IDS,
   DEFAULT_MODEL_PRESET,
   DEFAULT_TOOL_VIEW_MODE,
+  isAgentKindId,
   isToolViewMode,
   parseNotificationPreferences,
 } from '../shared/agent-contract.js'
+import { agentSupportsSurface } from '../shared/agent-catalog.js'
+import { launchOptionsFault, launchOptions } from '../shared/agent-launch.js'
 import {
   parseDesktopIntegration,
   type DesktopIntegrationPreferences,
@@ -62,10 +69,69 @@ function validExecutable(value: unknown): value is string {
   }
 }
 
+/** A choice of what 새 세션 opens, if it names an agent and a screen that agent has. */
+export function parseNewSessionChoice(value: unknown): NewSessionChoice | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const { agentKind, surface } = value as { agentKind?: unknown; surface?: unknown }
+  if (!isAgentKindId(agentKind) || (surface !== 'chat' && surface !== 'terminal')) return undefined
+  return agentSupportsSurface(agentKind, surface) ? { agentKind, surface } : undefined
+}
+
+/** One agent's settings, keeping only what is valid: a stored file may be older or hand-edited. */
+function parseAgentPreferences(agentKind: AgentKindId, value: unknown): AgentPreferences | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const { executable, launch } = value as { executable?: unknown; launch?: unknown }
+  const parsed: AgentPreferences = {}
+  if (typeof executable === 'string' && executable !== '' && validExecutable(executable)) parsed.executable = executable
+  if (launch !== undefined && launchOptionsFault(agentKind, launch) === null) {
+    const options = launchOptions(agentKind, launch)
+    if (options) parsed.launch = options
+  }
+  return Object.keys(parsed).length > 0 ? parsed : undefined
+}
+
+/**
+ * Every agent's settings. A file from before P5 kept GJC's executable as
+ * `gjcExecutable`; it becomes `agents.gjc.executable` unless that is already set.
+ */
+function parseAgents(candidate: Record<string, unknown>): AgentPreferencesMap {
+  const stored = candidate.agents && typeof candidate.agents === 'object' && !Array.isArray(candidate.agents)
+    ? candidate.agents as Record<string, unknown>
+    : {}
+  const agents: AgentPreferencesMap = {}
+  for (const id of AGENT_KIND_IDS) {
+    const parsed = parseAgentPreferences(id, stored[id])
+    if (parsed) agents[id] = parsed
+  }
+  const legacy = candidate.gjcExecutable
+  if (!agents.gjc?.executable && typeof legacy === 'string' && legacy !== '' && validExecutable(legacy))
+    agents.gjc = { ...agents.gjc, executable: legacy }
+  return agents
+}
+
+/**
+ * What 새 세션 opens. A file from before P5 has `newSessionKind` instead: `app` was
+ * the GJC chat and `cli` a shell's terminal, and a stored file with neither predates
+ * the choice, when every new session was a GJC chat. Only a first run (no file)
+ * leaves it unset, for the first installed agent.
+ */
+function parseNewSession(candidate: Record<string, unknown>, stored: boolean): NewSessionChoice | undefined {
+  const chosen = parseNewSessionChoice(candidate.newSession)
+  if (chosen) return chosen
+  // a file this version wrote says `null` for "not chosen yet"
+  if (candidate.newSession === null) return undefined
+  if (candidate.newSessionKind === 'cli') return { agentKind: 'shell', surface: 'terminal' }
+  if (candidate.newSessionKind === 'app' || (stored && candidate.newSession === undefined)) return { agentKind: 'gjc', surface: 'chat' }
+  return undefined
+}
+
 export function parsePreferences(value: unknown, defaultWorkspace: string): AgentControlPreferences {
+  const stored = Boolean(value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0)
   const candidate = value && typeof value === 'object'
     ? value as Partial<AgentControlPreferences>
     : {}
+  const record = candidate as Record<string, unknown>
+  const newSession = parseNewSession(record, stored)
   return {
     workspace: validDirectory(candidate.workspace)
       ? path.resolve(candidate.workspace)
@@ -83,7 +149,7 @@ export function parsePreferences(value: unknown, defaultWorkspace: string): Agen
     permissionHandling: PERMISSION_MODES.has(candidate.permissionHandling as GjcPermissionHandling)
       ? candidate.permissionHandling as GjcPermissionHandling
       : 'prompt',
-    gjcExecutable: validExecutable(candidate.gjcExecutable) ? candidate.gjcExecutable : '',
+    agents: parseAgents(record),
     // Junk in a stored file reads as collapsed. Only a stored `true` opens the cards,
     // so a hand-edited or older value cannot leave the preference stuck open.
     thoughtsExpanded: candidate.thoughtsExpanded === true,
@@ -99,7 +165,7 @@ export function parsePreferences(value: unknown, defaultWorkspace: string): Agen
     language: candidate.language === 'en' ? 'en' : 'ko',
     runningSubmission:
       candidate.runningSubmission === "steer" ? "steer" : "queue",
-    newSessionKind: candidate.newSessionKind === "cli" ? "cli" : "app",
+    ...(newSession ? { newSession } : {}),
   }
 }
 
@@ -129,7 +195,8 @@ export class SettingsStore {
     if (!PERMISSION_MODES.has((value as Partial<AgentControlPreferences> | null)?.permissionHandling as GjcPermissionHandling)) {
       throw new Error('Unsupported GJC permission mode')
     }
-    if (!validExecutable((value as Partial<AgentControlPreferences> | null)?.gjcExecutable)) {
+    const gjcExecutable = (value as Partial<AgentControlPreferences> | null)?.agents?.gjc?.executable
+    if (gjcExecutable !== undefined && !validExecutable(gjcExecutable)) {
       throw new Error('GJC executable must be blank or an executable absolute path')
     }
     // A stored file written before this preference existed has no key at all; only a
@@ -156,11 +223,26 @@ export class SettingsStore {
    * (another window toggled it since), so the stored value is kept.
    */
   save(value: unknown): AgentControlPreferences {
-    const { workspace, modelPreset, permissionHandling, gjcExecutable } = this.validate(value)
-    const preferences = { ...this.preferences, workspace, modelPreset, permissionHandling, gjcExecutable }
+    const { workspace, modelPreset, permissionHandling, agents } = this.validate(value)
+    // GJC's executable is a runtime setting saved with the rest; other agents keep theirs
+    const { gjc: _previous, ...others } = this.preferences.agents
+    const gjc = agents.gjc?.executable ? { ...this.preferences.agents.gjc, executable: agents.gjc.executable } : this.withoutExecutable(this.preferences.agents.gjc)
+    const preferences = {
+      ...this.preferences,
+      workspace,
+      modelPreset,
+      permissionHandling,
+      agents: { ...others, ...(gjc ? { gjc } : {}) },
+    }
     this.persist(preferences)
     this.preferences = preferences
     return this.get()
+  }
+
+  private withoutExecutable(value: AgentPreferences | undefined): AgentPreferences | undefined {
+    if (!value) return undefined
+    const { executable: _executable, ...rest } = value
+    return Object.keys(rest).length > 0 ? rest : undefined
   }
 
   setWorkspaceLabel(value: unknown): string {
@@ -199,15 +281,53 @@ export class SettingsStore {
     return this.preferences.runningSubmission
   }
 
-  /** What 새 세션 opens, saved without the runtime confirmation. */
-  setNewSessionKind(value: unknown): NewSessionKind {
-    if (value !== "app" && value !== "cli")
-      throw new Error("New session kind must be app or cli")
-    const newSessionKind: NewSessionKind = value
-    const preferences = { ...this.preferences, newSessionKind }
+  /** What 새 세션 opens, saved without the runtime confirmation; null forgets it. */
+  setNewSession(value: unknown): NewSessionChoice | null {
+    if (value === null) {
+      const { newSession: _forgotten, ...rest } = this.preferences
+      this.persist(rest)
+      this.preferences = rest
+      return null
+    }
+    const newSession = parseNewSessionChoice(value)
+    if (!newSession) throw new Error('New session must name an agent and a screen it has')
+    const preferences = { ...this.preferences, newSession }
     this.persist(preferences)
     this.preferences = preferences
-    return this.preferences.newSessionKind
+    return newSession
+  }
+
+  /**
+   * One agent's executable and new-session defaults, saved without the runtime
+   * confirmation: they change what the next terminal starts, not a running one.
+   * GJC's executable is a runtime setting and goes through `save`.
+   */
+  setAgentPreferences(agentKind: unknown, value: unknown): AgentPreferencesMap {
+    if (!isAgentKindId(agentKind)) throw new Error('Unknown agent')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Agent settings must be an object')
+    const { executable, launch } = value as { executable?: unknown; launch?: unknown }
+    if (executable !== undefined && executable !== '' && !validExecutable(executable))
+      throw new Error('Executable must be blank or an executable absolute path')
+    if (agentKind === 'gjc' && executable !== undefined) throw new Error('GJC executable is saved with the GJC settings')
+    const fault = launch === undefined ? null : launchOptionsFault(agentKind, launch)
+    if (fault) throw new Error(fault)
+    const next: AgentPreferences = { ...this.preferences.agents[agentKind] }
+    if (executable !== undefined) {
+      if (executable === '') delete next.executable
+      else next.executable = executable as string
+    }
+    if (launch !== undefined) {
+      const options = launchOptions(agentKind, launch)
+      if (options) next.launch = options
+      else delete next.launch
+    }
+    const agents = { ...this.preferences.agents }
+    if (Object.keys(next).length > 0) agents[agentKind] = next
+    else delete agents[agentKind]
+    const preferences = { ...this.preferences, agents }
+    this.persist(preferences)
+    this.preferences = preferences
+    return { ...agents }
   }
 
   /** Resolved UI language for native host text. */
@@ -248,7 +368,8 @@ export class SettingsStore {
   private persist(preferences: AgentControlPreferences): void {
     mkdirSync(path.dirname(this.filePath), { recursive: true })
     const temporaryPath = `${this.filePath}.tmp`
-    writeFileSync(temporaryPath, `${JSON.stringify(preferences, null, 2)}\n`, { mode: 0o600 })
+    // `newSession: null` tells a first run's file from one written before the choice existed
+    writeFileSync(temporaryPath, `${JSON.stringify({ ...preferences, newSession: preferences.newSession ?? null }, null, 2)}\n`, { mode: 0o600 })
     renameSync(temporaryPath, this.filePath)
   }
 

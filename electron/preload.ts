@@ -20,6 +20,9 @@ import type {
   McpServerInput,
   NotificationPreferences,
   UiLanguage,
+  AgentKindId,
+  AgentPreferences,
+  NewSessionChoice,
 } from "../shared/agent-contract.js";
 import type { ProductivityDesktopBridge } from "../shared/productivity-ipc.js";
 import type { DesktopIntegrationPreferences } from "../shared/desktop-integration.js";
@@ -483,8 +486,10 @@ const settings: SettingsDesktopBridge = Object.freeze({
     ipcRenderer.invoke(SETTINGS_IPC.setViewedSession, sessionId),
   setRunningSubmission: (value: "queue" | "steer") =>
     ipcRenderer.invoke(SETTINGS_IPC.setRunningSubmission, value),
-  setNewSessionKind: (value: "app" | "cli") =>
-    ipcRenderer.invoke(SETTINGS_IPC.setNewSessionKind, value),
+  setNewSession: (value: NewSessionChoice | null) =>
+    ipcRenderer.invoke(SETTINGS_IPC.setNewSession, value),
+  setAgentPreferences: (agentKind: AgentKindId, value: AgentPreferences) =>
+    ipcRenderer.invoke(SETTINGS_IPC.setAgentPreferences, agentKind, value),
   savePreferences: (preferences: AgentControlPreferences) =>
     ipcRenderer.invoke(SETTINGS_IPC.savePreferences, preferences),
   checkGjcUpdate: () => ipcRenderer.invoke(SETTINGS_IPC.checkGjcUpdate),
@@ -655,6 +660,8 @@ const parallel: ParallelDesktopBridge = Object.freeze({
 });
 const onboarding: OnboardingDesktopBridge = Object.freeze({
   pendingStep: () => ipcRenderer.invoke(ONBOARDING_IPC.pendingStep),
+  listAgents: () => ipcRenderer.invoke(ONBOARDING_IPC.listAgents),
+  chooseAgent: (agentKind: AgentKindId) => ipcRenderer.invoke(ONBOARDING_IPC.chooseAgent, agentKind),
   needsSignIn: () => ipcRenderer.invoke(ONBOARDING_IPC.needsSignIn),
   installGjc: () => ipcRenderer.invoke(ONBOARDING_IPC.installGjc),
   signIn: (providerId: string) => ipcRenderer.invoke(ONBOARDING_IPC.signIn, providerId),
