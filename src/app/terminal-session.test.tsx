@@ -5,7 +5,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../backend/types";
+import { initialAgent } from "./agent-choice";
 import { NewSessionDialog, type NewSessionInput } from "./dialogs";
+import type { AgentAvailability } from "../../shared/terminal-ipc";
+
+const AGENT = (id: AgentAvailability["id"]): AgentAvailability => ({ id, name: id, installed: true, ...(id === "shell" ? {} : { binary: `/bin/${id}` }) });
 import { Sidebar } from "./sidebar";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -81,17 +85,25 @@ describe("new session dialog", () => {
     });
   });
 
-  it("opens a CLI session, named after its folder, when the settings choose CLI", async () => {
+  it("starts on the agent last chosen while it is installed, a terminal session named after its folder", async () => {
     const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
+    Object.assign(window, {
+      agentControlDesktop: {
+        terminal: { listAgents: async () => [AGENT("claude"), AGENT("shell")] },
+      },
+    });
     const node = await mount(
       createElement(NewSessionDialog, {
         defaultWorkspace: "/work/repo",
-        kind: "terminal",
+        terminalSessions: true,
+        choice: { agentKind: "shell", surface: "terminal" },
         onCancel: noop,
         onCreate,
       }),
     );
-    expect(node.querySelector("h2")?.textContent).toBe("새 터미널 세션");
+    await act(async () => undefined);
+    Reflect.deleteProperty(window, "agentControlDesktop");
+    expect(node.querySelector<HTMLInputElement>('input[name="session-agent"]:checked')?.value).toBe("shell");
     expect(node.querySelector("fieldset.isolation-options")).toBeNull();
 
     await submit(node);
@@ -99,15 +111,18 @@ describe("new session dialog", () => {
       title: "repo",
       workspace: "/work/repo",
       kind: "terminal",
+      surface: "terminal",
+      remember: true,
     });
   });
 
-  it("keeps a handed-over request on a GJC session even when the settings choose CLI", async () => {
+  it("keeps a handed-over request on a GJC session whatever was chosen before", async () => {
     const onCreate = vi.fn<(input: NewSessionInput) => void>();
     const node = await mount(
       createElement(NewSessionDialog, {
         defaultWorkspace: "/repo",
-        kind: "terminal",
+        terminalSessions: true,
+        choice: { agentKind: "claude", surface: "terminal" },
         prefill: { prompt: "  CI를 고쳐 줘 " },
         onCancel: noop,
         onCreate,
@@ -118,6 +133,7 @@ describe("new session dialog", () => {
     await submit(node);
     expect(onCreate.mock.calls[0]![0]).toMatchObject({ initialPrompt: "CI를 고쳐 줘" });
     expect(onCreate.mock.calls[0]![0]).not.toHaveProperty("kind");
+    expect(onCreate.mock.calls[0]![0]).not.toHaveProperty("remember");
   });
 });
 
@@ -165,35 +181,93 @@ describe("terminal agents in the new session dialog", () => {
     act(async () =>
       node.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
     );
+  const select = (node: HTMLElement, value: string) =>
+    act(async () => {
+      const field = node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!;
+      field.value = value;
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    });
 
-  it("switches to a terminal and opens the chosen agent, leaving one that is missing disabled", async () => {
+  it("starts on the first installed of Claude Code, omp, codex and GJC, with its screen and permission mode", async () => {
     const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
     Object.assign(window, {
       agentControlDesktop: {
         terminal: {
           listAgents: async () => [
-            { id: "claude", name: "Claude Code", installed: true, binary: "/bin/claude", version: "2.1.331" },
+            AGENT("claude"),
             { id: "omp", name: "Oh My Pi", installed: false, reason: "설치되어 있지 않습니다" },
-            { id: "gjc", name: "GJC", installed: true },
-            { id: "shell", name: "Shell", installed: true },
+            AGENT("gjc"),
+            AGENT("shell"),
           ],
         },
       },
     });
-    const node = await mount(createElement(NewSessionDialog, { defaultWorkspace: "/work/repo", onCancel: noop, onCreate }));
-    expect(node.querySelector("h2")?.textContent).toBe("새 세션");
-    const terminalButton = [...node.querySelectorAll<HTMLButtonElement>(".session-kind-switch button")].find((button) => button.textContent === "터미널")!;
-    await act(async () => terminalButton.click());
+    const node = await mount(createElement(NewSessionDialog, { defaultWorkspace: "/work/repo", terminalSessions: true, onCancel: noop, onCreate }));
     await act(async () => undefined);
-    expect(node.querySelector("h2")?.textContent).toBe("새 터미널 세션");
-    const options = [...node.querySelectorAll<HTMLInputElement>('input[name="terminal-agent"]')];
-    expect(options.map((option) => option.value)).toEqual(["claude", "omp", "shell"]);
+    const options = [...node.querySelectorAll<HTMLInputElement>('input[name="session-agent"]')];
+    expect(options.map((option) => option.value)).toEqual(["claude", "omp", "gjc", "shell"]);
     expect(options.find((option) => option.value === "omp")!.disabled).toBe(true);
+    expect(node.querySelector<HTMLInputElement>('input[name="session-agent"]:checked')?.value).toBe("claude");
     expect(node.textContent).toContain("설치되어 있지 않습니다");
-    await act(async () => options.find((option) => option.value === "claude")!.click());
+    // Claude Code has both screens; the terminal comes first, as its catalog entry says
+    const chat = [...node.querySelectorAll<HTMLButtonElement>(".session-kind-switch button")].find((button) => button.textContent === "채팅")!;
+    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!.value).toBe("");
+    await act(async () => chat.click());
+    await select(node, "plan");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ title: "repo", workspace: "/work/repo", kind: "terminal", agentKind: "claude" });
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({
+      title: "repo",
+      workspace: "/work/repo",
+      kind: "terminal",
+      agentKind: "claude",
+      surface: "chat",
+      launch: { permissionMode: "plan" },
+      remember: true,
+    });
+  });
+
+  it("starts from the agent's defaults in the settings, and following the agent leaves its permission mode out", async () => {
+    const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
+    Object.assign(window, { agentControlDesktop: { terminal: { listAgents: async () => [AGENT("claude"), AGENT("shell")] } } });
+    const node = await mount(
+      createElement(NewSessionDialog, {
+        defaultWorkspace: "/work/repo",
+        terminalSessions: true,
+        choice: { agentKind: "claude", surface: "terminal" },
+        agentDefaults: { claude: { launch: { model: "haiku", permissionMode: "default" } } },
+        onCancel: noop,
+        onCreate,
+      }),
+    );
+    await act(async () => undefined);
+    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!.value).toBe("default");
+    await select(node, "");
+    await submit(node);
+    Reflect.deleteProperty(window, "agentControlDesktop");
+    expect(onCreate.mock.calls[0]![0]).toMatchObject({ agentKind: "claude", surface: "terminal", launch: { model: "haiku" } });
+    expect(onCreate.mock.calls[0]![0].launch).not.toHaveProperty("permissionMode");
+  });
+
+  it("offers only GJC when the backend runs no terminal sessions, as on a phone", async () => {
+    const onCreate = vi.fn<(input: NewSessionInput) => void>();
+    Object.assign(window, { agentControlDesktop: { terminal: { listAgents: async () => [AGENT("claude")] } } });
+    const node = await mount(
+      createElement(NewSessionDialog, { defaultWorkspace: "/repo", choice: { agentKind: "claude", surface: "terminal" }, onCancel: noop, onCreate }),
+    );
+    await act(async () => undefined);
+    Reflect.deleteProperty(window, "agentControlDesktop");
+    expect(node.querySelector('input[name="session-agent"]')).toBeNull();
+    await submit(node);
+    expect(onCreate.mock.calls[0]![0]).not.toHaveProperty("kind");
+    expect(onCreate.mock.calls[0]![0]).not.toHaveProperty("remember");
+  });
+
+  it("chooses the first installed agent, and GJC or a shell when no other is there", () => {
+    expect(initialAgent([AGENT("gjc"), AGENT("omp"), AGENT("shell")], undefined)).toBe("omp");
+    expect(initialAgent([AGENT("gjc"), AGENT("shell")], { agentKind: "claude", surface: "chat" })).toBe("gjc");
+    expect(initialAgent([AGENT("shell")], undefined)).toBe("shell");
+    expect(initialAgent([AGENT("claude"), AGENT("codex")], { agentKind: "codex", surface: "terminal" })).toBe("codex");
   });
 });
 
@@ -202,7 +276,7 @@ describe("terminal session row", () => {
     const node = await mount(
       createElement(Sidebar, {
         ...SIDEBAR_PROPS,
-        sessions: [row("terminal-2", { runtime: "terminal", agentKind: "claude", status: "waiting", title: "Claude" })],
+        sessions: [row("terminal-2", { runtime: "herdr", agentKind: "claude", status: "waiting", title: "Claude" })],
       }),
     );
     const sessionRow = node.querySelector<HTMLElement>(".session-row")!;
@@ -213,7 +287,7 @@ describe("terminal session row", () => {
   it("marks the row as a terminal and leaves only rename and delete in its menu", async () => {
     const node = await mount(
       createElement(Sidebar, {
-        sessions: [row("terminal-1", { runtime: "terminal", title: "셸" })],
+        sessions: [row("terminal-1", { runtime: "herdr", agentKind: "shell", title: "셸" })],
         connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/repo" },
         selectedId: null,
         grouping: "status",

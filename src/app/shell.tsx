@@ -24,7 +24,7 @@ import { Menu, Plus, X } from "lucide-react";
 import { TerminalView } from "./terminal-view";
 import { TerminalSessionPane } from "./terminal-session-pane";
 import { TerminalChatComposer } from "./terminal-chat-composer";
-import { capabilitiesOf, type MessageDelivery, type SessionCapabilities, type SessionSurface } from "../../shared/agent-contract";
+import { capabilitiesOf, runsInTerminal, type MessageDelivery, type SessionCapabilities, type SessionSurface } from "../../shared/agent-contract";
 import { agentCatalogEntry } from "../../shared/agent-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -153,7 +153,7 @@ export default function App() {
     itemId: string;
   } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"gjc" | "environment">("gjc");
+  const [settingsTab, setSettingsTab] = useState<"agents" | "gjc" | "environment">("agents");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorToolId, setInspectorToolId] = useState<string>();
   const [resumingId, setResumingId] = useState<string | null>(null);
@@ -213,14 +213,13 @@ export default function App() {
     workspaceLabel: t("내 작업 공간"),
     modelPreset: DEFAULT_MODEL_PRESET,
     permissionHandling: "prompt",
-    gjcExecutable: "",
+    agents: {},
     thoughtsExpanded: false,
     toolViewMode: DEFAULT_TOOL_VIEW_MODE,
     notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     desktopIntegration: DEFAULT_DESKTOP_INTEGRATION,
     language: getLanguage(),
     runningSubmission: "queue",
-    newSessionKind: "app",
   });
   const preferencesRef = useRef(preferences);
   // The card toggle is a stable callback so the memo'd transcript rows keep their
@@ -451,7 +450,7 @@ export default function App() {
   // agent whose transcript is read (Claude Code, omp) has a chat screen beside its
   // terminal: its conversation is read, but GJC's own reads (goal, subagents, git,
   // commands) are not, so `selectedSessionId` leaves it out.
-  const terminalRuntime = selectedSession?.runtime === "terminal";
+  const terminalRuntime = selectedSession ? runsInTerminal(selectedSession) : false;
   const agentChat = terminalRuntime && selectedSession?.surfaces?.includes("chat") ? selectedSession : null;
   const terminalSession = terminalRuntime && !agentChat ? selectedSession : null;
   const chatId = terminalSession ? null : selectedId;
@@ -789,6 +788,14 @@ export default function App() {
     setSessions,
     setSelectedId,
     setTranscripts,
+    // a terminal agent opens on the screen its dialog chose, and that choice comes first next time
+    (session, choice) => {
+      setAgentSurfaces((current) => ({ ...current, [session.id]: choice.surface }));
+    },
+    (choice) => {
+      setPreferences((current) => ({ ...current, newSession: choice }));
+      void window.agentControlDesktop?.settings?.setNewSession(choice).catch(() => undefined);
+    },
   );
 
   const resolveSessionId = useCallback(async (sessionId: string): Promise<string> => {
@@ -1589,11 +1596,9 @@ export default function App() {
           key={newSessionRequest.serial}
           defaultWorkspace={connection.workspace}
           prefill={newSessionRequest.prefill}
-          kind={
-            backend.terminalSessions === true && preferences.newSessionKind === "cli"
-              ? "terminal"
-              : "gjc"
-          }
+          {...(preferences.newSession ? { choice: preferences.newSession } : {})}
+          agentDefaults={preferences.agents}
+          terminalSessions={backend.terminalSessions === true}
           onCancel={() => setNewSessionRequest(null)}
           onCreate={createSession}
         />
@@ -1615,8 +1620,8 @@ export default function App() {
           onToggleThoughtsExpanded={toggleThoughtsExpanded}
           onClose={() => {
             setSettingsOpen(false);
-            setSettingsTab("gjc");
-            // Choices the dialog saves on change, such as the new-session kind,
+            setSettingsTab("agents");
+            // Choices the dialog saves on change, such as the new-session default,
             // never pass through onSaved.
             void window.agentControlDesktop?.settings
               .getPreferences()
@@ -1649,7 +1654,18 @@ export default function App() {
             setLoginOpen(false);
             refreshNeedsSignIn();
           }}
-          onStartConversation={() => openNewSessionDialog()}
+          onStartConversation={() => {
+            // first-run setup saved the agent new sessions open: the dialog starts on it
+            const settingsBridge = window.agentControlDesktop?.settings;
+            if (!settingsBridge) {
+              openNewSessionDialog();
+              return;
+            }
+            void settingsBridge
+              .getPreferences()
+              .then(setPreferences, () => undefined)
+              .finally(() => openNewSessionDialog());
+          }}
         />
       )}
     </div>

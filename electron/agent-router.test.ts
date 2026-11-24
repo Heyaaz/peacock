@@ -178,9 +178,9 @@ describe("AgentRouter with GJC alone", () => {
   it("keeps sessions of every runtime but herdr on GJC, as before", async () => {
     const gjc = fakeHost();
     const router = new AgentRouter(gjc);
-    const terminal = { ...herdrInput, runtime: "terminal" as const };
-    router.createSession(terminal);
-    expect(gjc.createSession).toHaveBeenCalledWith(terminal);
+    const mock = { ...herdrInput, runtime: "hermes" as const };
+    router.createSession(mock);
+    expect(gjc.createSession).toHaveBeenCalledWith(mock);
     expect(router.runtimeOf("anything")).toBe("gjc");
     expect(router.controllerFor("anything")).toBe(gjc);
   });

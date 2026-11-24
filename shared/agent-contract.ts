@@ -10,11 +10,28 @@ import type { AgentLaunchOptions } from "./agent-launch.js";
 /**
  * Where a session runs.
  *
- * `herdr` is a terminal on herdr-core, where Claude Code, omp and codex run
- * (docs/design/agent-runtime-herdr.md). `terminal` (node-pty) and `hermes`
- * (the mock backend's rows) stay until the runtime cleanup retires them.
+ * `gjc` is a GJC conversation in the app. `herdr` is every session that runs
+ * in a terminal -- Claude Code, omp, codex or a shell -- on herdr-core, or in the
+ * app's own pty where herdr-core is unavailable (docs/design/agent-runtime-herdr.md).
+ * What such a session offers comes from its `agentKind`, `surfaces` and
+ * `capabilities`, never from the runtime. `hermes` names the mock backend's
+ * rows only; no host creates one.
  */
-export type RuntimeKind = "gjc" | "hermes" | "terminal" | "herdr";
+export type RuntimeKind = "gjc" | "hermes" | "herdr";
+
+/**
+ * A runtime name as an older host or client may still send it: hosts before the
+ * runtime cleanup (P5) called terminal sessions `terminal`.
+ */
+export function normalizeRuntimeKind(value: unknown): RuntimeKind | undefined {
+  if (value === "terminal") return "herdr";
+  return value === "gjc" || value === "herdr" || value === "hermes" ? value : undefined;
+}
+
+/** Whether a session runs in a terminal (an agent CLI or a shell) rather than as a GJC conversation. */
+export function runsInTerminal(session: Pick<AgentSession, "runtime" | "agentKind">): boolean {
+  return session.runtime === "herdr" || (session.runtime as string) === "terminal" || (session.agentKind !== undefined && session.agentKind !== "gjc");
+}
 
 /** The coding agents a session can run, as shared/agent-catalog.ts lists them. */
 export const AGENT_KIND_IDS = ["claude", "omp", "codex", "gjc", "shell"] as const;
@@ -240,14 +257,41 @@ export function isToolViewMode(value: unknown): value is ToolViewMode {
   return value === "basic" || value === "reasoning" || value === "detailed";
 }
 
-export type NewSessionKind = "app" | "cli";
+/** What 새 세션 opens: an agent, and the screen it starts on. */
+export interface NewSessionChoice {
+  agentKind: AgentKindId;
+  surface: SessionSurface;
+}
+
+/** One agent's settings: an executable that wins over detection, and what a new session starts with. */
+export interface AgentPreferences {
+  /** An absolute executable; unset finds the agent on PATH and where its installer puts it. */
+  executable?: string;
+  /** The model, effort and permission mode a new session of this agent starts with. */
+  launch?: AgentLaunchOptions;
+}
+
+export type AgentPreferencesMap = Partial<Record<AgentKindId, AgentPreferences>>;
+
+/**
+ * The GJC executable the runtime starts: `GJC_BIN` wins over the setting
+ * (`agents.gjc.executable`, which was `gjcExecutable` before P5); empty means
+ * finding it on its own.
+ */
+export function gjcExecutableOf(
+  preferences: Pick<AgentControlPreferences, "agents">,
+  environment: Record<string, string | undefined> = {},
+): string {
+  return environment.GJC_BIN || preferences.agents?.gjc?.executable || "";
+}
 
 export interface AgentControlPreferences {
   workspace: string;
   workspaceLabel: string;
   modelPreset: string;
   permissionHandling: GjcPermissionHandling;
-  gjcExecutable: string;
+  /** Per-agent executables and new-session defaults (P5; `gjcExecutable` moved to `agents.gjc.executable`). */
+  agents: AgentPreferencesMap;
   notificationPreferences: NotificationPreferences;
   /** Power, menu bar, Dock and global input behavior. */
   desktopIntegration: DesktopIntegrationPreferences;
@@ -268,8 +312,11 @@ export interface AgentControlPreferences {
    * boundary. Explicit `/queue` and `/steer` prefixes always win.
    */
   runningSubmission: "queue" | "steer";
-  /** What 새 세션 opens: a GJC chat in the app, or a terminal for any CLI. */
-  newSessionKind: NewSessionKind;
+  /**
+   * What 새 세션 opens: the agent and screen last chosen. Unset until one is chosen,
+   * when the first installed of Claude Code, omp, codex and GJC comes first.
+   */
+  newSession?: NewSessionChoice;
   /**
    * Whether reasoning (thought) cards render expanded.
    *
@@ -1044,7 +1091,7 @@ export interface CreateSessionInput {
   modelPreset?: string;
   /** A herdr session's agent (`runtime: "herdr"`); a shell when unset. */
   agentKind?: AgentKindId;
-  /** The screen a herdr session opens on; only `terminal` until the chat screen (P3). */
+  /** The screen a herdr session opens on (the window's choice; the row keeps its `surfaces`). */
   surface?: SessionSurface;
   /** What a herdr session's agent starts with. */
   launch?: AgentLaunchOptions;
@@ -1306,8 +1353,10 @@ export interface SettingsDesktopBridge {
   setLanguage(language: UiLanguage): Promise<UiLanguage>;
   /** Persists the running-turn Enter behavior alone. */
   setRunningSubmission(value: "queue" | "steer"): Promise<"queue" | "steer">;
-  /** Persists what 새 세션 opens, app or CLI, alone. */
-  setNewSessionKind(value: NewSessionKind): Promise<NewSessionKind>;
+  /** Persists what 새 세션 opens (the agent and its screen) alone; null forgets it. */
+  setNewSession(value: NewSessionChoice | null): Promise<NewSessionChoice | null>;
+  /** Persists one agent's executable and new-session defaults alone. */
+  setAgentPreferences(agentKind: AgentKindId, value: AgentPreferences): Promise<AgentPreferencesMap>;
   /** Names the session a window is currently showing, for notification suppression. */
   setViewedSession(sessionId: string | null): Promise<void>;
   savePreferences(preferences: AgentControlPreferences): Promise<{

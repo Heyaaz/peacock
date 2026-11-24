@@ -1,5 +1,6 @@
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 import type { GjcUpdateStatus } from "../../shared/agent-contract";
+import { capabilitiesOf, runsInTerminal } from "../../shared/agent-contract";
 import type { AgentSession, BackendConnection } from "../backend/types";
 import {
   ArrowDown,
@@ -298,7 +299,7 @@ export function SessionRow({
         )}
         {/* The state used to sit between the title and the clock as a word, which
             pushed the title aside for something the group header already says. */}
-        {session.runtime === "terminal" && (session.agentKind ?? "shell") === "shell" ? (
+        {session.agentKind === "shell" ? (
           <SquareTerminal
             className="session-row__terminal"
             size={13}
@@ -910,7 +911,7 @@ function SidebarView({
             </>
           ) : (
             <>
-              {contextMenu.session.runtime !== "terminal" && (
+              {capabilitiesOf(contextMenu.session).fork && (
               <button
                 type="button"
                 onClick={() => {
@@ -949,7 +950,7 @@ function SidebarView({
                   the only removal that actually completes is hiding the row here.
                   It is a separate item, not a silent substitute: the label says the
                   history stays. */}
-              {contextMenu.session.runtime !== "terminal" && (
+              {!runsInTerminal(contextMenu.session) && (
               <button
                 type="button"
                 onClick={() => {

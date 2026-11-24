@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import type {
-  AgentControlPreferences,
-  AgentEvent,
-  BackendConnection,
+import {
+  gjcExecutableOf,
+  type AgentControlPreferences,
+  type AgentEvent,
+  type BackendConnection,
 } from "../shared/agent-contract.js";
 import { GjcSdkCli, type SdkSessionRow } from "./gjc-sdk-cli.js";
 import { brokerIndexRevision } from "./gjc-sdk-discovery.js";
@@ -61,7 +62,7 @@ export async function reconfigure(
   preferences: AgentControlPreferences,
 ): Promise<boolean> {
   const workspace = canonicalWorkspace(preferences.workspace);
-  const executable = preferences.gjcExecutable || undefined;
+  const executable = gjcExecutableOf(preferences) || undefined;
   const runtimeChanged =
     host.configuredExecutable !== executable ||
     host.modelPreset !== preferences.modelPreset ||

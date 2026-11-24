@@ -175,7 +175,7 @@ describe("terminal sessions", () => {
       title: "빌드",
       workspace: directory,
     })) as AgentSession;
-    expect(session).toMatchObject({ runtime: "terminal", workspace: directory });
+    expect(session).toMatchObject({ runtime: "herdr", workspace: directory });
 
     const first = (await call(TERMINAL_IPC.start, { token: 1, session: session.id })) as TerminalSessionInfo;
     expect(opened[0]?.options.cwd).toBe(directory);

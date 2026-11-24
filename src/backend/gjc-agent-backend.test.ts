@@ -411,7 +411,7 @@ describe("GjcAgentBackend", () => {
     const terminalRow = {
       id: "terminal-1",
       title: "셸",
-      runtime: "terminal",
+      runtime: "herdr",
     } as AgentSession;
     const terminal = {
       listSessions: vi.fn().mockResolvedValue([terminalRow]),
@@ -429,7 +429,7 @@ describe("GjcAgentBackend", () => {
       "terminal-1",
     ]);
     await backend.createSession({
-      runtime: "terminal",
+      runtime: "herdr",
       title: "셸",
       workspace: "/tmp/project",
       isolation: "workspace",

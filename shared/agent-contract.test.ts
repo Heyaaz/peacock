@@ -3,6 +3,8 @@ import {
   AGENT_KIND_IDS,
   capabilitiesOf,
   isAgentKindId,
+  normalizeRuntimeKind,
+  runsInTerminal,
   SESSION_CAPABILITY_KEYS,
   type AgentSession,
   type RuntimeKind,
@@ -54,8 +56,19 @@ describe("capabilitiesOf runtime defaults", () => {
     expect(capabilitiesOf(session("hermes"))).toEqual(every(true));
   });
 
-  it("offers no chat feature on a node-pty terminal", () => {
-    expect(capabilitiesOf(session("terminal"))).toEqual(every(false));
+  it("offers nothing to a terminal session of an older host (runtime `terminal`), and reads its name as herdr", () => {
+    expect(capabilitiesOf(session("terminal" as never))).toEqual(every(false));
+    expect(normalizeRuntimeKind("terminal")).toBe("herdr");
+    expect(normalizeRuntimeKind("gjc")).toBe("gjc");
+    expect(normalizeRuntimeKind("other")).toBeUndefined();
+  });
+
+  it("tells a terminal session from a GJC conversation by its runtime or its agent", () => {
+    expect(runsInTerminal({ runtime: "herdr" })).toBe(true);
+    expect(runsInTerminal({ runtime: "terminal" as never })).toBe(true);
+    expect(runsInTerminal({ runtime: "gjc", agentKind: "claude" })).toBe(true);
+    expect(runsInTerminal({ runtime: "gjc" })).toBe(false);
+    expect(runsInTerminal({ runtime: "gjc", agentKind: "gjc" })).toBe(false);
   });
 
   it("assumes nothing for a herdr session that reports nothing", () => {

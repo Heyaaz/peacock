@@ -20,7 +20,7 @@ export function terminalAgentSession(
     title: record.title,
     subtitle: agentKind === "shell" ? folder : `${agent.name} · ${folder}`,
     workspace: record.workspace,
-    runtime: "terminal",
+    runtime: "herdr",
     status: agentKind === "shell" ? "idle" : (live.status ?? "idle"),
     ...(live.runRevision !== undefined ? { runRevision: live.runRevision } : {}),
     updatedAt: recentLabel(record.createdAt),

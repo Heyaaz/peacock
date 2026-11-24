@@ -12,6 +12,7 @@ import {
   REMOTE_API,
   REMOTE_PROTOCOL_VERSION,
   isRemoteOperationId,
+  toRemoteEvent,
   permissionAllows,
   type RemoteDeviceIdentity,
   type RemoteErrorCode,
@@ -293,7 +294,7 @@ export class RemoteServer {
     if (sessionId !== undefined && this.options.host.hiddenFromRemote?.(sessionId)) return;
     this.sequence += 1;
     const seq = this.sequence;
-    this.buffer.push({ seq, data: JSON.stringify({ seq, event }) });
+    this.buffer.push({ seq, data: JSON.stringify({ seq, event: toRemoteEvent(event) }) });
     if (this.buffer.length > EVENT_BUFFER_LIMIT)
       this.buffer = this.buffer.slice(-EVENT_BUFFER_LIMIT);
     for (const client of [...this.streams.values()]) this.pump(client);

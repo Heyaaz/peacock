@@ -34,14 +34,13 @@ import type { DeleteSessionOptions } from "./gjc-sdk-lifecycle.js";
 import type { ResolvedMessageInput, SendMessageOptions } from "./gjc-sdk-model.js";
 
 /**
- * The runtimes a controller can register for. GJC is the router's own runtime;
- * `terminal` sessions live in the terminal IPC and `hermes` only in the mock
- * backend, so neither ever reaches the router.
+ * The runtimes a controller can register for. GJC is the router's own runtime,
+ * and `hermes` exists only in the mock backend, so it never reaches the router.
  */
-export type RoutedRuntimeKind = Exclude<RuntimeKind, "gjc" | "terminal" | "hermes">;
+export type RoutedRuntimeKind = Exclude<RuntimeKind, "gjc" | "hermes">;
 
 function routedRuntime(runtime: RuntimeKind): runtime is RoutedRuntimeKind {
-  return runtime !== "gjc" && runtime !== "terminal" && runtime !== "hermes";
+  return runtime !== "gjc" && runtime !== "hermes";
 }
 
 /**

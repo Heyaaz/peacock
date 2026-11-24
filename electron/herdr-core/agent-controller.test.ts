@@ -87,7 +87,7 @@ describe("HerdrAgentController sessions", () => {
   it("creates an agent session for an installed agent, claims it and announces it", async () => {
     const { controller, claim, events, directory } = setup();
     const session = await controller.createSession({ runtime: "herdr", agentKind: "claude", workspace: directory, title: "리뷰", isolation: "workspace", launch: { model: "haiku" } });
-    expect(session).toMatchObject({ id: expect.stringMatching(/^terminal-/u), runtime: "terminal", agentKind: "claude", status: "idle", title: "리뷰" });
+    expect(session).toMatchObject({ id: expect.stringMatching(/^terminal-/u), runtime: "herdr", agentKind: "claude", status: "idle", title: "리뷰" });
     expect(session.subtitle).toMatch(/^Claude Code · /u);
     expect(claim).toHaveBeenCalledWith(session.id);
     expect(events[0]).toEqual({ type: "session.created", session });

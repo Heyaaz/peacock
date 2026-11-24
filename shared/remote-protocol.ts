@@ -18,6 +18,25 @@ export type RemotePermission = "view" | "control";
 export const REMOTE_PROTOCOL_VERSION = 1;
 
 /**
+ * A session row as a remote device receives it (design §5.8, P5).
+ *
+ * The desktop names a herdr session's runtime "herdr"; a phone that loaded the PWA
+ * before P5 knows such a session only as "terminal" and shows it as a conversation
+ * otherwise. The wire keeps the old name, and a newer client reads both
+ * (normalizeRuntimeKind, runsInTerminal), so the protocol version stays 1.
+ */
+export function toRemoteSession(session: AgentSession): AgentSession {
+  return session.runtime === "herdr" ? { ...session, runtime: "terminal" as AgentSession["runtime"] } : session;
+}
+
+/** An event as a remote device receives it: a session row in it gets its wire name. */
+export function toRemoteEvent(event: AgentEvent): AgentEvent {
+  if ((event.type === "session.created" || event.type === "session.updated") && event.session.runtime === "herdr")
+    return { ...event, session: toRemoteSession(event.session) };
+  return event;
+}
+
+/**
  * A fixed loopback port keeps the Tailscale Serve mapping stable across launches,
  * which matters because Serve configs are keyed by the proxied target.
  */

@@ -141,7 +141,7 @@ export function attachTerminalSmoke(
         sessionReport.exitedOnDelete = !shellAlive();
         if (
           !(sessionReport.pid > 1) ||
-          sessionReport.runtime !== "terminal" ||
+          sessionReport.runtime !== "herdr" ||
           !sessionReport.sameShell ||
           !sessionReport.replayed ||
           !sessionReport.exitedOnDelete ||

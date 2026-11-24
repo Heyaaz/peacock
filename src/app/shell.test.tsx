@@ -694,7 +694,7 @@ describe("terminal sessions", () => {
   it("shows a selected terminal session as a terminal instead of a conversation", async () => {
     const row = session("terminal-1", {
       title: "빌드 셸",
-      runtime: "terminal",
+      runtime: "herdr",
     });
     actionProbe.forkSession.mockResolvedValueOnce(row);
     renderApp();
@@ -715,7 +715,7 @@ describe("terminal sessions", () => {
     const row = session("terminal-2", {
       title: "Claude 작업",
       subtitle: "Claude Code · gajae-bot",
-      runtime: "terminal",
+      runtime: "herdr",
       agentKind: "claude",
       surfaces: ["terminal", "chat"],
       capabilities: { send: false, cancel: true },
@@ -744,7 +744,7 @@ describe("terminal sessions", () => {
     actionProbe.terminalSessions = false;
     const row = session("terminal-3", {
       title: "폰에서 본 Claude",
-      runtime: "terminal",
+      runtime: "herdr",
       agentKind: "claude",
       surfaces: ["terminal", "chat"],
       capabilities: { send: true, cancel: true, approvals: true },

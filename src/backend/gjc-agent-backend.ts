@@ -79,7 +79,7 @@ export class GjcAgentBackend implements AgentBackend {
   }
 
   createSession(input: CreateSessionInput): Promise<AgentSession> {
-    if (input.runtime === "terminal") {
+    if (input.runtime === "herdr") {
       if (!this.terminal) return Promise.reject(new Error("Terminal sessions need the desktop app"));
       return this.terminal.createSession({
         title: input.title ?? "",

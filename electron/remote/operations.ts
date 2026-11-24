@@ -13,7 +13,7 @@ import type {
 } from "../../shared/agent-contract.js";
 import { transcriptDelivery } from "../../shared/transcript-item-equal.js";
 import { transcriptSyncWindow } from "../../shared/transcript-page.js";
-import type { RemoteOperationName } from "../../shared/remote-protocol.js";
+import { toRemoteSession, type RemoteOperationName } from "../../shared/remote-protocol.js";
 import type { ResolvedMessageInput } from "../gjc-sdk-controller.js";
 import { projectTranscriptItemForDelivery } from "../transcript-body-preview.js";
 import {
@@ -138,7 +138,9 @@ export async function runRemoteOperation(
     case "state":
       return {
         connection: await host.getConnection(),
-        sessions: (await host.listSessions()).filter((session) => !host.hiddenFromRemote?.(session.id)),
+        sessions: (await host.listSessions())
+          .filter((session) => !host.hiddenFromRemote?.(session.id))
+          .map(toRemoteSession),
       };
     case "history-sessions":
       return host.listHistorySessions();

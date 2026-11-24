@@ -66,6 +66,8 @@ export interface AgentAvailability {
   version?: string;
   /** Why it cannot be started, for a disabled choice. */
   reason?: string;
+  /** The executable is the one the settings name, not one found. */
+  configured?: boolean;
 }
 
 export interface TerminalSessionCreateInput {

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSession } from "../../shared/agent-contract.js";
+import { toRemoteEvent } from "../../shared/remote-protocol.js";
 import { runRemoteOperation, type RemoteOperationsHost } from "./operations.js";
 
-const row = (id: string, agentKind: AgentSession["agentKind"]) => ({ id, agentKind }) as AgentSession;
+const row = (id: string, agentKind: AgentSession["agentKind"]) =>
+  ({ id, agentKind, runtime: agentKind === undefined ? "gjc" : "herdr" }) as AgentSession;
 
 describe("remote access and terminal shells", () => {
   const host = {
@@ -36,5 +38,14 @@ describe("remote access and terminal shells", () => {
     // GJC's own tool ids name no session and go on as before
     await runRemoteOperation(host, "resolve-tool-call", { toolId: "toolu_3" }, decision);
     expect(host.resolveToolCall).toHaveBeenCalledTimes(2);
+  });
+
+  it("names a herdr session's runtime \"terminal\" on the wire, as a PWA from before P5 reads it", async () => {
+    const state = (await runRemoteOperation(host, "state", {}, undefined)) as { sessions: AgentSession[] };
+    expect(state.sessions.map((session) => session.runtime as string)).toEqual(["gjc", "terminal"]);
+    const event = toRemoteEvent({ type: "session.updated", session: row("terminal-claude", "claude") });
+    expect(event.type === "session.updated" && (event.session.runtime as string)).toBe("terminal");
+    const gjc = { type: "session.created" as const, session: row("gjc-1", undefined) };
+    expect(toRemoteEvent(gjc)).toBe(gjc);
   });
 });

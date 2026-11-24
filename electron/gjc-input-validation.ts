@@ -7,10 +7,13 @@ import type {
   ImageAttachment,
   MessageInput,
   QuestionSubmission,
+  SessionSurface,
   ToolDecision,
   WorktreePull,
 } from "../shared/agent-contract.js";
-import { parseSessionWorkLink } from "../shared/agent-contract.js";
+import { isAgentKindId, normalizeRuntimeKind, parseSessionWorkLink } from "../shared/agent-contract.js";
+import { agentSupportsSurface } from "../shared/agent-catalog.js";
+import { launchOptions, launchOptionsFault } from "../shared/agent-launch.js";
 import { normalizeRulePrefix } from "../shared/command-rules.js";
 import { safeModelPreset } from "../shared/parallel-run.js";
 
@@ -61,6 +64,39 @@ export function attachmentName(value: unknown): string {
   return value;
 }
 
+/**
+ * A terminal session (herdr): an agent other than GJC, or a shell, in a folder as it is
+ * (no worktree), with launch options its agent takes and a screen it has.
+ */
+function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInput {
+  const agentKind = candidate.agentKind === undefined ? "shell" : candidate.agentKind;
+  if (!isAgentKindId(agentKind) || agentKind === "gjc") throw new Error("Terminal session agent is invalid");
+  if (candidate.title !== undefined && typeof candidate.title !== "string") throw new Error("Session title must be a string");
+  if (typeof candidate.workspace !== "string" || !path.isAbsolute(candidate.workspace))
+    throw new Error("Session workspace must be an absolute directory");
+  if (candidate.isolation !== undefined && candidate.isolation !== "workspace")
+    throw new Error("A terminal session runs in its folder as it is");
+  if (candidate.surface !== undefined && (typeof candidate.surface !== "string" || !agentSupportsSurface(agentKind, candidate.surface as SessionSurface)))
+    throw new Error("Terminal session screen is invalid");
+  const fault = launchOptionsFault(agentKind, candidate.launch);
+  if (fault) throw new Error(fault);
+  const launch = launchOptions(agentKind, candidate.launch);
+  try {
+    if (!statSync(candidate.workspace).isDirectory()) throw new Error();
+  } catch {
+    throw new Error("Session workspace must be an existing directory");
+  }
+  return {
+    runtime: "herdr",
+    workspace: path.resolve(candidate.workspace),
+    isolation: "workspace",
+    agentKind,
+    ...(candidate.title ? { title: candidate.title } : {}),
+    ...(candidate.surface ? { surface: candidate.surface as SessionSurface } : {}),
+    ...(launch ? { launch } : {}),
+  };
+}
+
 export function createSessionInput(value: unknown): CreateSessionInput {
   if (!value || typeof value !== "object")
     throw new Error("Session input is required");
@@ -74,9 +110,15 @@ export function createSessionInput(value: unknown): CreateSessionInput {
     worktreePull?: unknown;
     workLink?: unknown;
     modelPreset?: unknown;
+    agentKind?: unknown;
+    surface?: unknown;
+    launch?: unknown;
   };
-  if (candidate.runtime !== "gjc")
-    throw new Error("Only the GJC runtime is available through this bridge");
+  // an older window names a terminal session's runtime `terminal`; `hermes` is the mock backend's only
+  const runtime = normalizeRuntimeKind(candidate.runtime);
+  if (runtime === "herdr") return herdrSessionInput(candidate);
+  if (runtime !== "gjc")
+    throw new Error("Only GJC and terminal (herdr) sessions can be created through this bridge");
   if (candidate.title !== undefined && typeof candidate.title !== "string") {
     throw new Error("Session title must be a string");
   }

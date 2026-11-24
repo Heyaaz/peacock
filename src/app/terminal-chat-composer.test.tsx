@@ -24,7 +24,7 @@ const session = (status: AgentSession["status"]): AgentSession => ({
   title: "Claude 작업",
   subtitle: "Claude Code · repo",
   workspace: "/repo",
-  runtime: "terminal",
+  runtime: "herdr",
   status,
   updatedAt: "now",
   pinned: false,
