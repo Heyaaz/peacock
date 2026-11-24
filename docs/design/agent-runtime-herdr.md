@@ -41,6 +41,7 @@ Main
 ## 4. 데이터 모델
 
 - **RuntimeKind**: P0에서 `"herdr"` **추가만**. `"terminal"`/`"hermes"` 제거는 P5(영향: `shell.tsx:445`, `sidebar.tsx:301,913,952`, `gjc-input-validation.ts:78`).
+  - **P5 결과**: `RuntimeKind = "gjc" | "hermes" | "herdr"`. 셸·에이전트 행은 모두 `"herdr"`. `"terminal"`은 타입에서 빠지고 `normalizeRuntimeKind`가 옛 이름을 `"herdr"`로 읽는다(저장된 입력, 구버전 원격 요청). 렌더러의 `runtime === "terminal"` 분기는 `runsInTerminal(session)`(herdr 또는 agentKind가 GJC 아님)과 `capabilitiesOf`(fork 등), `agentKind === "shell"`(아이콘)로 바꿨다. `"hermes"`는 목(mock) 백엔드 전용으로 남긴다(라우터는 GJC 쪽에 둠).
 - **AgentKindId**: `"claude" | "omp" | "codex" | "gjc" | "shell"`.
 - **세션 ID**: Gajae UUID 유지(`terminal-<uuid>` 체계 확장). 세션 ≠ 터미널. 레코드에 `{coreId, terminalAddress, agentKind, agentSessionRef}` 저장.
   - hc 주소는 코어 단위로만 유일 → hello의 `core.id`와 함께 저장.
@@ -61,6 +62,7 @@ Main
 | `status: null` (대화상자 직후 잠깐, 실측) | 직전 상태 유지 | — |
 
 - **설정**: `gjcExecutable` → `agents.<kind>.{executable, defaultLaunch}`, `newSession: {agentKind, surface}`. 기존 값 마이그레이션.
+  - **P5 결과**: `agents: Partial<Record<AgentKindId, {executable?, launch?}>>`(`defaultLaunch` 대신 `launch`, 검증은 `launchOptionsFault` 공용). `gjcExecutable` → `agents.gjc.executable`, GJC 실행 파일은 `GJC_BIN` → 설정 순(`gjcExecutableOf`). `newSessionKind` → `newSession`: `"app"`(또는 `newSession` 키가 없는 기존 파일) → GJC 채팅, `"cli"` → 셸 터미널. 처음 쓰는 사용자의 파일에는 `newSession: null`(아직 고르지 않음)을 저장해, 기존 파일(키 없음 → GJC 유지)과 구분한다.
 - **원격**: 새 필드는 optional. 구버전 PWA는 capabilities를 모르므로 **서버 쪽에서** 제한(§5.7).
 
 ## 5. 기능별 설계
@@ -83,13 +85,14 @@ Main
 - attach 종료 `exit_code=null` = 연결 끊김(재접속), exit 0으로 표시하지 않음.
 - 디스플레이 질의(OSC 10/11/12, CSI 16t) 응답 처리 이식(`attach-session.ts:5`).
 - node-pty는 폴백으로 P5까지 유지, 제거 여부는 P5에서 결정.
+  - **P5 결정: node-pty 유지.** 터미널 쪽 쓰임은 둘: ① 채팅 화면의 임시 셸(`SURFACE_KEY`, 뷰가 닫히면 같이 끝나야 하는 터미널), ② hc를 쓸 수 없을 때(macOS 외, 번들 없음, 코어 시작 실패) 셸 세션의 앱 안 폴백. 에이전트 세션은 폴백하지 않고 오류를 보인다(P2). 그 밖에 GJC CLI 세션 삭제(`gjc-cli-session-delete.ts`)도 pty로 대화형 GJC를 띄운다. 빼면 ①을 hc로 옮겨야 하고(뷰마다 남는 터미널, 정리 경로 추가) ②의 실패 시 셸이 아예 열리지 않는다. 네이티브 모듈 재빌드 비용은 이미 패키징에 들어가 있어 유지 비용이 작다.
 
 ### 5.3 에이전트 실행
 - 카탈로그: claude, omp, codex, gjc, shell. 감지는 PATH → 로그인 셸 PATH → install_dirs, `--version` 캐시.
 - `terminal.run`의 program은 **절대 경로 강제**(argv[0]이 hc 템플릿 이름으로 해석될 수 있음, Ovis `adapter.ts:880`).
 - 실행 옵션 검증: Ovis `launch-rules.ts`/`agentLaunchMode.ts` 축소 이식.
 - Claude Code는 `--session-id <uuid>`로 시작해 세션을 Gajae가 정한다(실측: SessionStart의 `session_id`가 그 값). 새 폴더 첫 실행은 작업 공간 신뢰 대화상자(`blocked/permission "trust this folder"`)가 먼저 뜬다.
-- (P2) 세션 ID는 `terminal-<uuid>` 그대로(셸·에이전트 공통): 렌더러와 터미널 IPC가 이미 이 접두사로 라우팅한다. 레코드는 `TerminalSessionStore`에 `agentKind`·`launch`·`agentSessionRef`·`transcriptPath`를 더해 저장한다. 행의 `runtime`은 렌더러 호환을 위해 P5까지 `"terminal"`로 두고, 라우터 소유권(`registerRuntime("herdr")`)으로 구분한다. 터미널이 끝난 에이전트를 다시 열면 기록이 있을 때 `--resume <agentSessionRef>`로 시작한다.
+- (P2) 세션 ID는 `terminal-<uuid>` 그대로(셸·에이전트 공통): 렌더러와 터미널 IPC가 이미 이 접두사로 라우팅한다. 레코드는 `TerminalSessionStore`에 `agentKind`·`launch`·`agentSessionRef`·`transcriptPath`를 더해 저장한다. 행의 `runtime`은 렌더러 호환을 위해 P5까지 `"terminal"`로 두고, 라우터 소유권(`registerRuntime("herdr")`)으로 구분한다(P5에서 `"herdr"`로 바꿈, §4). 터미널이 끝난 에이전트를 다시 열면 기록이 있을 때 `--resume <agentSessionRef>`로 시작한다.
 - (P2) 에이전트 터미널에는 `GAJAE_SESSION_ID`를 넣어, 훅이 `/clear`로 바뀐 `session_id`와 상관없이 Gajae 세션을 가리키게 한다. 에이전트 세션은 herdr-core가 없으면 앱 안 셸로 폴백하지 않고 오류를 보인다.
 
 ### 5.4 훅 채널 (P2부터)
@@ -144,10 +147,18 @@ Main
   - `resolveToolCall(toolId)`에 sessionId가 없으므로 toolId에 네임스페이스(`<sessionId>/<id>`) 부여.
     - **P4 구현**: herdr 행 id는 이미 `<sessionId>:<call id>`(P3)라 `:`를 구분자로 씀(`/`는 IPC·원격 id 검사 `[A-Za-z0-9._:-]`가 거부). 라우터 `sessionOfTool`이 접두어로 소유 런타임을 찾고(목록에 없으면 런타임에 물음), 없으면 GJC로(기존 id 그대로 → 구버전 PWA도 같은 경로). 원격 `resolve-tool-call`은 도구 id의 세션이 원격 숨김(shell)이면 거부. 폰(터미널 없음)에서는 에이전트 세션을 채팅만으로 보여 줌.
 - GJC 전용 기능은 herdr 세션에서 `unsupported` 타입 오류 + UI 숨김.
+- (P5) **원격 와이어 이름**: 데스크톱 행은 `runtime: "herdr"`지만 원격 기기로 나가는 행(`state`의 `sessions`, `session.created/updated` 이벤트)은 `toRemoteSession`/`toRemoteEvent`로 옛 이름 `"terminal"`을 유지한다. P5 이전 PWA는 `runtime === "terminal"`로만 터미널 세션을 알아보므로, 바꾸면 Claude Code 세션을 GJC 대화로 연다. 새 PWA는 두 이름을 모두 읽으므로(`runsInTerminal`) 프로토콜 버전은 1 그대로.
 
 ### 5.8 온보딩 / 설정 (P5)
 - 설치된 에이전트 감지 결과로 기본 에이전트 선택. GJC 설치/로그인은 GJC 카드 안 선택 동작.
 - 환경 점검 `gjc|provider-login|model-preset`은 GJC 선택 시에만 필수.
+- **P5 구현**
+  - **첫 실행**: 온보딩 첫 단계는 `"agent"`(`OnboardingStep = "agent" | "install" | "sign-in"`). 감지 목록(설치 여부·버전·사유)에서 Claude Code → omp → codex → GJC 중 처음 설치된 것을 미리 고른다. 설치 안 된 에이전트는 고를 수 없고 GJC만 예외(고르면 설치 단계로). `chooseAgent`가 `newSession = {agentKind, surface: 카탈로그 defaultSurface}`를 저장하고, GJC가 아니면 온보딩을 끝낸 뒤 새 세션 창을 연다. GJC면 기존 설치/로그인 단계로 이어진다. 이미 온보딩을 마친 사용자(`onboarded`)는 다시 묻지 않는다.
+  - **새 세션 창**: 에이전트 목록(터미널 브리지 `listAgents`, 설치 안 된 것은 사유와 함께 비활성)에서 고른다. 시작 에이전트는 마지막 선택이 설치돼 있으면 그것, 아니면 위 순서의 첫 설치 에이전트(없으면 셸, 셸도 없으면 GJC). 두 화면이 있는 에이전트는 채팅/터미널 선택, Claude Code·omp는 권한 모드 선택(기본 `에이전트 설정 따름` = 플래그 없음). 실행 옵션 = 설정의 에이전트 기본값 + 창에서 고른 권한 모드. 창에서 만든 세션의 {agentKind, surface}가 다음 기본값이 된다. 넘겨받은 요청(빠른 입력·링크·CI 수정)은 항상 GJC로 열고 기본값을 바꾸지 않는다. 원격(브리지 없음)은 GJC만.
+  - **설정**: 기본 탭을 `에이전트`로. 새 세션 기본값(자동 = 처음 설치된 에이전트), 백그라운드 터미널, 에이전트별 섹션(감지 경로·버전 또는 사유, 실행 파일 지정, 기본 모델·effort·권한 모드)을 둔다. 저장은 즉시(`setAgentPreferences`, `setNewSession`). GJC 섹션은 GJC 탭(실행 파일·모델 프로필·도구 승인·업데이트·AI 로그인·명령 규칙)으로 안내하고, 그 기능은 그대로 GJC 탭에 남는다. 감지기는 설정한 실행 파일을 모든 검색보다 먼저 쓰고, 실행할 수 없으면 `configured: true`와 사유를 보인다(GJC는 `GJC_BIN` → 설정).
+  - **환경 점검**: 행의 `required`가 `true | false | "gjc"`. `"gjc"`(bun·gjc·provider-login)는 `newSession.agentKind === "gjc"`일 때만 필수. model-preset은 원래 선택 항목.
+  - **실측**(`npm run desktop:onboarding-smoke -- --agent=claude`): GJC가 없는 Mac(빈 HOME, PATH에 gjc 없음)의 첫 실행에서 에이전트 선택에 Claude Code 2.1.331이 미리 선택됨 → 고르면 `newSession = {claude, terminal}` 저장, 온보딩 완료, GJC 미설치 그대로 → 새 세션 창이 Claude Code·터미널·`에이전트 설정 따름`으로 열림 → 환경 점검 ready(GJC 행은 선택 항목) → 세션 생성(`runtime: "herdr"`, agentKind claude) → 이 실행 전용 herdr-core에서 Claude Code 첫 화면("Welcome to Claude Code")이 그려짐 → 온보딩 다시 열리지 않음. 모델 호출 없음. 기본 모드(GJC 선택)는 기존 설치·로그인 경로를 그대로 지나고 새 세션 창이 GJC로 열림을 확인.
+  - 스모크의 HOME은 `/tmp/goh-*`(짧은 경로): hc 소켓이 `~/.local/state/herdr-core` 아래라 TMPDIR 안의 HOME이면 소켓 경로 한도(103바이트)를 넘는다(첫 측정에서 "socket path … too long" 148바이트로 실패).
 
 ## 6. 이식 원칙과 규모
 - 출처 표기: Ovis(MIT, © 2026 devswha), herdr-core(Apache-2.0, 바이너리 번들). `THIRD_PARTY_NOTICES.md` 갱신, 이식 파일 상단에 출처 주석.
@@ -173,7 +184,7 @@ Main
 | P2 | 에이전트 실행 + 훅 채널(세션·턴 보고) + 상태·알림 | Claude Code 세션 상태 표시, 완료 알림 (**완료**: `npm run desktop:hc-agent-smoke`가 실제 Claude Code로 사이드바 waiting→running→idle, 승인·완료 알림 요청, 앱 재시작 뒤 훅 수신을 실측. 단 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 거부됨) |
 | P3a/b/c | a 읽기 전용 채팅(claude) → b 채팅 입력(`terminal.send`) → c omp | 채팅/터미널 전환, 채팅 입력이 터미널에 반영 (**완료**: `GAJAE_AGENT_SMOKE_PHASES=3,4 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku)와 omp(작은 모델)로 창에서 세션을 열고 채팅으로 전환해 보낸 메시지가 터미널 화면에 나타나고 답이 채팅에 나타남을, 전환 뒤에도 같은 id임을 실측. 2단계는 재시작 뒤 같은 기록과 `/clear` 뒤 새 기록 추종을 실측) |
 | P4 | 승인(claude → omp) + 규칙 + 원격 노출 정책 | 폰에서 Claude Code 도구 승인 (**완료**: `GAJAE_SMOKE_CLAUDE_ARGS="--setting-sources project,local" GAJAE_AGENT_SMOKE_PHASES=5,6 npm run desktop:hc-agent-smoke`가 실제 Claude Code(haiku, `--permission-mode default`)로 창의 카드 승인, 앱 재시작 뒤 원격 프로토콜(페어링한 기기 HTTP)로 카드 확인·승인, 터미널에서 답한 요청의 카드 해제를 실측. `GAJAE_AGENT_SMOKE_PHASES=7`은 omp 19.1.1 승인을 실측) |
-| P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 |
+| P5 | 온보딩/설정 일반화, 타입 정리, node-pty 결정, 문서 | GJC 미설치 첫 실행 → Claude Code 세션까지 (**완료**: `npm run desktop:onboarding-smoke -- --agent=claude`가 GJC 없는 첫 실행 → 에이전트 선택 → Claude Code 세션 생성과 그 터미널의 첫 화면까지 실측(§5.8). node-pty는 유지(§5.2). 공증 빌드에서 Herdr Core.app 서명 보존(§5.1)은 공증 자격이 없어 확인하지 못함) |
 | P6 | 검색 색인·병렬 실행의 herdr 세션 지원 | — |
 
 ## 8. 위험 / 미확인 가정
@@ -183,5 +194,5 @@ Main
 4. (해소) 0.1.17·0.1.18 모두 `terminal.send`의 `if`/`force`, labels 필터, `terminal.interrupt` 있음.
 5. 앱 밖 데몬·고아 터미널, dev/smoke가 실사용 코어를 건드리는 문제(세션명 분리로 대응, 스파이크에서 `HC_SESSION`별 상태·소켓 분리 확인).
 8. 코어 env 오염: 코어를 처음 띄운 클라이언트 env가 모든 터미널로 감 → 허용 목록 필수, 오염 시 `server.restart`(§5.1).
-6. 원격에서 shell 세션 노출(서버 쪽 차단으로 대응), 구버전 PWA.
+6. 원격에서 shell 세션 노출(서버 쪽 차단으로 대응), 구버전 PWA(P5: 와이어의 runtime 이름을 `"terminal"`로 유지, §5.7).
 7. TerminalView가 디스플레이 질의에 응답하는지.

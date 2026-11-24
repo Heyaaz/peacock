@@ -4,7 +4,9 @@ The full guide to the desktop app. For a short tour, see the [README](../README.
 
 ## GJC setup details
 
-The first launch installs GJC when it is missing (see the [README](../README.md#install)).
+GJC is one of the agents Gajae runs, not a requirement. When GJC is the agent
+chosen at first launch, the app installs it if it is missing (see the
+[README](../README.md#install)).
 GJC `0.18.12` or newer is required (the newest verified compatibility target is
 `0.19.0`); to install it yourself, run GJC's installer:
 
@@ -220,23 +222,43 @@ throwaway HOME and agent dir and deletes through the real GJC: a saved session
 in about 14 s, and a session held by an interactive `gjc --resume` in a pty in
 about 15 s, or about 70 s when that GJC left its lock behind (6 of 6 runs passed on 0.19.2, two of them slow).
 
-## CLI sessions
+## Agent sessions
 
-`새 세션 종류` in Settings > GJC decides whether 새 세션 opens a GJC chat in the
-**app** (the default) or a terminal on the **CLI**. A request handed over with
-the dialog, from quick input or a link, always opens the app. A CLI session opens a login shell in the
-chosen folder, so `claude`, `codex`, or any other CLI runs there directly. The
-app keeps the list in `terminal-sessions.json` under its user data, since GJC
-does not know about these sessions.
+새 세션 asks which agent the session runs: Claude Code, omp (Oh My Pi), Codex,
+GJC, or a shell. The dialog starts on the agent and screen chosen last; before
+anything was chosen, on the first installed of Claude Code, omp, Codex and GJC.
+Settings > Agents can set that default directly (`새 세션 기본값`), or set it back
+to automatic. A request handed over with the dialog, from quick input or a link,
+always opens GJC and does not change the default. A settings file from before
+agents could be chosen keeps opening GJC (`새 세션 종류` app) or a shell (CLI).
 
-- Switching to another session keeps the shell running. Coming back replays
-  what it printed meanwhile, up to the last 512 KB.
-- After a restart the session is still listed and opens a fresh shell in the
-  same folder. Shells do not outlive the window that opened them.
-- Rename and delete work from the sidebar. Delete asks in the host dialog, then
-  closes the shell the way closing a terminal window does.
-- Search, Inbox, notifications, remote access, model settings, and parallel
-  runs only cover GJC sessions.
+- **Screens.** Claude Code and omp open on their terminal or on a chat view read
+  from their own session file; the header switches between the two at any time.
+  Codex and the shell have only the terminal. GJC is the app conversation.
+- **Permission mode.** For Claude Code and omp the dialog offers a permission
+  mode for the session. `에이전트 설정 따름` (the default) passes no flag, so the
+  agent's own settings decide.
+- **Defaults per agent.** Settings > Agents shows, for each agent, where it was
+  found and its version, or why it cannot run. An executable set there wins over
+  the search (PATH, the login shell's PATH, then where the agent's installer puts
+  it). Claude Code, omp and Codex can also start with a default model, effort and
+  permission mode; the dialog's permission mode overrides the default one.
+  GJC's executable, model profile, tool approval, update and sign-in stay in
+  Settings > GJC (`GJC_BIN` still wins over its executable setting).
+- **Terminals.** Agent and shell terminals run in herdr-core, outside the app:
+  switching sessions or quitting the app leaves them running, and the session
+  reattaches with what it printed. `백그라운드 터미널` > `모두 종료` in
+  Settings > Agents ends them. When herdr-core cannot run, a shell session falls back to an
+  in-app shell; an agent session shows the error instead.
+- **Approvals and status.** Claude Code and omp report their turns and tool
+  approvals to Gajae: the sidebar shows running, waiting and idle, notifications
+  follow, and an approval waits on a card in the window or on a paired phone.
+- **Remote access** lists Claude Code, omp and Codex sessions; a shell never
+  leaves the desktop.
+- Search, Inbox, model settings, and parallel runs only cover GJC sessions.
+
+The app keeps agent and shell sessions in `terminal-sessions.json` under its user
+data, since GJC does not know about them.
 
 ## Resume a session
 

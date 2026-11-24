@@ -5,7 +5,7 @@
 <h1 align="center">Gajae</h1>
 
 <p align="center">
-  A desktop home for <a href="https://github.com/Yeachan-Heo/gajae-code">GJC</a> coding-agent sessions.<br>
+  A desktop home for coding-agent sessions: Claude Code, omp, Codex and <a href="https://github.com/Yeachan-Heo/gajae-code">GJC</a>.<br>
   <sub>macOS · Apple silicon</sub>
 </p>
 
@@ -13,11 +13,19 @@
   <img src="docs/media/gajae-promo.gif" alt="Gajae in thirty seconds" width="860">
 </p>
 
-Gajae is an Electron app for running GJC sessions without living in a terminal.
-It works on the same sessions as the `gjc` CLI, so a request started in the app
-can be checked from the terminal and the other way round. Gajae never embeds the
-agent: every live action goes through GJC's public `gjc sdk session` CLI, and
-history comes from the session files GJC already writes.
+Gajae is an Electron app for running coding agents without living in a terminal.
+Pick the agent per session: Claude Code, omp (Oh My Pi), Codex, GJC, or a plain
+shell. Gajae never embeds an agent. Claude Code, omp and Codex run as their own
+CLI in a terminal that herdr-core keeps alive across app restarts. For Claude
+Code and omp, Gajae also offers a chat view built from the agent's own session
+file and answers their tool approvals from a card. GJC sessions go through GJC's public
+`gjc sdk session` CLI and the session files GJC already writes, so a request
+started in the app can be checked from the terminal and the other way round.
+
+The richest features (questions, goals, side chat, model picker, parallel runs,
+search) are GJC's. Other agents get their terminal, status where the agent
+reports it, and remote access; Claude Code and omp also the chat view and tool
+approvals.
 
 ## Demo
 
@@ -123,16 +131,20 @@ Each clip is the real app on its built-in sample data.
   tier toggle in the same menu.
 - **Projects sidebar.** Sessions group by repository, worktrees included.
   Anything waiting on you sits at the top. Switch to a by-status view any time.
-- **CLI sessions.** Keep a terminal (your login shell, in a folder you pick) as a
-  session next to your conversations. It keeps running while you look elsewhere.
+- **Any coding agent.** New sessions open the agent you chose last (on first
+  launch, the first installed of Claude Code, omp, Codex and GJC), on its
+  terminal or chat view, with a permission mode per session. Terminals keep
+  running while you look elsewhere and after the app quits. Settings > Agents
+  shows what was found on this Mac and each agent's defaults.
 - **Repository screen.** Branches, worktrees, issues, pull requests and CI for
   the project, through the `gh` CLI.
 - **Remote access.** Pair a phone over Tailscale and follow or drive the same
   sessions from it.
 - **Desktop integration.** Menu bar status, a Dock badge, notifications per event,
   a ⌃⌥Space quick input from any app, and keep-awake while a run is going.
-- **First-run setup.** On a Mac without GJC, the app installs it, signs you in
-  to a provider and opens the first conversation. No terminal needed.
+- **First-run setup.** Choose the agent to start with from the ones found on
+  this Mac. Choosing GJC on a Mac without it installs it and signs you in to a
+  provider. No terminal needed.
 
 <table>
   <tr>
@@ -159,7 +171,10 @@ and opens it. Run it again to update.
 The app is not notarized yet. macOS blocks a copy downloaded in a browser, so
 use the installer rather than the ZIP on the releases page.
 
-On first launch, a Mac without GJC is walked through setup:
+On first launch, Gajae lists the agents it found (Claude Code, omp, Codex, GJC
+and a shell) and asks which one new sessions open. An agent that is already
+installed is ready at once: the first session dialog opens on it. GJC is not
+required. Choosing GJC on a Mac without it walks you through setup:
 
 1. Gajae installs the GJC CLI from the public
    [`Yeachan-Heo/gajae-code`](https://github.com/Yeachan-Heo/gajae-code)
@@ -170,12 +185,14 @@ On first launch, a Mac without GJC is walked through setup:
 3. Gajae applies GJC's recommended model profile and opens the first
    conversation.
 
-A Mac that already runs GJC skips this. GJC `0.18.12` or newer is required.
+A Mac that already runs GJC skips the install. GJC `0.18.12` or newer is
+required for GJC sessions. A settings file from before agents could be chosen
+keeps opening GJC.
 
 ## Quick start
 
-1. Press **⌘T** (or **+**) and pick a folder. Settings decides whether a new
-   session is an app conversation or a CLI session.
+1. Press **⌘T** (or **+**), pick the agent and a folder. The dialog starts on
+   the agent you chose last.
 2. Type a request and press **Enter**. Drop files in to send them as local
    paths; images go to the model as images.
 3. While it runs, keep typing to queue the next request (or steer it in, if
