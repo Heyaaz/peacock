@@ -1,9 +1,14 @@
 import type { BrowserWindow } from "electron";
 import { existsSync, mkdtempSync, realpathSync } from "node:fs";
+import { createServer, type AddressInfo } from "node:net";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { TerminalSessionStore } from "./terminal-session-store.js";
+import { DeviceStore } from "./remote/devices.js";
+import type { RemoteOperationsHost } from "./remote/operations.js";
+import { RemoteAccessService } from "./remote/service.js";
+import { TailscaleClient } from "./remote/tailscale.js";
 
 export interface ShownNotification {
   sessionId: string;
@@ -29,7 +34,10 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Phase 3 is the chat (design §5.5): the same kind of session opened in the window, switched to its
  * chat, a message sent from the chat composer that must reach the terminal, and the answer that
  * must appear in the chat. Phase 4 does the same with omp (one short prompt to a small model) and
- * records whether omp reports its state to herdr-core.
+ * records whether omp reports its state to herdr-core. Phase 5 is a tool approval (design §5.6): a
+ * Claude Code in its default permission mode asks to run one Bash command, the card in the window
+ * answers it. Phase 6 is a fresh app: the same agent asks again, a paired phone answers through the
+ * remote protocol, and a third request answered at the terminal must close its card.
  */
 export function attachHcAgentSmoke(
   window: BrowserWindow,
@@ -40,6 +48,10 @@ export function attachHcAgentSmoke(
     notifications: () => readonly ShownNotification[];
     /** The text on a session's terminal screen now, read from herdr-core. */
     readScreen?: (sessionId: string) => Promise<string>;
+    /** Presses keys in a session's terminal through herdr-core (`terminal.keys`). */
+    pressKeys?: (sessionId: string, keys: string[]) => Promise<void>;
+    /** What a phone talks to: the app's router, served by a smoke-only remote server. */
+    remote?: { host: RemoteOperationsHost; webRoot: string; version: string };
     exit: (code: number) => void;
   },
 ): void {
@@ -47,7 +59,7 @@ export function attachHcAgentSmoke(
   const timeout = setTimeout(() => {
     console.error("herdr agent smoke timed out");
     options.exit(1);
-  }, options.phase === "3" || options.phase === "4" ? 300_000 : 150_000);
+  }, ["3", "4", "5", "6", "7"].includes(options.phase) ? 300_000 : 150_000);
   const finish = async (result: Record<string, unknown>, ok: boolean): Promise<void> => {
     clearTimeout(timeout);
     await writeFile(options.resultPath, `${JSON.stringify(result, null, 2)}\n`).catch(() => undefined);
@@ -61,6 +73,9 @@ export function attachHcAgentSmoke(
         else if (options.phase === "1") await phaseOne();
         else if (options.phase === "3") await phaseChat("claude");
         else if (options.phase === "4") await phaseChat("omp");
+        else if (options.phase === "5") await phaseApproval();
+        else if (options.phase === "6") await phaseRemoteApproval();
+        else if (options.phase === "7") await phaseOmpApproval();
         else await phaseTwo();
       } catch (error) {
         console.error("herdr agent smoke failed to run", error);
@@ -372,6 +387,314 @@ export function attachHcAgentSmoke(
       (agent === "omp" || (report.reported === true && report.sentFromChat === true && report.delivery === "typed"));
     if (!ok) console.error("terminal screen:", JSON.stringify(screen.slice(-1500)));
     await finish(result, ok);
+  }
+
+  /**
+   * Creates an agent session, starts its terminal (answering Claude Code's folder-trust dialog), waits
+   * until the agent is ready, then opens it in the window on its chat. No model call.
+   */
+  async function openAgent(
+    agent: "claude" | "omp",
+    title: string,
+    workspace: string,
+    launch: Record<string, string>,
+    token: number,
+  ): Promise<{ sessionId?: string; ready?: boolean; skipped?: string; chatShown?: boolean; screen?: string }> {
+    return (await window.webContents.executeJavaScript(`(async () => {
+      const desktop = window.agentControlDesktop;
+      const agent = ${JSON.stringify(agent)};
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const until = async (check, ms) => { const end = Date.now() + ms; while (Date.now() < end && !check()) await wait(150); return Boolean(check()); };
+      const updates = [];
+      let sessionId = "";
+      const offEvents = desktop.gjc.onEvent((event) => {
+        if (event.type === "session.updated" && event.session.id === sessionId && updates.at(-1) !== event.session.status) updates.push(event.session.status);
+      });
+      const found = (await desktop.terminal.listAgents()).find((candidate) => candidate.id === agent);
+      if (!found?.installed) { offEvents(); return { skipped: found?.reason ?? "not installed" }; }
+      const created = await desktop.terminal.createSession({ title: ${JSON.stringify(title)}, workspace: ${JSON.stringify(workspace)}, agentKind: agent, launch: ${JSON.stringify(launch)} });
+      sessionId = created.id;
+      let output = "";
+      const offOutput = desktop.terminal.onOutput((event) => { output += event.data; });
+      const plain = () => output.replace(/\\x1b\\[[0-9;?<>=]*[A-Za-z~]/g, "").replace(/\\x1b\\][^\\x07\\x1b]*(\\x07|\\x1b\\\\)/g, "");
+      const started = await desktop.terminal.start({ token: ${token}, session: created.id, cols: 120, rows: 40 });
+      let ready = false;
+      if (agent === "claude") {
+        if (await until(() => updates.includes("waiting"), 40000)) {
+          const flat = () => plain().replace(/\\s+/g, "");
+          await wait(2500);
+          for (let attempt = 0; attempt < 3 && !/❯Yes,Itrust/.test(flat().slice(-600)); attempt += 1) {
+            desktop.terminal.write(started.id, "\\x1b[B");
+            await until(() => /❯Yes,Itrust/.test(flat().slice(-600)), 2000);
+          }
+          desktop.terminal.write(started.id, "\\r");
+        }
+        ready = await until(() => updates.lastIndexOf("idle") > updates.indexOf("waiting"), 30000);
+      } else {
+        ready = await until(() => updates.includes("idle"), 40000);
+      }
+      const screen = plain().slice(-800);
+      await desktop.terminal.dispose(${token});
+      offOutput();
+      offEvents();
+      if (!ready) return { sessionId, ready, screen };
+      await wait(1500);
+      const row = await until(() => [...document.querySelectorAll(".session-row")].some((node) => node.textContent?.includes(${JSON.stringify(title)})), 10000)
+        ? [...document.querySelectorAll(".session-row")].find((node) => node.textContent?.includes(${JSON.stringify(title)}))
+        : null;
+      row?.click();
+      await until(() => document.querySelector(".surface-mode-toggle"), 10000);
+      document.querySelectorAll(".surface-mode-toggle button")[0]?.click();
+      const chatShown = await until(() => document.querySelector("main.workspace")?.getAttribute("data-surface") === "chat", 5000);
+      await until(() => { const field = document.querySelector(".composer--terminal-agent textarea"); return field && !field.disabled; }, 15000);
+      return { sessionId, ready, chatShown };
+    })()`)) as { sessionId?: string; ready?: boolean; skipped?: string; chatShown?: boolean; screen?: string };
+  }
+
+  /** Types a prompt into the agent chat's composer and sends it. */
+  async function sendFromChat(text: string): Promise<boolean> {
+    return (await window.webContents.executeJavaScript(`(async () => {
+      const field = document.querySelector(".composer--terminal-agent textarea");
+      if (!field || field.disabled) return false;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(field, ${JSON.stringify(text)});
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      document.querySelector(".composer--terminal-agent button[type=submit]")?.click();
+      for (let i = 0; i < 200 && field.value !== ""; i += 1) await new Promise((resolve) => setTimeout(resolve, 200));
+      return field.value === "";
+    })()`)) as boolean;
+  }
+
+  /** Waits for an approval card in the window, up to `ms`. */
+  async function cardInWindow(ms: number): Promise<{ shown: boolean; text: string | null; banner: boolean }> {
+    return (await window.webContents.executeJavaScript(`(async () => {
+      const card = () => document.querySelector(".tool-card--approval");
+      const end = Date.now() + ${ms};
+      while (Date.now() < end && !card()) await new Promise((resolve) => setTimeout(resolve, 200));
+      return { shown: Boolean(card()), text: card()?.textContent?.slice(0, 240) ?? null, banner: Boolean(document.querySelector(".approval-banner")) };
+    })()`)) as { shown: boolean; text: string | null; banner: boolean };
+  }
+
+  /** The session's transcript rows, as the window reads them. */
+  async function rows(sessionId: string): Promise<{ id: string; kind: string; name?: string; status?: string; command?: string; output?: string }[]> {
+    return (await window.webContents.executeJavaScript(
+      `window.agentControlDesktop.gjc.getTranscriptPage(${JSON.stringify(sessionId)}).then((page) => page.items)`,
+    )) as { id: string; kind: string; name?: string; status?: string; command?: string; output?: string }[];
+  }
+
+  /** A tool row that ran `marker`'s command and finished, within `ms`. */
+  async function ranTool(
+    read: () => Promise<{ id: string; kind: string; name?: string; status?: string; command?: string; output?: string }[]>,
+    marker: string,
+    ms: number,
+  ) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      const done = (await read()).find(
+        (row) => row.kind === "tool" && row.status === "completed" && `${row.command ?? ""}${row.output ?? ""}`.includes(marker),
+      );
+      if (done) return done;
+      await wait(500);
+    }
+    return undefined;
+  }
+
+  /** The state a session's row shows now. */
+  async function statusOf(sessionId: string): Promise<string | null> {
+    return (await window.webContents.executeJavaScript(
+      `window.agentControlDesktop.terminal.listSessions().then((rows) => rows.find((row) => row.id === ${JSON.stringify(sessionId)})?.status ?? null)`,
+    )) as string | null;
+  }
+
+  async function phaseApproval(): Promise<void> {
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-approval-smoke-")));
+    const opened = await openAgent("claude", "claude approval smoke", workspace, { model: "haiku", permissionMode: "default" }, 930501);
+    if (opened.skipped || !opened.ready || !opened.sessionId) {
+      await finish({ phase: 5, ...opened }, false);
+      return;
+    }
+    const sessionId = opened.sessionId;
+    // a command that writes: Claude Code runs a read-only one (echo) without asking
+    const sent = await sendFromChat("Use the Bash tool to run exactly this command and nothing else: touch gajae-approval-one.txt");
+    const card = await cardInWindow(90_000);
+    // while the card waits, the agent shows its own dialog too: the hook does not hold it
+    const screenWhileWaiting = card.shown ? ((await options.readScreen?.(sessionId)) ?? "") : "";
+    const statusWhileWaiting = card.shown ? await statusOf(sessionId) : null;
+    const approved = card.shown
+      ? ((await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector(".tool-card--approval .permission-options .button-primary")?.click();
+          const end = Date.now() + 30000;
+          while (Date.now() < end && document.querySelector(".tool-card--approval")) await new Promise((resolve) => setTimeout(resolve, 200));
+          return !document.querySelector(".tool-card--approval");
+        })()`)) as boolean)
+      : false;
+    const ran = approved ? await ranTool(() => rows(sessionId), "gajae-approval-one", 90_000) : undefined;
+    const record = options.store.get(sessionId);
+    const result = {
+      phase: 5,
+      sessionId,
+      chatShown: opened.chatShown,
+      sent,
+      cardShown: card.shown,
+      card: card.text,
+      banner: card.banner,
+      dialogOnScreen: /Do you want to proceed|Yes, and don|❯ 1\. Yes/u.test(screenWhileWaiting),
+      statusWhileWaiting,
+      approvedFromCard: approved,
+      ran: ran ? { id: ran.id, name: ran.name, status: ran.status, output: ran.output?.slice(0, 80) } : null,
+      transcriptPath: record?.transcriptPath ?? null,
+    };
+    if (!result.dialogOnScreen) console.error("screen while the card waited:", JSON.stringify(screenWhileWaiting.slice(-1200)));
+    await finish(result, Boolean(sent && card.shown && approved && ran));
+  }
+
+  async function phaseRemoteApproval(): Promise<void> {
+    const first = JSON.parse(await readFile(options.resultPath, "utf8")) as { sessionId: string };
+    const sessionId = first.sessionId;
+    if (!options.remote) throw new Error("no remote host");
+    const free = await new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", () => {
+        const { port } = probe.address() as AddressInfo;
+        probe.close(() => resolve(port));
+      });
+    });
+    const directory = path.join(path.dirname(options.resultPath), "remote-smoke");
+    const service = new RemoteAccessService({
+      userDataDirectory: directory,
+      webRoot: options.remote.webRoot,
+      version: options.remote.version,
+      workspace: () => "",
+      host: options.remote.host,
+      devices: new DeviceStore(path.join(directory, "remote-devices.json")),
+      // never the real Tailscale: this smoke must not touch the owner's Serve config
+      tailscale: new TailscaleClient({ binary: path.join(directory, "missing-tailscale") }),
+      log: () => undefined,
+    });
+    let operation = 0;
+    try {
+      await service.setPort(free);
+      const enabled = await service.setEnabled(true);
+      const origin = `http://127.0.0.1:${enabled.port}`;
+      const code = (await service.issuePairingCode("control")).pairing?.code;
+      const paired = (await (await fetch(`${origin}/api/pair`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: origin },
+        body: JSON.stringify({ code, deviceName: "Smoke phone" }),
+      })).json()) as { token?: string };
+      const headers = { Authorization: `Bearer ${paired.token}`, Origin: origin, "Content-Type": "application/json" };
+      const get = async (route: string) => (await fetch(`${origin}${route}`, { headers })).json() as Promise<Record<string, unknown>>;
+      const post = async (route: string, body: Record<string, unknown>) => {
+        operation += 1;
+        const response = await fetch(`${origin}${route}`, { method: "POST", headers, body: JSON.stringify({ ...body, operationId: `op-smoke-approval-${operation}` }) });
+        return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+      };
+      // a read answers `{ result }`
+      const phoneRows = async () =>
+        (((await get(`/api/sessions/${encodeURIComponent(sessionId)}/transcript-page`)).result as { items?: unknown[] } | undefined)?.items ?? []) as {
+          id: string;
+          kind: string;
+          status?: string;
+          command?: string;
+          output?: string;
+          permissionOptions?: unknown[];
+        }[];
+      const waitingCard = async (ms: number, not?: string) => {
+        const end = Date.now() + ms;
+        let polls = 0;
+        while (Date.now() < end) {
+          const seen = await phoneRows();
+          const card = seen.find((row) => row.kind === "tool" && row.status === "approval-required" && row.id !== not);
+          if (card) return card;
+          if (polls++ % 20 === 0 && process.env.GAJAE_DEBUG_HERDR)
+            console.log(`[phone] ${new Date().toISOString().slice(11, 23)} ${seen.length} rows; tools: ${seen.filter((row) => row.kind === "tool").map((row) => `${row.id.slice(-12)}=${row.status}`).join(",")}`);
+          await wait(250);
+        }
+        return undefined;
+      };
+      const listed = ((await get("/api/state")).sessions as { id: string }[] | undefined)?.some((session) => session.id === sessionId) ?? false;
+      const asked = await post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        input: { text: "Use the Bash tool to run exactly this command and nothing else: mkdir gajae-approval-two", images: [], files: [] },
+      });
+      const card = await waitingCard(90_000);
+      const decided = card
+        ? await post(`/api/tool-calls/${encodeURIComponent(card.id)}/decision`, { decision: { optionId: "allow_once" } })
+        : null;
+      const ran = card ? await ranTool(phoneRows, "gajae-approval-two", 90_000) : undefined;
+      // a third request answered at the terminal: its card must not stay behind (each request is a
+      // different command: Claude Code may not ask again for a kind it was allowed in the session)
+      await wait(2000);
+      const third = await post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        input: { text: "Use the Bash tool to run exactly this command and nothing else: rm gajae-approval-one.txt", images: [], files: [] },
+      });
+      const thirdCard = await waitingCard(90_000, card?.id);
+      if (thirdCard) {
+        await wait(1500);
+        await options.pressKeys?.(sessionId, ["enter"]);
+      }
+      let thirdClosed = false;
+      for (let attempt = 0; thirdCard && attempt < 60 && !thirdClosed; attempt += 1) {
+        await wait(500);
+        thirdClosed = !(await phoneRows()).some((row) => row.id === thirdCard.id && row.status === "approval-required");
+      }
+      const thirdRan = thirdCard ? await ranTool(phoneRows, "rm gajae-approval-one", 60_000) : undefined;
+      const result = {
+        phase: 6,
+        listedOnPhone: listed,
+        askedFromPhone: asked.status,
+        askedOutcome: JSON.stringify(asked.body).slice(0, 200),
+        phoneCard: card ? { id: card.id, options: card.permissionOptions?.length ?? 0 } : null,
+        decidedFromPhone: decided?.status ?? null,
+        ran: ran ? { id: ran.id, status: ran.status, output: ran.output?.slice(0, 80) } : null,
+        thirdAsked: third.status,
+        thirdCard: thirdCard?.id ?? null,
+        thirdClosedByTerminalAnswer: thirdClosed,
+        thirdRan: thirdRan ? { id: thirdRan.id, status: thirdRan.status } : null,
+      };
+      await window.webContents.executeJavaScript(`window.agentControlDesktop.terminal.deleteSession(${JSON.stringify(sessionId)})`);
+      await wait(1000);
+      await finish(result, Boolean(listed && card && decided?.status === 200 && ran && thirdCard && thirdClosed));
+    } finally {
+      await service.dispose();
+    }
+  }
+
+  async function phaseOmpApproval(): Promise<void> {
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-omp-approval-smoke-")));
+    const model = process.env.GAJAE_SMOKE_OMP_MODEL || "opencodex/opengateway/deepseek/deepseek-v4.1-flash-eco";
+    const opened = await openAgent("omp", "omp approval smoke", workspace, { model, permissionMode: "always-ask" }, 930701);
+    if (opened.skipped || !opened.ready || !opened.sessionId) {
+      await finish({ phase: 7, ...opened }, false);
+      return;
+    }
+    const sessionId = opened.sessionId;
+    const sent = await sendFromChat("Run this shell command with your bash tool, exactly as written: touch gajae-omp-approval.txt");
+    const card = await cardInWindow(90_000);
+    const screenWhileWaiting = (await options.readScreen?.(sessionId)) ?? "";
+    const approved = card.shown
+      ? ((await window.webContents.executeJavaScript(`(async () => {
+          document.querySelector(".tool-card--approval .permission-options .button-primary")?.click();
+          const end = Date.now() + 30000;
+          while (Date.now() < end && document.querySelector(".tool-card--approval")) await new Promise((resolve) => setTimeout(resolve, 200));
+          return !document.querySelector(".tool-card--approval");
+        })()`)) as boolean)
+      : false;
+    const ran = approved ? await ranTool(() => rows(sessionId), "gajae-omp-approval", 90_000) : undefined;
+    const result = {
+      phase: 7,
+      sessionId,
+      sent,
+      cardShown: card.shown,
+      card: card.text,
+      ompDialogOnScreen: /Approve|Deny|Allow tool/u.test(screenWhileWaiting),
+      approvedFromCard: approved,
+      ran: ran ? { id: ran.id, name: ran.name, status: ran.status, output: ran.output?.slice(0, 80) } : null,
+    };
+    if (!card.shown || !ran) console.error("omp screen:", JSON.stringify(screenWhileWaiting.slice(-1500)));
+    await window.webContents.executeJavaScript(`window.agentControlDesktop.terminal.deleteSession(${JSON.stringify(sessionId)})`);
+    await wait(1000);
+    await finish(result, Boolean(sent && card.shown && approved && ran));
   }
 
   async function phaseTwo(): Promise<void> {
