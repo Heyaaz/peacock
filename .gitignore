@@ -26,6 +26,7 @@ dist-ssr
 AuthKey_*.p8
 notarytool-profile*
 release
+build/herdr-core/
 .gajae-artifacts
 docs/*
 !docs/features/

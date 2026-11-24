@@ -5,6 +5,7 @@ import { access, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs
 import path from 'node:path';
 import process from 'node:process';
 import { packager } from '@electron/packager';
+import { ensureHerdrCore } from './scripts/fetch-herdr-core.mjs';
 
 const exec = promisify(execFile);
 const root = process.cwd();
@@ -70,6 +71,11 @@ await exec(path.join(root, 'node_modules', '.bin', 'electron-rebuild'), ['--forc
   stdio: 'inherit',
 });
 
+// The pinned herdr-core (checksum-verified, cached in build/herdr-core/). Its
+// Herdr Core.app is signed and notarized by Herdr, Inc.; the app ships it whole in
+// Contents/Resources and installs a copy into userData on first use.
+const herdrCore = await ensureHerdrCore(root);
+
 const [outputDirectory] = await packager({
   dir: root,
   name: packageJson.productName,
@@ -94,6 +100,9 @@ const [outputDirectory] = await packager({
   extraResource: [
     path.join(root, 'src/assets/gajae-menubar-Template.png'),
     path.join(root, 'src/assets/gajae-menubar-Template@2x.png'),
+    herdrCore.bundle,
+    // Apache-2.0 asks for its license, and hc's own notices for what it includes, to travel with it
+    herdrCore.licenses,
   ],
   ...(notarize
     ? {
@@ -103,6 +112,10 @@ const [outputDirectory] = await packager({
           entitlements,
           entitlementsInherit: entitlements,
           gatekeeperAssess: false,
+          // Herdr Core.app keeps Herdr's own signature and notarization: re-signing it
+          // would change the identity macOS privacy prompts attach to. Unverified until a
+          // notarized build (design P5); the ad-hoc path below leaves it intact (P0.5).
+          ignore: (file) => file.includes('/Contents/Resources/Herdr Core.app'),
         },
       }
     : {}),
