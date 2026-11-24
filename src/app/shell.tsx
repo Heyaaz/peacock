@@ -23,6 +23,9 @@ import { getLanguage, t, useLanguage } from "../i18n";
 import { Menu, Plus, X } from "lucide-react";
 import { TerminalView } from "./terminal-view";
 import { TerminalSessionPane } from "./terminal-session-pane";
+import { TerminalChatComposer } from "./terminal-chat-composer";
+import { capabilitiesOf, type MessageDelivery, type SessionCapabilities, type SessionSurface } from "../../shared/agent-contract";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Composer,
@@ -198,6 +201,9 @@ export default function App() {
   const [parallelGroupId, setParallelGroupId] = useState<string | null>(null);
   const [surface, setSurface] = useState<"chat" | "terminal">("chat");
   const [terminalMounted, setTerminalMounted] = useState(false);
+  // A terminal agent's chat keeps its own screen choice per session, starting on its terminal.
+  const [agentSurfaces, setAgentSurfaces] = useState<Record<string, SessionSurface>>({});
+  const [agentTerminalShown, setAgentTerminalShown] = useState<string | null>(null);
   const surfaceRef = useRef(surface);
   // The whole object the store answered with is kept, not only the label the sidebar
   // renders: the reasoning-card preference is a field of it, and a card toggles that
@@ -441,16 +447,36 @@ export default function App() {
   const selectedSession =
     sessions.find((session) => session.id === selectedId) ?? null;
   // A terminal session has no conversation, so nothing below that reads one
-  // from GJC runs for it; `chatId` is the selection those reads follow.
-  const terminalSession = selectedSession?.runtime === "terminal" ? selectedSession : null;
+  // from GJC runs for it; `chatId` is the selection those reads follow. A terminal
+  // agent whose transcript is read (Claude Code, omp) has a chat screen beside its
+  // terminal: its conversation is read, but GJC's own reads (goal, subagents, git,
+  // commands) are not, so `selectedSessionId` leaves it out.
+  const terminalRuntime = selectedSession?.runtime === "terminal";
+  const agentChat = terminalRuntime && selectedSession?.surfaces?.includes("chat") ? selectedSession : null;
+  const terminalSession = terminalRuntime && !agentChat ? selectedSession : null;
   const chatId = terminalSession ? null : selectedId;
-  const selectedSessionId = terminalSession ? undefined : selectedSession?.id;
+  const selectedSessionId = terminalRuntime ? undefined : selectedSession?.id;
+  const agentEntry = agentChat ? agentCatalogEntry(agentChat.agentKind ?? "claude") : null;
+  const agentSurface = agentChat && agentEntry ? (agentSurfaces[agentChat.id] ?? agentEntry.defaultSurface) : null;
+  const viewSurface = agentSurface ?? surface;
+  const setViewSurface = useCallback(
+    (next: SessionSurface): void => {
+      if (!agentChat) {
+        setSurface(next);
+        return;
+      }
+      // the agent's terminal stays attached once shown, so switching back to it is instant
+      if (agentSurface === "terminal") setAgentTerminalShown(agentChat.id);
+      setAgentSurfaces((current) => ({ ...current, [agentChat.id]: next }));
+    },
+    [agentChat, agentSurface],
+  );
   const selectedSessionStatus = selectedSession?.status;
   const selectedSessionRef = useRef(selectedSession);
   selectedSessionRef.current = selectedSession;
   selectedIdRef.current = selectedId;
   // Shortcuts that would steal keys from a terminal check this.
-  const shownSurface = terminalSession ? "terminal" : surface;
+  const shownSurface = terminalSession ? "terminal" : viewSurface;
   useEffect(() => {
     surfaceRef.current = shownSurface;
   }, [shownSurface]);
@@ -708,8 +734,8 @@ export default function App() {
     backend,
     commands,
     configOptions,
-    chatId,
-    terminalSession ? null : selectedSession,
+    terminalRuntime ? null : chatId,
+    terminalRuntime ? null : selectedSession,
     connection,
     language,
   );
@@ -772,6 +798,17 @@ export default function App() {
       }
     },
     [backend, resolveSessionId],
+  );
+
+  // A terminal agent's message goes straight to its terminal; its row appears once the agent
+  // writes it to its transcript (design §5.5), so nothing is echoed or queued here.
+  const sendAgentMessage = useCallback(
+    async (sessionId: string, text: string): Promise<MessageDelivery> => {
+      const delivery = await backend.sendMessage(sessionId, { text, images: [], files: [] });
+      if (selectedIdRef.current === sessionId) setSentRequestToken((token) => token + 1);
+      return delivery;
+    },
+    [backend],
   );
 
   useShellShortcuts({
@@ -1263,12 +1300,12 @@ export default function App() {
       ) : terminalSession ? (
         <TerminalSessionPane session={terminalSession} />
       ) : selectedSession ? (
-        <main className="workspace" data-surface={surface}>
+        <main className="workspace" data-surface={viewSurface}>
           <ChatHeader
             selectedSession={selectedSession}
             selectedGit={selectedGit}
-            surface={surface}
-            setSurface={setSurface}
+            surface={viewSurface}
+            setSurface={setViewSurface}
             setTerminalMounted={setTerminalMounted}
             toolViewMode={preferences.toolViewMode}
             changeToolViewMode={changeToolViewMode}
@@ -1276,13 +1313,14 @@ export default function App() {
             setDiffOpen={setDiffOpen}
             inspectorOpen={inspectorOpen}
             setInspectorOpen={setInspectorOpen}
-            {...(askSideBackend ? { sideOpen, setSideOpen } : {})}
+            {...(askSideBackend && !agentChat ? { sideOpen, setSideOpen } : {})}
+            terminalAgent={agentChat !== null}
           />
 
           <div className="workspace-body">
             <section
               className={`conversation conversation--${selectedSession.phase === "compacting" ? "compacting" : selectedSession.status}`}
-              hidden={surface === "terminal"}
+              hidden={viewSurface === "terminal"}
             >
               {findOpen && (
                 <ConversationFindBar
@@ -1337,19 +1375,35 @@ export default function App() {
                 onRevealInspector={onRevealInspector}
                 autoDenyHint={autoDenyHint}
                 onPickExample={
-                  remoteViewOnly
+                  remoteViewOnly || agentChat
                     ? undefined
                     : (text) => prefillComposerDraft(selectedSession.id, text)
                 }
-                emptyStateMeta={{
-                  workspace: selectedSession.workspace,
-                  modelDisplay: selectedSession.modelDisplay,
-                  recentWorkspaces,
-                  onWorkspaceChange: (workspace) =>
-                    createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
-                }}
+                emptyStateMeta={
+                  agentChat
+                    ? { workspace: selectedSession.workspace, recentWorkspaces: [selectedSession.workspace] }
+                    : {
+                        workspace: selectedSession.workspace,
+                        modelDisplay: selectedSession.modelDisplay,
+                        recentWorkspaces,
+                        onWorkspaceChange: (workspace) =>
+                          createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
+                      }
+                }
               />
               <div className="composer-wrap">
+                {agentChat && agentEntry ? (
+                  <TerminalChatComposer
+                    key={agentChat.id}
+                    session={agentChat}
+                    capabilities={agentCapabilities(agentChat, remoteViewOnly)}
+                    agentName={agentEntry.name}
+                    onSend={(text) => sendAgentMessage(agentChat.id, text)}
+                    onCancel={() => backend.cancelRun(agentChat.id)}
+                    onOpenTerminal={() => setViewSurface("terminal")}
+                  />
+                ) : (
+                <>
                 <QuestionBanner
                   pending={pendingQuestionCards}
                   onAnswer={answerQuestion}
@@ -1408,17 +1462,31 @@ export default function App() {
                   onSuggestNextInput={suggestNextInput}
                   turnCompletion={turnCompletion}
                 />
+                </>
+                )}
               </div>
             </section>
-            {terminalMounted && (
-              <TerminalView
-                key={selectedSession.workspace || selectedSession.id}
-                cwd={selectedSession.workspace}
-                active={surface === "terminal"}
-                hidden={surface !== "terminal"}
-              />
+            {agentChat ? (
+              (agentSurface === "terminal" || agentTerminalShown === agentChat.id) && (
+                <TerminalView
+                  key={agentChat.id}
+                  session={agentChat.id}
+                  cwd={agentChat.workspace}
+                  active={agentSurface === "terminal"}
+                  hidden={agentSurface !== "terminal"}
+                />
+              )
+            ) : (
+              terminalMounted && (
+                <TerminalView
+                  key={selectedSession.workspace || selectedSession.id}
+                  cwd={selectedSession.workspace}
+                  active={surface === "terminal"}
+                  hidden={surface !== "terminal"}
+                />
+              )
             )}
-            {surface === "chat" && sideOpen && askSideBackend && (
+            {surface === "chat" && !agentChat && sideOpen && askSideBackend && (
               <SideQuestionPanel
                 key={selectedSession.id}
                 exchanges={sideThreads[selectedSession.id] ?? NO_SIDE_EXCHANGES}
@@ -1429,7 +1497,7 @@ export default function App() {
                 onClose={() => setSideOpen(false)}
               />
             )}
-            {surface === "chat" && inspectorOpen && (
+            {surface === "chat" && !agentChat && inspectorOpen && (
               <Inspector
                 session={selectedSession}
                 transcript={selectedTranscript}
@@ -1440,7 +1508,7 @@ export default function App() {
                 onClose={closeInspector}
               />
             )}
-            {surface === "chat" && diffOpen && (
+            {surface === "chat" && !agentChat && diffOpen && (
               <DiffPanel
                 session={selectedSession}
                 backend={backend}
@@ -1566,4 +1634,10 @@ export default function App() {
     </div>
     </LoginHintContext.Provider>
   );
+}
+
+/** What a terminal agent's chat may do here: a view-only remote device sends and stops nothing. */
+function agentCapabilities(session: AgentSession, viewOnly: boolean): SessionCapabilities {
+  const capabilities = capabilitiesOf(session);
+  return viewOnly ? { ...capabilities, send: false, cancel: false } : capabilities;
 }

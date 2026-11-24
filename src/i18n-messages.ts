@@ -317,6 +317,20 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "셸이 종료되었습니다": "The shell exited",
   앱: "App",
   CLI: "CLI",
+  "터미널에서 응답을 기다리고 있어 보내지 않았습니다: {0}":
+    "Not sent: the agent is waiting for an answer in its terminal: {0}",
+  "터미널 열기":
+    "Open terminal",
+  "{0}에 지금은 채팅으로 보낼 수 없습니다. 터미널에서 입력하세요.":
+    "{0} can't take messages from the chat right now. Type in its terminal.",
+  "{0}이(가) 터미널에서 응답을 기다리고 있습니다.":
+    "{0} is waiting for an answer in its terminal.",
+  "{0}에게 보낼 메시지 (터미널로 입력됩니다)":
+    "Message for {0} (typed into its terminal)",
+  "보내는 중…":
+    "Sending…",
+  "작업 중단":
+    "Stop",
   "터미널 세션": "Terminal session",
   "새 터미널 세션": "New terminal session",
   "새 세션 종류": "New session type",

@@ -704,6 +704,35 @@ describe("terminal sessions", () => {
     expect(markup).toContain("빌드 셸");
     expect(markup).not.toContain("conversation--");
   });
+
+  it("shows a terminal agent's terminal with its chat beside it, and none of GJC's own controls", async () => {
+    const row = session("terminal-2", {
+      title: "Claude 작업",
+      subtitle: "Claude Code · gajae-bot",
+      runtime: "terminal",
+      agentKind: "claude",
+      surfaces: ["terminal", "chat"],
+      capabilities: { send: false, cancel: true },
+    });
+    actionProbe.forkSession.mockResolvedValueOnce(row);
+    renderApp();
+    actionProbe.sidebar!.onFork(session("source-1"));
+    await settle();
+    renderApp();
+    actionProbe.sidebar!.onSelect(row.id);
+    const markup = renderApp();
+
+    // the agent's own terminal first, with the chat a toggle away
+    expect(markup).toContain('data-surface="terminal"');
+    expect(markup).toContain("surface-mode-toggle");
+    expect(markup).toContain("Claude Code · gajae-bot");
+    expect(markup).toContain("conversation--");
+    // its composer types into the terminal, and says when it cannot
+    expect(markup).toContain("composer--terminal-agent");
+    expect(markup).toContain("Claude Code에 지금은 채팅으로 보낼 수 없습니다");
+    expect(markup).not.toContain("세션 정보");
+    expect(markup).not.toContain("변경 파일 보기");
+  });
 });
 
 describe("project scope", () => {

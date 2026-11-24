@@ -1,4 +1,4 @@
-import { FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight } from "lucide-react";
+import { FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal } from "lucide-react";
 import type { GitStatusSnapshot } from "../../shared/agent-contract";
 import type { AgentSession, ToolViewMode } from "../backend/types";
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
@@ -21,6 +21,11 @@ interface ChatHeaderProps {
   /** Absent when the backend cannot answer side questions. */
   sideOpen?: boolean;
   setSideOpen?: (update: (open: boolean) => boolean) => void;
+  /**
+   * A terminal agent's chat (Claude Code, omp): the agent's terminal is the session's own, and
+   * GJC's changed-files and session-info panels have nothing to read for it.
+   */
+  terminalAgent?: boolean;
 }
 
 export function ChatHeader({
@@ -37,13 +42,20 @@ export function ChatHeader({
   setInspectorOpen,
   sideOpen = false,
   setSideOpen,
+  terminalAgent = false,
 }: ChatHeaderProps) {
   return (
   <header className="chat-header">
     <div className="chat-identity">
-      <span className="header-avatar">
-        <img src={gajaeIconUrl} alt="" />
-      </span>
+      {terminalAgent ? (
+        <span className="header-avatar header-avatar--terminal">
+          <SquareTerminal size={18} aria-hidden="true" />
+        </span>
+      ) : (
+        <span className="header-avatar">
+          <img src={gajaeIconUrl} alt="" />
+        </span>
+      )}
       <span>
         <strong>{selectedSession.title}</strong>
         <small>
@@ -60,6 +72,11 @@ export function ChatHeader({
               title={t("삭제·재연결 결과를 확인하지 못해 기록을 보존했습니다. 이 세션은 다시 이어서 진행해야 보낼 수 있습니다.")}
             >
               {t("복구 필요 · 읽기 전용")} </span>
+          )}
+          {terminalAgent && (
+            <span className="chat-branch" title={selectedSession.workspace}>
+              {selectedSession.subtitle}
+            </span>
           )}
           {(selectedGit?.branch ||
             selectedSession.worktree?.branch) && (
@@ -90,7 +107,7 @@ export function ChatHeader({
           aria-pressed={surface === "terminal"}
           data-terminal-toggle
           onClick={() => {
-            setTerminalMounted(true);
+            if (!terminalAgent) setTerminalMounted(true);
             setSurface("terminal");
           }}
         >
@@ -116,23 +133,27 @@ export function ChatHeader({
           <MessageCircleQuestion size={18} />
         </button>
       )}
-      <button
-        className={`icon-button ${diffOpen ? "is-active" : ""}`}
-        type="button"
-        title={t("변경 파일 보기")}
-        onClick={() => setDiffOpen((open) => !open)}
-      >
-        <FolderGit2 size={18} />
-      </button>
-      <button
-        className={`icon-button ${inspectorOpen ? "is-active" : ""}`}
-        type="button"
-        data-session-info
-        title={t("세션 정보")}
-        onClick={() => setInspectorOpen((open) => !open)}
-      >
-        <PanelRight size={18} />
-      </button>
+      {!terminalAgent && (
+        <button
+          className={`icon-button ${diffOpen ? "is-active" : ""}`}
+          type="button"
+          title={t("변경 파일 보기")}
+          onClick={() => setDiffOpen((open) => !open)}
+        >
+          <FolderGit2 size={18} />
+        </button>
+      )}
+      {!terminalAgent && (
+        <button
+          className={`icon-button ${inspectorOpen ? "is-active" : ""}`}
+          type="button"
+          data-session-info
+          title={t("세션 정보")}
+          onClick={() => setInspectorOpen((open) => !open)}
+        >
+          <PanelRight size={18} />
+        </button>
+      )}
     </div>
   </header>
   );

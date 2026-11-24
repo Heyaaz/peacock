@@ -4682,6 +4682,22 @@ button.diff-line-number:hover {
   color: var(--text-tertiary);
   font-size: 10px;
 }
+/* A terminal agent's chat points at its terminal for what the chat cannot do. */
+.composer-terminal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  padding: 0;
+  color: var(--accent-bright);
+  font-size: 10px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.composer-terminal-link:hover {
+  text-decoration: underline;
+}
 .composer-toolbar {
   display: flex;
   min-height: 40px;
