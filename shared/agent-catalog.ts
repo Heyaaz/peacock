@@ -15,8 +15,8 @@ import type {
  * the machine.
  *
  * Detection (PATH, then the login shell's PATH, then `installDirs`, with the
- * `--version` answer cached) and launching read this list. Nothing in the
- * window reads it yet.
+ * `--version` answer cached) and launching read this list; the window reads an
+ * agent's name and the screen its sessions open on.
  */
 export interface AgentCatalogEntry {
   id: AgentKindId;

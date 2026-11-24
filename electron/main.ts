@@ -1555,6 +1555,12 @@ function createWindow(): BrowserWindow {
       resultPath: path.join(userDataDirectory, "hc-agent-smoke.json"),
       store: terminalSessions,
       notifications: () => shownNotifications,
+      readScreen: async (sessionId) => {
+        const address = terminalSessions.get(sessionId)?.terminalAddress;
+        if (!hcCore || !address) return "";
+        const hc = await hcCore.connection();
+        return (await hc.call("terminal.read", { terminal: address, lines: 80 })).text;
+      },
       exit: exitWithTerminals,
     });
   else if (hcTerminalSmokePhase)

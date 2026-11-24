@@ -56,6 +56,14 @@ describe("planAgentLaunch", () => {
     expect((await planAgentLaunch(record({ agentKind: "omp" }), deps())).argv).toEqual(["/bin/omp"]);
   });
 
+  it("resumes the omp transcript Gajae found the session writing, while it exists", async () => {
+    const known = record({ agentKind: "omp", transcriptPath: "/home/me/.omp/agent/sessions/-w/s.jsonl", launch: { model: "test/m" } });
+    expect((await planAgentLaunch(known, deps({ exists: async () => true }))).argv).toEqual([
+      "/bin/omp", "--resume", "/home/me/.omp/agent/sessions/-w/s.jsonl", "--model=test/m",
+    ]);
+    expect((await planAgentLaunch(known, deps())).argv).toEqual(["/bin/omp", "--model=test/m"]);
+  });
+
   it("refuses an agent that is not installed, and GJC in a terminal", async () => {
     await expect(
       planAgentLaunch(record({ agentKind: "codex" }), deps({ detect: async (id) => ({ id, name: "Codex", installed: false, reason: "설치되어 있지 않습니다" }) })),

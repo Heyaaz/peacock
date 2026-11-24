@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -6,7 +6,8 @@ import type { AgentEvent } from "../../shared/agent-contract.js";
 import type { AgentAvailability } from "../../shared/terminal-ipc.js";
 import { TerminalSessionStore } from "../terminal-session-store.js";
 import { HerdrAgentController } from "./agent-controller.js";
-import type { ChannelHandlers, HcConnection, HelloInfo } from "./connection.js";
+import { claudeTranscriptPath } from "./claude-session.js";
+import { HcReplyError, type ChannelHandlers, type HcConnection, type HelloInfo } from "./connection.js";
 
 function setup(options: { snapshot?: (store: TerminalSessionStore) => unknown[]; installed?: boolean } = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
@@ -102,9 +103,22 @@ describe("HerdrAgentController sessions", () => {
     expect(controller.hiddenFromRemote("terminal-gone")).toBe(false);
   });
 
-  it("refuses sending into a terminal agent until the chat screen exists", async () => {
-    const { controller } = setup();
-    await expect(controller.sendMessage("terminal-1")).rejects.toMatchObject({ code: "unsupported" });
+  it("refuses sending to a session it does not have, or one with no chat", async () => {
+    const { controller, directory } = setup();
+    const text = { text: "hi", images: [], files: [] };
+    await expect(controller.sendMessage("terminal-1", text)).rejects.toMatchObject({ code: "unsupported" });
+    const shell = await controller.createTerminalSession({ title: "s", workspace: directory, agentKind: "shell" });
+    await expect(controller.sendMessage(shell.id, text)).rejects.toMatchObject({ code: "unsupported" });
+  });
+
+  it("gives Claude Code and omp a chat screen beside the terminal, and shells none", async () => {
+    const { controller, directory } = setup();
+    const claude = await controller.createTerminalSession({ title: "c", workspace: directory, agentKind: "claude" });
+    const shell = await controller.createTerminalSession({ title: "s", workspace: directory, agentKind: "shell" });
+    expect(claude.surfaces).toEqual(expect.arrayContaining(["chat", "terminal"]));
+    expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: false });
+    expect(shell.surfaces).toEqual(["terminal"]);
+    expect(await controller.getTranscriptPage(shell.id)).toMatchObject({ items: [] });
   });
 });
 
@@ -237,6 +251,71 @@ describe("HerdrAgentController status", () => {
     expect(store.get(record.id)!.transcriptPath).toMatch(/after-clear\.jsonl$/u);
     expect(stream).toBeDefined();
     controller.dispose();
+  });
+
+  it("offers sending only while the agent reports its state and its terminal runs", async () => {
+    const fixture = setup();
+    await agentSession(fixture);
+    fixture.push("status", "t1", STATUS("idle"));
+    const sendable = () => fixture.events.flatMap((event) => (event.type === "session.updated" ? [event.session.capabilities?.send] : []));
+    expect(sendable()).toEqual([true]);
+    fixture.push("finished", "t1", { exit_code: 0, reason: "exited" });
+    expect(sendable()).toEqual([true, false]);
+  });
+
+  it("types a message into the agent's terminal, and reports a dialog it waits on as not executed", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    fixture.push("status", "t1", { reported: true, status: { app: "claude-code", state: "blocked", kind: "permission", msg: "approve Bash: rm x" } });
+    fixture.hc.call.mockImplementationOnce(async () => {
+      throw new HcReplyError("blocked", "t1 is blocked (permission)");
+    });
+    const text = { text: "  go on  ", images: [], files: [] };
+    expect(await fixture.controller.sendMessage(session.id, text)).toEqual({ kind: "not_executed", detail: "approve Bash: rm x" });
+    fixture.push("status", "t1", STATUS("idle"));
+    expect(await fixture.controller.sendMessage(session.id, text)).toBe("prompt");
+    expect(fixture.hc.call).toHaveBeenLastCalledWith("terminal.send", { terminal: "t1", text: "go on" }, 30_000);
+    await expect(
+      fixture.controller.sendMessage(session.id, { text: "x", images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "" } as never], files: [] }),
+    ).rejects.toThrow(/text only/u);
+  });
+
+  it("reads the Claude Code transcript as chat rows, and follows the file a /clear moves it to", async () => {
+    const fixture = setup();
+    const session = await agentSession(fixture);
+    const record = fixture.store.get(session.id)!;
+    const line = (uuid: string, text: string) =>
+      `${JSON.stringify({ parentUuid: null, isSidechain: false, type: "user", message: { role: "user", content: text }, uuid, timestamp: "2026-11-24T06:00:00.000Z", origin: { kind: "human" }, permissionMode: "default" })}\n`;
+    const first = claudeTranscriptPath(record.workspace, record.agentSessionRef!, fixture.home);
+    mkdirSync(path.dirname(first), { recursive: true });
+    writeFileSync(first, line("u1", "first"));
+    expect((await fixture.controller.getTranscriptPage(session.id)).items).toMatchObject([{ id: `${session.id}:u1`, content: "first" }]);
+    const second = path.join(path.dirname(first), "after-clear.jsonl");
+    writeFileSync(second, line("u2", "second"));
+    fixture.controller.onHook({ event: "SessionStart", session: session.id, payload: { session_id: "after-clear", transcript_path: second, source: "clear" } });
+    expect((await fixture.controller.getTranscript(session.id)).map((item) => item.id)).toEqual([`${session.id}:u2`]);
+    expect(fixture.events).toContainEqual({ type: "transcript.invalidated", sessionId: session.id });
+    expect(await fixture.controller.getTranscriptRevision(session.id)).toMatch(/after-clear\.jsonl/u);
+  });
+
+  it("finds the transcript omp writes for a session, and keeps it and omp's session id on the record", async () => {
+    const fixture = setup();
+    const session = await fixture.controller.createTerminalSession({ title: "o", workspace: fixture.directory, agentKind: "omp" });
+    const folder = path.join(fixture.home, ".omp", "agent", "sessions", `--${realpathSync(fixture.directory).replace(/^\//u, "").replace(/[/\\:]/gu, "-")}--`);
+    mkdirSync(folder, { recursive: true });
+    const file = path.join(folder, "2026-11-24T00-00-00-000Z_01abc.jsonl");
+    writeFileSync(
+      file,
+      [
+        { type: "title", v: 1, title: "", pad: " ".repeat(40) },
+        { type: "session", version: 3, id: "01abc-def", timestamp: "2026-11-24T00:00:00.000Z", cwd: realpathSync(fixture.directory) },
+        { type: "message", id: "e1", parentId: null, timestamp: "2026-11-24T00:00:01.000Z", message: { role: "user", content: [{ type: "text", text: "hello omp" }] } },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    expect((await fixture.controller.getTranscriptPage(session.id)).items).toMatchObject([{ id: `${session.id}:e1`, content: "hello omp" }]);
+    expect(fixture.store.get(session.id)).toMatchObject({ transcriptPath: file, agentSessionRef: "01abc-def" });
   });
 
   it("interrupts the agent's turn on cancel", async () => {

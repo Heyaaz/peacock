@@ -36,9 +36,10 @@ const fileExists = async (file: string): Promise<boolean> => {
 /**
  * The command a terminal session starts. Claude Code gets a session id Gajae chose
  * (`--session-id`) and the hook settings; a session whose transcript exists resumes it instead,
- * the way a new terminal continues an agent whose terminal ended (design §4). omp and codex start
- * without hooks for now (P3c/P4). Every agent learns its Gajae session from `GAJAE_SESSION_ID`,
- * which its hooks hand back.
+ * the way a new terminal continues an agent whose terminal ended (design §4). omp resumes the
+ * transcript Gajae found it writing (`--resume <file>`), so the chat keeps its rows; omp and codex
+ * start without hooks. Every agent learns its Gajae session from `GAJAE_SESSION_ID`, which its
+ * hooks hand back.
  */
 export async function planAgentLaunch(record: TerminalSessionRecord, deps: LaunchDependencies): Promise<LaunchPlan> {
   const agentKind = record.agentKind ?? "shell";
@@ -52,8 +53,13 @@ export async function planAgentLaunch(record: TerminalSessionRecord, deps: Launc
   if (!agent.installed || !agent.binary) throw new Error(`${agent.name}: ${agent.reason ?? "not installed"}`);
   const env = { GAJAE_SESSION_ID: record.id };
   const options = launchArgs(agentKind, record.launch);
-  if (agentKind !== "claude") return { argv: [agent.binary, ...options], env };
   const exists = deps.exists ?? fileExists;
+  if (agentKind === "omp") {
+    const transcript = record.transcriptPath;
+    const resume = transcript !== undefined && (await exists(transcript));
+    return { argv: [agent.binary, ...(resume ? ["--resume", transcript] : []), ...options], env };
+  }
+  if (agentKind !== "claude") return { argv: [agent.binary, ...options], env };
   const known = record.agentSessionRef;
   const transcript = known ? (record.transcriptPath ?? claudeTranscriptPath(record.workspace, known, deps.home)) : undefined;
   const resume = known !== undefined && transcript !== undefined && (await exists(transcript));

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { agentCatalogEntry } from "../shared/agent-catalog.js";
-import type { AgentSession, SessionStatus } from "../shared/agent-contract.js";
+import type { AgentSession, SessionCapabilities, SessionStatus } from "../shared/agent-contract.js";
 import type { TerminalSessionRecord } from "../shared/terminal-ipc.js";
 import { recentLabel, timestampMs } from "./gjc-sdk-model.js";
 
@@ -10,14 +10,15 @@ import { recentLabel, timestampMs } from "./gjc-sdk-model.js";
  */
 export function terminalAgentSession(
   record: TerminalSessionRecord,
-  live: { status?: SessionStatus; unread?: boolean; runRevision?: number } = {},
+  live: { status?: SessionStatus; unread?: boolean; runRevision?: number; capabilities?: SessionCapabilities } = {},
 ): AgentSession {
   const agentKind = record.agentKind ?? "shell";
+  const agent = agentCatalogEntry(agentKind);
   const folder = path.basename(record.workspace) || record.workspace;
   return {
     id: record.id,
     title: record.title,
-    subtitle: agentKind === "shell" ? folder : `${agentCatalogEntry(agentKind).name} · ${folder}`,
+    subtitle: agentKind === "shell" ? folder : `${agent.name} · ${folder}`,
     workspace: record.workspace,
     runtime: "terminal",
     status: agentKind === "shell" ? "idle" : (live.status ?? "idle"),
@@ -30,6 +31,8 @@ export function terminalAgentSession(
     ownership: "gajae",
     attachment: "attached",
     agentKind,
-    surfaces: ["terminal"],
+    // Claude Code and omp also have a chat screen: their transcript, read as it grows (design §5.5)
+    surfaces: [...agent.surfaces],
+    ...(live.capabilities ? { capabilities: live.capabilities } : {}),
   };
 }
