@@ -6,7 +6,127 @@ import type { EnvironmentReport } from "./environment-check.js";
 import type { GjcSetting, GjcSettingChange } from "./gjc-settings.js";
 import type { QuickInputShortcutStatus } from "./quick-input.js";
 
-export type RuntimeKind = "gjc" | "hermes" | "terminal";
+/**
+ * Where a session runs.
+ *
+ * `herdr` is a terminal on herdr-core, where Claude Code, omp and codex run
+ * (docs/design/agent-runtime-herdr.md). `terminal` (node-pty) and `hermes`
+ * (the mock backend's rows) stay until the runtime cleanup retires them.
+ */
+export type RuntimeKind = "gjc" | "hermes" | "terminal" | "herdr";
+
+/** The coding agents a session can run, as shared/agent-catalog.ts lists them. */
+export const AGENT_KIND_IDS = ["claude", "omp", "codex", "gjc", "shell"] as const;
+
+export type AgentKindId = (typeof AGENT_KIND_IDS)[number];
+
+export function isAgentKindId(value: unknown): value is AgentKindId {
+  return (
+    typeof value === "string" &&
+    (AGENT_KIND_IDS as readonly string[]).includes(value)
+  );
+}
+
+/** The screens a session can be shown on. */
+export type SessionSurface = "chat" | "terminal";
+
+/**
+ * What a session offers beyond being listed and shown.
+ *
+ * Read through `capabilitiesOf`, never from the field directly: a session from
+ * before capabilities existed has none, and its runtime decides.
+ */
+export interface SessionCapabilities {
+  /** Sending a message from the chat composer. */
+  send: boolean;
+  /** Stopping the running turn. */
+  cancel: boolean;
+  /** Tool approval cards. */
+  approvals: boolean;
+  /** Questions the agent asks the user. */
+  questions: boolean;
+  /** Goals and workflows. */
+  goal: boolean;
+  /** Compacting the context. */
+  compact: boolean;
+  /** Side questions answered outside the turn. */
+  sideQuestion: boolean;
+  /** Suggested next input. */
+  suggestion: boolean;
+  /** Model and session configuration. */
+  modelConfig: boolean;
+  /** Cycling the thinking level. */
+  thinking: boolean;
+  /** Forking the session. */
+  fork: boolean;
+  /** The workspace's git status, staging, commit and push. */
+  git: boolean;
+  /** Image and file attachments on a message. */
+  attachments: boolean;
+  /** Replies that stream in as they are written. */
+  streaming: boolean;
+}
+
+function uniformCapabilities(value: boolean): SessionCapabilities {
+  return {
+    send: value,
+    cancel: value,
+    approvals: value,
+    questions: value,
+    goal: value,
+    compact: value,
+    sideQuestion: value,
+    suggestion: value,
+    modelConfig: value,
+    thinking: value,
+    fork: value,
+    git: value,
+    attachments: value,
+    streaming: value,
+  };
+}
+
+/** Every capability key, in declaration order. */
+export const SESSION_CAPABILITY_KEYS: readonly (keyof SessionCapabilities)[] =
+  Object.keys(uniformCapabilities(false)) as (keyof SessionCapabilities)[];
+
+/**
+ * What a runtime offers a session that does not say otherwise.
+ *
+ * A GJC chat keeps every feature it had before capabilities existed, and so do
+ * the mock backend's rows, which stand in for it. A node-pty terminal has no
+ * chat screen, so it offers none of these. A herdr session's offer depends on
+ * its agent and on what the agent reports at run time, so its controller sets
+ * `AgentSession.capabilities` and nothing is assumed here.
+ */
+function runtimeCapabilities(runtime: unknown): SessionCapabilities {
+  switch (runtime) {
+    case "gjc":
+    case "hermes":
+      return uniformCapabilities(true);
+    default:
+      return uniformCapabilities(false);
+  }
+}
+
+/**
+ * What a session can do: the runtime's default, with each value the session
+ * reports laid over it. A runtime this build does not know offers nothing, and
+ * a reported value that is not a boolean is ignored rather than trusted.
+ */
+export function capabilitiesOf(
+  session: Pick<AgentSession, "runtime" | "capabilities">,
+): SessionCapabilities {
+  const capabilities = runtimeCapabilities(session.runtime);
+  const reported: unknown = session.capabilities;
+  if (!reported || typeof reported !== "object" || Array.isArray(reported))
+    return capabilities;
+  for (const key of SESSION_CAPABILITY_KEYS) {
+    const value = (reported as Record<string, unknown>)[key];
+    if (typeof value === "boolean") capabilities[key] = value;
+  }
+  return capabilities;
+}
 
 export type SessionStatus =
   "starting" | "idle" | "running" | "waiting" | "failed" | "unknown";
@@ -293,6 +413,15 @@ export interface AgentSession {
   worktree?: ManagedWorktree;
   workLink?: SessionWorkLink;
   runtimeState?: EffectiveRuntimeState;
+  /** The agent the session runs; absent on rows from before agents were named. */
+  agentKind?: AgentKindId;
+  /** The screens the session can be shown on; absent means its runtime decides. */
+  surfaces?: SessionSurface[];
+  /**
+   * What the session reports it can do now, over its runtime's default. Read it
+   * through `capabilitiesOf`.
+   */
+  capabilities?: Partial<SessionCapabilities>;
 }
 
 export interface SessionRetry {
