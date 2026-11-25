@@ -60,12 +60,20 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
           sessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3",
           model: { provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash" },
           thinkingLevel: "low",
+          configuredThinkingLevel: "low",
+          thinkingLevels: ["off", "auto", "low", "high"],
           contextUsage: { percent: 1.5 },
         });
       else if (frame.type === "prompt") {
         prompts += 1;
         answer();
-      } else answer();
+      } else if (frame.type === "get_model_picker")
+        answer({ rows: [{ provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash" }, { provider: "anthropic", id: "claude-x", name: "Claude X" }], recent: 1, total: 2 });
+      else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
+      else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
+      else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "btw") answer({ record: { id: "btw-1", leafId: null, question: frame.question, answer: "", status: "running", createdAt: 1, updatedAt: 1 } });
+      else answer();
     });
     queueMicrotask(() => child.ready());
     return child;
@@ -133,7 +141,8 @@ describe("OmpRpcController", () => {
     expect(started!.command).toBe("/bin/omp");
     expect(started!.args).toEqual(["--mode", "rpc-ui", "--cwd", context.workspace, "--approval-mode=always-ask"]);
     expect(started!.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/me" });
-    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "get_state"]);
+    // opening also reads omp's command list and model picker for the composer
+    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "get_state", "get_available_commands", "get_model_picker"]);
     expect(started!.child.sent("set_event_filter")[0]).toMatchObject({ events: null, messageUpdates: "delta" });
     expect(context.store.get(session.id)).toMatchObject({ sessionFile: context.sessionFile, ompSessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3" });
     expect((await context.controller.listSessions())[0]).toMatchObject({ model: "opencodex/deepseek-flash", modelDisplay: "DeepSeek Flash", thinking: "low", usagePercent: 2 });
@@ -230,19 +239,26 @@ describe("OmpRpcController", () => {
     expect(context.processes[1]!.args).toEqual(["--mode", "rpc-ui", "--cwd", context.workspace, "--resume", context.sessionFile, "--approval-mode=always-ask"]);
   });
 
-  it("refuses attachments until the chat takes them, and an empty message", async () => {
+  it("sends pictures as omp's images and names other files by their path, and refuses an empty message", async () => {
     const context = setup();
     const session = await newChat(context);
     await expect(context.controller.sendMessage(session.id, { text: "  ", images: [], files: [] })).rejects.toThrow("The message is empty");
-    await expect(
-      context.controller.sendMessage(session.id, { text: "x", images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "AA" }], files: [] }),
-    ).rejects.toMatchObject({ code: "unsupported" });
+    await context.controller.sendMessage(session.id, {
+      text: "look",
+      images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "AAAA" }],
+      files: [{ id: "f", name: "notes.md", mimeType: "text/markdown", size: 3, nativePath: "/tmp/notes.md" }],
+    });
+    expect(context.processes[0]!.child.sent("prompt")[0]).toMatchObject({
+      message: "look\n\nAttached file: /tmp/notes.md",
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+    });
   });
 
   it("renames and deletes, ending the chat's omp", async () => {
     const context = setup();
     const session = await newChat(context);
     await context.controller.refreshSessionContext(session.id);
+    await settle();
     await context.controller.renameSession(session.id, "renamed");
     expect(context.controller.sessionTitle(session.id)).toBe("renamed");
     expect(context.events.at(-1)).toMatchObject({ type: "session.updated", session: { title: "renamed" } });
@@ -426,5 +442,93 @@ describe("OmpRpcController approvals and questions (P3)", () => {
     const card = (await context.controller.getTranscript(session.id)).find((item) => item.kind === "question");
     expect(card).toMatchObject({ status: "closed", answerable: false });
     expect(await context.controller.listPendingQuestions(session.id)).toEqual([]);
+  });
+});
+
+describe("OmpRpcController model, commands, compaction, queue and side questions (P4)", () => {
+  it("offers omp's model picker and thinking levels to the composer, and changes them", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    await settle();
+    const config = context.events.filter((event) => event.type === "session.config").at(-1);
+    expect(config).toMatchObject({
+      sessionId: session.id,
+      options: [
+        { id: "model", category: "model", currentValue: "opencodex/deepseek-flash", options: [{ value: "opencodex/deepseek-flash", name: "DeepSeek Flash", group: "opencodex", kind: "model" }, { value: "anthropic/claude-x" }] },
+        { id: "thinking", category: "thought_level", currentValue: "low", options: [{ value: "off" }, { value: "auto" }, { value: "low" }, { value: "high" }] },
+      ],
+    });
+    await context.controller.setSessionConfig(session.id, "model", "opencodex/opengateway/deepseek/flash");
+    await context.controller.setSessionConfig(session.id, "thinking", "auto");
+    await expect(context.controller.cycleThinking(session.id)).resolves.toBe("high");
+    const child = context.processes[0]!.child;
+    expect(child.sent("set_model")[0]).toMatchObject({ provider: "opencodex", modelId: "opengateway/deepseek/flash" });
+    expect(child.sent("set_thinking_level")[0]).toMatchObject({ level: "auto" });
+    await expect(context.controller.setSessionConfig(session.id, "model", "bad")).rejects.toThrow("provider/id");
+  });
+
+  it("follows omp's command list, compaction and retries on the row", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    child.emitFrames(
+      { type: "available_commands_update", commands: [{ name: "btw", description: "Side question", source: "builtin" }, { description: "nameless" }] },
+      { type: "manual_compaction_start" },
+      { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" },
+    );
+    await settle();
+    expect(context.events).toContainEqual({ type: "session.commands", sessionId: session.id, commands: [{ name: "btw", description: "Side question" }] });
+    // a list without btw still offers it: the RPC answers it
+    expect(context.events).toContainEqual({
+      type: "session.commands",
+      sessionId: session.id,
+      commands: [
+        { name: "compact", description: "Compact the context", hint: "[instructions]" },
+        { name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" },
+      ],
+    });
+    const row = (await context.controller.listSessions())[0]!;
+    expect(row).toMatchObject({ phase: "compacting", retry: { attempt: 1, maxAttempts: 3, error: "overloaded" } });
+    child.emitFrames({ type: "manual_compaction_end", aborted: false }, { type: "auto_retry_end", success: true, attempt: 1 });
+    await settle();
+    const settled = (await context.controller.listSessions())[0]!;
+    expect(settled.phase).toBeUndefined();
+    expect(settled.retry).toBeUndefined();
+    await context.controller.compactSession(session.id);
+    expect(child.sent("compact")).toHaveLength(1);
+  });
+
+  it("lists omp's queue and delivers it now, and steers or queues a running turn", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.sendMessage(session.id, { text: "first", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    child.emitFrames({ type: "queue_update", steering: ["a"], followUp: ["b"], liveSteered: 0 });
+    await settle();
+    expect(await context.controller.listQueuedMessages(session.id)).toEqual([
+      { id: "steer-0", text: "a", mode: "steer", label: "a" },
+      { id: "follow-0", text: "b", mode: "followUp", label: "b" },
+    ]);
+    await expect(context.controller.flushQueuedNow(session.id)).resolves.toBe(true);
+    await context.controller.steerSession(session.id, { text: "steer it", images: [], files: [] });
+    await context.controller.queueFollowUp(session.id, { text: "later", images: [], files: [] });
+    expect(child.sent("steer").at(-1)).toMatchObject({ message: "steer it" });
+    expect(child.sent("follow_up").at(-1)).toMatchObject({ message: "later" });
+  });
+
+  it("answers a side question from omp's btw record", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    const answer = context.controller.askSideQuestion(session.id, "what is this repo?");
+    await settle();
+    const child = context.processes[0]!.child;
+    expect(child.sent("btw")[0]).toMatchObject({ question: "what is this repo?" });
+    child.emitFrames(
+      { type: "btw_delta", recordId: "btw-1", delta: "A desk" },
+      { type: "btw_record", record: { id: "btw-1", leafId: null, question: "q", answer: "A desktop app.", status: "complete", createdAt: 1, updatedAt: 2 } },
+    );
+    await expect(answer).resolves.toBe("A desktop app.");
   });
 });

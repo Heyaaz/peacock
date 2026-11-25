@@ -1,14 +1,17 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { validDirectory } from "../settings-store.js";
 import type {
+  AgentCommand,
+  AgentConfigOption,
   AgentEvent,
   AgentSession,
   BackendConnection,
   CreateSessionInput,
   MessageDelivery,
   NoticeActivity,
+  QueuedMessage,
   QuestionActivity,
   QuestionSubmission,
   SessionCapabilities,
@@ -145,7 +148,30 @@ interface ChatRuntime {
   /** The last `get_state` answer. */
   state?: Record<string, unknown>;
   notices: number;
+  /** omp's slash commands (`available_commands_update`). */
+  commands?: AgentCommand[];
+  /** Models omp's picker offers (`get_model_picker`), read when the chat opens. */
+  models?: { value: string; name: string; group: string }[];
+  /** omp's queue of steering and follow-up messages (`queue_update`). */
+  queue: { steering: string[]; followUp: string[] };
+  /** A compaction is running. */
+  compacting: boolean;
+  /** omp waits to retry a model call. */
+  retry?: { attempt: number; maxAttempts?: number; retryAt: number; error?: string };
+  stateTimer?: ReturnType<typeof setTimeout>;
 }
+
+/** A side question waiting for its answer (`btw`). */
+interface PendingSideQuestion {
+  resolve(answer: string): void;
+  reject(error: Error): void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** How long a side question may take. */
+const SIDE_QUESTION_TIMEOUT_MS = 5 * 60_000;
+/** How many models the composer's picker lists. */
+const MODEL_PICKER_LIMIT = 100;
 
 /**
  * omp chats driven over `omp --mode rpc-ui` (design §10), as a runtime next to GJC and herdr.
@@ -166,6 +192,8 @@ export class OmpRpcController implements AgentRuntimeController {
   private readonly pendingUi = new Map<string, PendingUi>();
   /** Calls an approval was paired with, per chat, so a second prompt pairs with another. */
   private readonly pairedCalls = new Map<string, Set<string>>();
+  /** Side questions by omp's record id. */
+  private readonly sideQuestions = new Map<string, PendingSideQuestion>();
   private disposed = false;
   protected readonly log: (message: string, error?: unknown) => void;
 
@@ -281,7 +309,27 @@ export class OmpRpcController implements AgentRuntimeController {
   /** Opening the chat starts its omp (resuming its file), so its model and commands are known. */
   async refreshSessionContext(sessionId: string): Promise<void> {
     if (!this.options.store.get(sessionId)) return;
-    await this.ensureProcess(sessionId);
+    const client = await this.ensureProcess(sessionId);
+    const chat = this.chat(sessionId);
+    if (chat.commands) this.options.emit({ type: "session.commands", sessionId, commands: chat.commands });
+    else
+      void client
+        .call<{ commands?: unknown }>({ type: "get_available_commands" })
+        .then((data) => this.applyCommands(sessionId, data?.commands))
+        .catch(() => undefined);
+    if (!chat.models)
+      void client
+        .call<{ rows?: unknown }>({ type: "get_model_picker", limit: MODEL_PICKER_LIMIT })
+        .then((data) => {
+          chat.models = (Array.isArray(data?.rows) ? data.rows.map(record) : []).flatMap((row) => {
+            const provider = string(row.provider);
+            const id = string(row.id);
+            return provider && id ? [{ value: `${provider}/${id}`, name: string(row.name) ?? id, group: provider }] : [];
+          });
+          this.emitConfig(sessionId);
+        })
+        .catch(() => undefined);
+    else this.emitConfig(sessionId);
   }
 
   /**
@@ -296,17 +344,18 @@ export class OmpRpcController implements AgentRuntimeController {
     const steer = /^\/steer(?:\s+|$)/u.exec(text);
     const queue = /^\/queue(?:\s+|$)/u.exec(text);
     const body = steer || queue ? text.slice((steer ?? queue)![0].length).trim() : text;
-    if (!body && input.images.length === 0) throw new Error("The message is empty");
+    if (!body && input.images.length === 0 && input.files.length === 0) throw new Error("The message is empty");
     const client = await this.ensureProcess(sessionId);
     const chat = this.chat(sessionId);
-    const images = this.images(input);
+    const images = await this.images(input);
+    const message = this.promptText(body, input);
     if (chat.working && (steer || queue)) {
-      await client.call({ type: steer ? "steer" : "follow_up", message: body, ...(images ? { images } : {}) });
+      await client.call({ type: steer ? "steer" : "follow_up", message, ...(images ? { images } : {}) });
       return steer ? "steer" : "prompt";
     }
     const prompt = client.prompt({
       type: "prompt",
-      message: body,
+      message,
       ...(images ? { images } : {}),
       ...(chat.working ? { streamingBehavior: steer ? "steer" : "followUp" } : {}),
     });
@@ -426,8 +475,16 @@ export class OmpRpcController implements AgentRuntimeController {
     this.emitUpdated(sessionId);
   }
 
-  /** A fresh `get_state` answer (model settings read it). */
-  protected onState(_sessionId: string, _state: Record<string, unknown>): void {}
+  /** A fresh `get_state` answer: the composer's model and thinking settings follow it. */
+  protected onState(sessionId: string, state: Record<string, unknown>): void {
+    const queued = record(state.queuedMessages);
+    if (Array.isArray(queued.steering) || Array.isArray(queued.followUp))
+      this.chat(sessionId).queue = {
+        steering: Array.isArray(queued.steering) ? queued.steering.filter((entry): entry is string => typeof entry === "string") : [],
+        followUp: Array.isArray(queued.followUp) ? queued.followUp.filter((entry): entry is string => typeof entry === "string") : [],
+      };
+    this.emitConfig(sessionId);
+  }
 
   // ---- frames
 
@@ -734,8 +791,223 @@ export class OmpRpcController implements AgentRuntimeController {
     this.setStatusNow(sessionId, chat?.working ? "running" : "idle");
   }
 
-  /** A frame the turn's rows do not cover (commands, queue, model changes). */
-  protected onOtherFrame(_sessionId: string, _client: OmpRpcClient, _frame: RpcFrame): void {}
+  /** A frame the turn's rows do not cover: commands, the queue, model changes, compaction, retries, notices. */
+  protected onOtherFrame(sessionId: string, client: OmpRpcClient, frame: RpcFrame): void {
+    const chat = this.chat(sessionId);
+    switch (frame.type) {
+      case "available_commands_update":
+        this.applyCommands(sessionId, frame.commands);
+        return;
+      case "model_changed":
+      case "thinking_level_changed":
+        this.refreshStateSoon(sessionId, client);
+        return;
+      case "queue_update":
+        chat.queue = {
+          steering: Array.isArray(frame.steering) ? frame.steering.filter((entry): entry is string => typeof entry === "string") : [],
+          followUp: Array.isArray(frame.followUp) ? frame.followUp.filter((entry): entry is string => typeof entry === "string") : [],
+        };
+        return;
+      case "manual_compaction_start":
+      case "auto_compaction_start":
+        chat.compacting = true;
+        this.bump(sessionId);
+        this.emitUpdated(sessionId);
+        return;
+      case "manual_compaction_end":
+      case "auto_compaction_end": {
+        chat.compacting = false;
+        const message = string(frame.errorMessage);
+        if (message && frame.skipped !== true && frame.aborted !== true) this.addNotice(sessionId, "압축 실패", message, "warning");
+        this.bump(sessionId);
+        this.emitUpdated(sessionId);
+        if (!chat.working) this.scheduleResync(sessionId);
+        this.refreshStateSoon(sessionId, client);
+        return;
+      }
+      case "auto_retry_start":
+        chat.retry = {
+          attempt: typeof frame.attempt === "number" ? frame.attempt : 1,
+          ...(typeof frame.maxAttempts === "number" ? { maxAttempts: frame.maxAttempts } : {}),
+          retryAt: Date.now() + (typeof frame.delayMs === "number" ? frame.delayMs : 0),
+          ...(typeof frame.errorMessage === "string" ? { error: frame.errorMessage } : {}),
+        };
+        this.bump(sessionId);
+        this.emitUpdated(sessionId);
+        return;
+      case "auto_retry_end":
+        chat.retry = undefined;
+        this.bump(sessionId);
+        this.emitUpdated(sessionId);
+        return;
+      case "notice":
+        // omp's info notices (MCP tools added, prewalk) are its own bookkeeping
+        if ((frame.level === "warning" || frame.level === "error") && typeof frame.message === "string")
+          this.addNotice(sessionId, "omp", frame.message, "warning");
+        return;
+      case "btw_record": {
+        const entry = record(frame.record);
+        const id = string(entry.id);
+        const pending = id ? this.sideQuestions.get(id) : undefined;
+        if (!pending || !id) return;
+        const latest = sideTurn(entry);
+        if (latest.status === "running") return;
+        this.sideQuestions.delete(id);
+        clearTimeout(pending.timer);
+        if (latest.status === "complete") pending.resolve(latest.answer);
+        else pending.reject(new Error(latest.error || `The side question ended: ${latest.status}`));
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private applyCommands(sessionId: string, value: unknown): void {
+    const commands = (Array.isArray(value) ? value.map(record) : []).flatMap((command): AgentCommand[] => {
+      const name = string(command.name);
+      if (!name) return [];
+      const hint = string(record(command.input).hint);
+      return [{ name, description: string(command.description) ?? "", ...(hint ? { hint } : {}) }];
+    });
+    // omp answers `/btw` over RPC (the `btw` command) though its slash list leaves it out (19.1.1)
+    if (!commands.some((command) => command.name === "btw"))
+      commands.push({ name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" });
+    this.chat(sessionId).commands = commands;
+    this.options.emit({ type: "session.commands", sessionId, commands });
+  }
+
+  private refreshStateSoon(sessionId: string, client: OmpRpcClient): void {
+    const chat = this.chat(sessionId);
+    if (chat.stateTimer) return;
+    chat.stateTimer = setTimeout(() => {
+      chat.stateTimer = undefined;
+      void this.refreshState(sessionId, client).catch(() => undefined);
+    }, 50);
+    chat.stateTimer.unref?.();
+  }
+
+  /** The composer's model and thinking settings, from omp's state and its model picker. */
+  private emitConfig(sessionId: string): void {
+    const options = this.configOptions(sessionId);
+    if (options.length > 0) this.options.emit({ type: "session.config", sessionId, options });
+  }
+
+  private configOptions(sessionId: string): AgentConfigOption[] {
+    const chat = this.chat(sessionId);
+    const state = chat.state;
+    if (!state) return [];
+    const model = record(state.model);
+    const provider = string(model.provider);
+    const id = string(model.id);
+    const current = provider && id ? `${provider}/${id}` : "";
+    const known = chat.models ?? [];
+    const models = current && !known.some((entry) => entry.value === current) ? [{ value: current, name: string(model.name) ?? id ?? current, group: provider ?? "" }, ...known] : known;
+    const options: AgentConfigOption[] = [];
+    if (current)
+      options.push({
+        id: "model",
+        name: "모델",
+        category: "model",
+        type: "select",
+        currentValue: current,
+        options: models.map((entry) => ({ value: entry.value, name: entry.name, group: entry.group, kind: "model" as const })),
+      });
+    const levels = Array.isArray(state.thinkingLevels) ? state.thinkingLevels.filter((level): level is string => typeof level === "string") : [];
+    const level = string(state.configuredThinkingLevel, state.thinkingLevel);
+    if (levels.length > 0 && level)
+      options.push({ id: "thinking", name: "생각", category: "thought_level", type: "select", currentValue: level, options: levels.map((entry) => ({ value: entry, name: entry })) });
+    return options;
+  }
+
+  // ---- model, thinking, compaction, queue, side questions
+
+  async setSessionConfig(sessionId: string, configId: string, value: string): Promise<void> {
+    const client = await this.ensureProcess(sessionId);
+    if (configId === "model") {
+      const at = value.indexOf("/");
+      if (at <= 0 || at === value.length - 1) throw new Error(`Model must be provider/id: ${value}`);
+      await client.call({ type: "set_model", provider: value.slice(0, at), modelId: value.slice(at + 1) });
+    } else if (configId === "thinking") {
+      await client.call({ type: "set_thinking_level", level: value });
+    } else throw new AgentUnsupportedError(`the ${configId} setting`, sessionId);
+    await this.refreshState(sessionId, client);
+  }
+
+  async cycleThinking(sessionId: string): Promise<string | undefined> {
+    const client = await this.ensureProcess(sessionId);
+    const data = await client.call<{ level?: unknown } | null>({ type: "cycle_thinking_level" });
+    await this.refreshState(sessionId, client);
+    return typeof data?.level === "string" ? data.level : undefined;
+  }
+
+  async refreshRuntimeState(sessionId: string): Promise<never> {
+    throw new AgentUnsupportedError("GJC's runtime state", sessionId);
+  }
+
+  /** `compact`: omp folds the conversation into a summary it records in the session file. */
+  async compactSession(sessionId: string): Promise<void> {
+    const client = await this.ensureProcess(sessionId);
+    await client.call({ type: "compact" }, 0);
+    this.scheduleResync(sessionId);
+  }
+
+  async steerSession(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
+    if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
+    const client = await this.ensureProcess(sessionId);
+    const images = await this.images(input);
+    await client.call({ type: "steer", message: this.promptText(input.text.trim(), input), ...(images ? { images } : {}) });
+    return "steer";
+  }
+
+  async queueFollowUp(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
+    if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
+    const client = await this.ensureProcess(sessionId);
+    const images = await this.images(input);
+    await client.call({ type: "follow_up", message: this.promptText(input.text.trim(), input), ...(images ? { images } : {}) });
+    return "prompt";
+  }
+
+  async listQueuedMessages(sessionId: string): Promise<QueuedMessage[]> {
+    const { steering, followUp } = this.chat(sessionId).queue;
+    return [
+      ...steering.map((text, index): QueuedMessage => ({ id: `steer-${index}`, text, mode: "steer", label: text })),
+      ...followUp.map((text, index): QueuedMessage => ({ id: `follow-${index}`, text, mode: "followUp", label: text })),
+    ];
+  }
+
+  /** Delivers omp's queue now: the running turn stops and the queued messages go in (`abort_and_deliver_queue`). */
+  async flushQueuedNow(sessionId: string): Promise<boolean> {
+    const client = this.client(sessionId);
+    if (!client) return false;
+    const data = await client.call<{ aborted?: unknown }>({ type: "abort_and_deliver_queue" });
+    return data?.aborted === true;
+  }
+
+  async controlRetry(sessionId: string, action: "now" | "abort"): Promise<void> {
+    if (action !== "abort") throw new AgentUnsupportedError("retrying at once", sessionId);
+    await this.client(sessionId)?.call({ type: "abort_retry" });
+  }
+
+  /** `/btw`: omp answers from the conversation without adding to it, as `btw_record` frames. */
+  async askSideQuestion(sessionId: string, question: string): Promise<string> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "btw", question }));
+    const started = record(data.record);
+    const id = string(started.id);
+    if (!id) throw new Error("omp did not start the side question");
+    const first = sideTurn(started);
+    if (first.status === "complete") return first.answer;
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.sideQuestions.delete(id);
+        void client.call({ type: "btw_cancel", recordId: id }).catch(() => undefined);
+        reject(new Error("The side question took too long"));
+      }, SIDE_QUESTION_TIMEOUT_MS);
+      timer.unref?.();
+      this.sideQuestions.set(id, { resolve, reject, timer });
+    });
+  }
 
   /** The open cards of a chat whose turn ended or whose omp went away: nothing will read their answers. */
   protected closeCards(sessionId: string, _reason: "ended" | "exited"): void {
@@ -770,6 +1042,8 @@ export class OmpRpcController implements AgentRuntimeController {
     chat.working = false;
     this.closeCards(sessionId, "exited");
     this.emitLive(sessionId, chat.live.cancelOpenTools());
+    chat.compacting = false;
+    chat.retry = undefined;
     const expected = info.code === 0 && !wasWorking;
     if (!expected) {
       const last = info.stderr.trim().split("\n").at(-1) ?? "";
@@ -893,6 +1167,8 @@ export class OmpRpcController implements AgentRuntimeController {
         working: false,
         resyncAttempt: 0,
         notices: 0,
+        queue: { steering: [], followUp: [] },
+        compacting: false,
       };
       this.chats.set(sessionId, chat);
     }
@@ -904,13 +1180,24 @@ export class OmpRpcController implements AgentRuntimeController {
     return client && !client.exited ? client : undefined;
   }
 
-  /** Attachments go with the prompt as omp's images once the chat takes them (P4). */
-  protected checkAttachments(sessionId: string, input: ResolvedMessageInput): void {
-    if (input.images.length > 0 || input.files.length > 0) throw new AgentUnsupportedError("attachments", sessionId);
+  /** Attachments go with the prompt: pictures as omp's images, other files named by their path. */
+  protected checkAttachments(_sessionId: string, _input: ResolvedMessageInput): void {}
+
+  private async images(input: ResolvedMessageInput): Promise<{ type: "image"; data: string; mimeType: string }[] | undefined> {
+    if (input.images.length === 0) return undefined;
+    return Promise.all(
+      input.images.map(async (image) => ({
+        type: "image" as const,
+        data: image.data || (image.nativePath ? (await readFile(image.nativePath)).toString("base64") : ""),
+        mimeType: image.mimeType,
+      })),
+    );
   }
 
-  protected images(_input: ResolvedMessageInput): { type: "image"; data: string; mimeType: string }[] | undefined {
-    return undefined;
+  /** The message as omp takes it: the text, and the path of each attached file for its tools to read. */
+  private promptText(text: string, input: ResolvedMessageInput): string {
+    if (input.files.length === 0) return text;
+    return [text, ...input.files.map((attached) => `Attached file: ${attached.nativePath}`)].filter(Boolean).join("\n\n");
   }
 
   // ---- rows
@@ -919,14 +1206,7 @@ export class OmpRpcController implements AgentRuntimeController {
   protected capabilities(_record: OmpRpcSessionRecord): SessionCapabilities {
     const entry = agentCatalogEntry("omp");
     const ceiling = entry.chatCapabilities ?? entry.capabilities;
-    return {
-      ...ceiling,
-      compact: false,
-      sideQuestion: false,
-      modelConfig: false,
-      thinking: false,
-      attachments: false,
-    };
+    return { ...ceiling };
   }
 
   protected applyStatus(sessionId: string, status: SessionStatus, activity?: "completed" | "failed" | "permission"): void {
@@ -950,14 +1230,20 @@ export class OmpRpcController implements AgentRuntimeController {
 
   /** What omp's state adds to the row: the model, thinking and context in use. */
   protected rowExtras(session: OmpRpcSessionRecord): Partial<AgentSession> {
-    const state = this.chats.get(session.id)?.state;
-    if (!state) return {};
+    const chat = this.chats.get(session.id);
+    const live: Partial<AgentSession> = {
+      ...(chat?.compacting ? { phase: "compacting" } : {}),
+      ...(chat?.retry ? { retry: chat.retry } : {}),
+    };
+    const state = chat?.state;
+    if (!state) return live;
     const model = record(state.model);
     const provider = string(model.provider);
     const id = string(model.id);
     const usage = record(state.contextUsage);
     const thinking = string(state.configuredThinkingLevel, state.thinkingLevel);
     return {
+      ...live,
       ...(provider && id ? { model: `${provider}/${id}`, modelDisplay: string(model.name) ?? id } : {}),
       ...(thinking ? { thinking } : {}),
       ...(typeof usage.percent === "number" && Number.isFinite(usage.percent) ? { usagePercent: Math.round(usage.percent) } : {}),
@@ -1015,6 +1301,17 @@ export function ompRpcArgs(record: Pick<OmpRpcSessionRecord, "workspace" | "sess
 export function sessionOfOmpToolId(toolId: string): string | undefined {
   const match = new RegExp(`^(${OMP_RPC_SESSION_PREFIX}[0-9a-f-]{36}):`, "u").exec(toolId);
   return match?.[1];
+}
+
+/** The latest turn of a side-question topic: its last follow-up, or the record itself. */
+function sideTurn(entry: Record<string, unknown>): { status: string; answer: string; error?: string } {
+  const followUps = Array.isArray(entry.followUps) ? entry.followUps.map(record) : [];
+  const turn = followUps.at(-1) ?? entry;
+  return {
+    status: string(turn.status) ?? "running",
+    answer: string(turn.answer) ?? "",
+    ...(string(turn.error) ? { error: string(turn.error) } : {}),
+  };
 }
 
 function dropOptions(tool: ToolActivity): ToolActivity {

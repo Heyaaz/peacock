@@ -328,6 +328,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "권한 모드":
     "Permission mode",
   "기본: 매번 묻기": "Default: always ask",
+  "대화에 남기지 않고 묻는 사이드 질문": "Side question kept out of the conversation",
+  "<질문>": "<question>",
   "에이전트 설정 따름":
     "Follow the agent's own setting",
   "{0}을(를) 실행할 폴더를 선택하세요.":
