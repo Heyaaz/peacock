@@ -39,7 +39,7 @@ import { AgentUnsupportedError, type AgentRuntimeController } from "../agent-hos
 import type { ResolvedMessageInput } from "../gjc-sdk-model.js";
 import { recentLabel, timestampMs } from "../gjc-sdk-model.js";
 import { withoutInherited } from "../herdr-core/env.js";
-import { bounded, clockLabel, record, string, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
+import { bounded, clockLabel, record, string, stripTerminalControls, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
 import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
 import { parseContextReport } from "./context-report.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
@@ -173,6 +173,8 @@ interface ChatRuntime {
   thoughtDurations: Map<string, number>;
   /** omp's subagents as its progress frames report them (`set_subagent_subscription`). */
   subagents: Map<string, Record<string, unknown>>;
+  /** Calls reading a slash command's `command_output` themselves; the chat shows none meanwhile. */
+  readingOutput: number;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -378,11 +380,18 @@ export class OmpRpcController implements AgentRuntimeController {
     const wasWorking = chat.working;
     chat.working = true;
     chat.turnFileRevision ??= chat.follower.revision();
+    let ack: { agentInvoked?: unknown } | undefined;
     try {
-      await prompt.accepted;
+      ack = (await prompt.accepted) as { agentInvoked?: unknown } | undefined;
     } catch (error) {
       chat.working = wasWorking;
       throw error;
+    }
+    // a slash command omp answered itself (`/context`, `/session`): no turn, no prompt_result
+    if (ack?.agentInvoked === false) {
+      chat.working = wasWorking;
+      if (!wasWorking) chat.turnFileRevision = undefined;
+      return "prompt";
     }
     this.options.store.touch(sessionId);
     chat.turnStartedAt ??= Date.now();
@@ -869,6 +878,11 @@ export class OmpRpcController implements AgentRuntimeController {
         this.bump(sessionId);
         this.emitUpdated(sessionId);
         return;
+      case "command_output":
+        // what a slash command omp answers itself printed, unless a call is reading it
+        if (chat.readingOutput === 0 && typeof frame.text === "string" && frame.text.trim())
+          this.addNotice(sessionId, "omp", stripTerminalControls(frame.text).trimEnd(), "neutral");
+        return;
       case "notice":
         // omp's info notices (MCP tools added, prewalk) are its own bookkeeping
         if ((frame.level === "warning" || frame.level === "error") && typeof frame.message === "string")
@@ -1080,14 +1094,17 @@ export class OmpRpcController implements AgentRuntimeController {
    */
   async getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
     const client = await this.ensureProcess(sessionId);
+    const chat = this.chat(sessionId);
     let text: string | undefined;
     const stop = client.onFrame((frame) => {
       if (frame.type === "command_output" && typeof frame.text === "string") text = frame.text;
     });
+    chat.readingOutput += 1;
     try {
       await client.call({ type: "prompt", message: "/context" });
     } finally {
       stop();
+      chat.readingOutput -= 1;
     }
     const report = text === undefined ? null : parseContextReport(text);
     // the same moment's model and auto-compaction setting, and a fresh share for the bar
@@ -1337,6 +1354,7 @@ export class OmpRpcController implements AgentRuntimeController {
         compacting: false,
         thoughtDurations: new Map(),
         subagents: new Map(),
+        readingOutput: 0,
       };
       this.chats.set(sessionId, chat);
     }

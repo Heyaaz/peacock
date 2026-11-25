@@ -82,6 +82,13 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
             { id: frame.id, type: "response", command: "prompt", success: true, data: { agentInvoked: false } },
           ),
         );
+      else if (frame.type === "prompt" && frame.message === "/session")
+        queueMicrotask(() =>
+          child.emitFrames(
+            { type: "command_output", text: "Session\n  Messages: 4" },
+            { id: frame.id, type: "response", command: "prompt", success: true, data: { agentInvoked: false } },
+          ),
+        );
       else if (frame.type === "prompt") {
         prompts += 1;
         answer();
@@ -676,5 +683,24 @@ describe("OmpRpcController context breakdown", () => {
     expect(context.events.slice(before).filter((event) => event.type.startsWith("transcript"))).toEqual([]);
     const row = (await context.controller.listSessions())[0]!;
     expect(row.liveStatus).toMatchObject({ contextPercent: 1.5, contextTokens: 14350, contextWindow: 950000 });
+  });
+});
+
+describe("OmpRpcController slash commands omp answers itself", () => {
+  it("leaves the chat idle and shows what the command printed", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.sendMessage(session.id, { text: "/session", images: [], files: [] })).resolves.toBe("prompt");
+    await settle();
+    expect((await context.controller.listSessions())[0]!.status).toBe("idle");
+    const notice = context.events.find((event) => event.type === "transcript.appended" && event.item.kind === "notice");
+    expect(notice).toMatchObject({ item: { kind: "notice", title: "omp", content: "Session\n  Messages: 4", tone: "neutral" } });
+  });
+
+  it("shows no notice for the report the context dialog reads", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.getContextBreakdown(session.id);
+    expect(context.events.some((event) => event.type === "transcript.appended" && event.item.kind === "notice")).toBe(false);
   });
 });
