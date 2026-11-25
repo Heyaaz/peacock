@@ -322,6 +322,68 @@ describe("OmpRpcController", () => {
     expect((await context.controller.listSessions())[0]!.status).toBe("idle");
   });
 
+  it("keeps one prompt when a page read meets the same request in the live turn and the file", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.getTranscriptPage(session.id);
+    await context.controller.sendMessage(session.id, { text: "run two echoes", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    // omp streams the prompt back as its own row while it starts the turn
+    const frames = turnFrames("approval-parallel.jsonl");
+    child.emitFrames(...frames.slice(0, 4));
+    await settle();
+    // the prompt is in the session file before the turn's work is done, so a page read
+    // during the turn sees that copy and the live one under their different ids
+    copyFileSync(new URL("./fixtures/session-approval-parallel.jsonl", import.meta.url), context.sessionFile);
+    const page = await context.controller.getTranscriptPage(session.id);
+    const prompts = page.items.filter((item) => item.kind === "message" && item.role === "user");
+    expect(prompts).toHaveLength(1);
+  });
+
+  it("keeps both rows of a genuinely repeated prompt when the file holds one of them", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.getTranscriptPage(session.id);
+    await context.controller.sendMessage(session.id, { text: "run two echoes", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    const timestamp = Date.parse("2026-11-25T01:03:32.279Z");
+    child.emitFrames(
+      ...["msg-1", "msg-2"].flatMap((messageId) => [
+        { type: "message_start", messageId, message: { role: "user", content: [{ type: "text", text: "same request" }], timestamp } },
+        { type: "message_end", messageId, message: { role: "user", content: [{ type: "text", text: "same request" }], timestamp } },
+      ]),
+    );
+    await settle();
+    // the file has written the first of the two identical requests only
+    writeFileSync(
+      context.sessionFile,
+      `${JSON.stringify({ type: "message", id: "e1", parentId: null, timestamp: "2026-11-25T01:03:32.290Z", message: { role: "user", content: [{ type: "text", text: "same request" }], timestamp } })}\n`,
+    );
+    const page = await context.controller.getTranscriptPage(session.id);
+    const prompts = page.items.filter((item) => item.kind === "message" && item.role === "user");
+    expect(prompts).toHaveLength(2);
+  });
+
+  it("does not announce a live prompt the page already shows from the file", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.getTranscriptPage(session.id);
+    await context.controller.sendMessage(session.id, { text: "run two echoes", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    // omp writes the prompt to its session file before its live message_start reaches
+    // the window, so a page read can already show the file's copy
+    copyFileSync(new URL("./fixtures/session-approval-parallel.jsonl", import.meta.url), context.sessionFile);
+    const page = await context.controller.getTranscriptPage(session.id);
+    expect(page.items.filter((item) => item.kind === "message" && item.role === "user")).toHaveLength(1);
+    const before = context.events.length;
+    child.emitFrames(...turnFrames("approval-parallel.jsonl").slice(0, 4));
+    await settle();
+    const appended = context.events.slice(before).filter(
+      (event) => event.type === "transcript.appended" && event.item.kind === "message" && event.item.role === "user",
+    );
+    expect(appended).toEqual([]);
+  });
+
   it("steers or queues while a turn works, and stops it with abort", async () => {
     const context = setup();
     const session = await newChat(context);
