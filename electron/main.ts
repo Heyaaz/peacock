@@ -771,6 +771,7 @@ const ompRpc = new OmpRpcController({
   store: ompRpcSessions,
   detect: () => agentDetector.detect("omp"),
   environment: () => userLoginPath().then((pathValue) => agentEnvironment(process.env, pathValue)),
+  commandRules,
   emit: (event) => broadcastAgentEvent(event),
   claim: (sessionId) => agentRouter.claimSession(sessionId, "omp-rpc"),
 });

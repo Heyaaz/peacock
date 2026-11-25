@@ -25,7 +25,15 @@ function turnFrames(name: string): Record<string, unknown>[] {
   return rows.slice(start + 1, end + 1).filter((row) => row.dir === "in").map((row) => row.frame);
 }
 
-function setup(options: { installed?: boolean } = {}) {
+function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject"> } = {}) {
+  const addRule = vi.fn(async () => undefined);
+  const commandRules = {
+    decide: vi.fn(async (_root: string, _tool: string, command: string) => {
+      const prefix = Object.keys(options.rules ?? {}).find((candidate) => command.startsWith(candidate));
+      return prefix ? { prefix, decision: options.rules![prefix]!, root: "/repo" } : undefined;
+    }),
+    add: addRule,
+  };
   const directory = mkdtempSync(path.join(tmpdir(), "gajae-omp-rpc-"));
   const workspace = mkdtempSync(path.join(tmpdir(), "gajae-omp-ws-"));
   const sessionFile = path.join(workspace, "omp-session.jsonl");
@@ -71,8 +79,9 @@ function setup(options: { installed?: boolean } = {}) {
     claim,
     log: () => undefined,
     resyncDelaysMs: [0, 5, 5],
+    commandRules: commandRules as never,
   });
-  return { directory, workspace, sessionFile, store, events, claim, detect, controller, processes, spawn, prompts: () => prompts };
+  return { directory, workspace, sessionFile, store, events, claim, detect, controller, processes, spawn, prompts: () => prompts, addRule };
 }
 
 async function newChat(context: ReturnType<typeof setup>, title = "chat") {
@@ -266,5 +275,156 @@ describe("OmpRpcController", () => {
     expect(sessionOfOmpToolId("omp-0f8fad5b-d9cb-469f-a165-70867728950e:call_1")).toBe("omp-0f8fad5b-d9cb-469f-a165-70867728950e");
     expect(sessionOfOmpToolId("terminal-0f8fad5b-d9cb-469f-a165-70867728950e:call_1")).toBeUndefined();
     expect(sessionOfOmpToolId("call_1")).toBeUndefined();
+  });
+});
+
+describe("OmpRpcController approvals and questions (P3)", () => {
+  async function working(context: ReturnType<typeof setup>) {
+    const session = await newChat(context);
+    await context.controller.getTranscriptPage(session.id);
+    await context.controller.sendMessage(session.id, { text: "go", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    child.emitFrames({ type: "agent_start" });
+    return { session, child };
+  }
+  const statusOf = async (context: ReturnType<typeof setup>) => (await context.controller.listSessions())[0]!.status;
+  const uiResponses = (child: FakeRpcProcess) => child.sent("extension_ui_response");
+
+  it("lays each of two parallel approvals on its own call's row and answers with omp's options", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames(
+      { type: "tool_execution_start", toolCallId: "call_a", toolName: "bash", args: { command: "echo gajae-a" } },
+      { type: "tool_execution_start", toolCallId: "call_b", toolName: "bash", args: { command: "echo gajae-b" } },
+      // the prompts arrive in the other order: the content decides
+      { type: "extension_ui_request", id: "req-b", method: "select", title: "Allow tool: bash\nCommand: echo gajae-b", options: ["Approve", "Approve bash for this session", "Deny"] },
+      { type: "extension_ui_request", id: "req-a", method: "select", title: "Allow tool: bash\nCommand: echo gajae-a", options: ["Approve", "Approve bash for this session", "Deny"] },
+    );
+    await settle();
+    const rows = await context.controller.getTranscript(session.id);
+    const card = (callId: string) => rows.find((item) => item.id === `${session.id}:${callId}`);
+    expect(card("call_a")).toMatchObject({ status: "approval-required", permissionOptions: [{ optionId: "allow_once" }, { optionId: "reject_once" }] });
+    expect(card("call_b")).toMatchObject({ status: "approval-required" });
+    expect(await statusOf(context)).toBe("waiting");
+    expect(context.events).toContainEqual(expect.objectContaining({ type: "session.activity", category: "permission" }));
+    expect(context.controller.sessionOfTool(`${session.id}:call_a`)).toBe(session.id);
+    expect(context.controller.toolDecisionInfo(`${session.id}:call_a`, { optionId: "allow_once" })).toEqual({ name: "이번만 허용", requiresConfirmation: true });
+
+    await context.controller.resolveToolCall(`${session.id}:call_a`, { optionId: "allow_once" });
+    await context.controller.resolveToolCall(`${session.id}:call_b`, { optionId: "reject_once", comment: "not now" });
+    await settle();
+    expect(uiResponses(child)).toEqual([
+      { type: "extension_ui_response", id: "req-a", value: "Approve" },
+      { type: "extension_ui_response", id: "req-b", value: "Deny" },
+    ]);
+    const after = await context.controller.getTranscript(session.id);
+    expect(after.find((item) => item.id === `${session.id}:call_a`)).toMatchObject({ status: "approved" });
+    expect(after.find((item) => item.id === `${session.id}:call_b`)).toMatchObject({ status: "denied" });
+    expect(after.find((item) => item.id === `${session.id}:call_b`)).not.toHaveProperty("permissionOptions");
+    expect(await statusOf(context)).toBe("running");
+    await expect(context.controller.resolveToolCall(`${session.id}:call_a`, { optionId: "allow_once" })).rejects.toThrow("No pending permission");
+  });
+
+  it("answers from a project command rule without a card, and saves a rule a card asks for", async () => {
+    const context = setup({ rules: { "echo ": "allow" } });
+    const { session, child } = await working(context);
+    child.emitFrames(
+      { type: "tool_execution_start", toolCallId: "call_r", toolName: "bash", args: { command: "echo ok" } },
+      { type: "extension_ui_request", id: "req-r", method: "select", title: "Allow tool: bash\nCommand: echo ok", options: ["Approve", "Deny"] },
+      { type: "tool_execution_start", toolCallId: "call_s", toolName: "bash", args: { command: "npm test" } },
+      { type: "extension_ui_request", id: "req-s", method: "select", title: "Allow tool: bash\nCommand: npm test", options: ["Approve", "Deny"] },
+    );
+    await settle();
+    expect(uiResponses(child)).toEqual([{ type: "extension_ui_response", id: "req-r", value: "Approve" }]);
+    const rows = await context.controller.getTranscript(session.id);
+    expect(rows.find((item) => item.id === `${session.id}:call_r`)).toMatchObject({ status: "approved", autoDecision: { prefix: "echo ", decision: "allow" } });
+    await context.controller.resolveToolCall(`${session.id}:call_s`, { optionId: "allow_once", rule: { prefix: "npm test" } });
+    expect(context.addRule).toHaveBeenCalledWith(context.workspace, "npm test", "allow");
+    expect(uiResponses(child).at(-1)).toEqual({ type: "extension_ui_response", id: "req-s", value: "Approve" });
+  });
+
+  it("shows a prompt it cannot pair as a card of its own, and closes it when omp cancels it", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames({ type: "extension_ui_request", id: "req-x", method: "select", title: "Allow tool: write\nPath: notes.md", options: ["Approve", "Deny"] });
+    await settle();
+    const id = `${session.id}:ui:approval-req-x`;
+    expect((await context.controller.getTranscript(session.id)).find((item) => item.id === id)).toMatchObject({
+      kind: "tool",
+      name: "write",
+      description: "Path: notes.md",
+      status: "approval-required",
+    });
+    child.emitFrames({ type: "extension_ui_request", id: "c1", method: "cancel", targetId: "req-x" });
+    await settle();
+    expect((await context.controller.getTranscript(session.id)).find((item) => item.id === id)).toMatchObject({ status: "cancelled" });
+    expect(await statusOf(context)).toBe("running");
+  });
+
+  it("asks the ask tool's form as question cards and answers with its data once every field has one", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames({
+      type: "extension_ui_request",
+      id: "form-1",
+      method: "form",
+      html: '<form><fieldset><legend>Pick a color</legend><label><input type="radio" name="color" value="Red"> Red</label><label><input type="radio" name="color" value="Blue"> Blue</label></fieldset><label>Why <input type="text" name="why"></label></form>',
+    });
+    await settle();
+    const pending = await context.controller.listPendingQuestions(session.id);
+    expect(pending.map((card) => [card.question, card.options.map((option) => option.label)])).toEqual([
+      ["Pick a color", ["Red", "Blue"]],
+      ["Why", []],
+    ]);
+    expect(await statusOf(context)).toBe("waiting");
+    await context.controller.answerQuestion(session.id, pending[0]!.id, { selected: ["Blue"] });
+    expect(uiResponses(child)).toEqual([]);
+    await context.controller.answerQuestion(session.id, pending[1]!.id, { selected: [], custom: "calm" });
+    await settle();
+    expect(uiResponses(child)).toEqual([{ type: "extension_ui_response", id: "form-1", data: { color: "Blue", why: "calm" } }]);
+    const cards = (await context.controller.getTranscript(session.id)).filter((item) => item.kind === "question");
+    expect(cards.map((card) => card.kind === "question" && [card.status, card.answerSummary])).toEqual([
+      ["answered", "Blue"],
+      ["answered", "calm"],
+    ]);
+    expect(await statusOf(context)).toBe("running");
+  });
+
+  it("keeps a card open with a reason when the answer does not fit, and maps confirm, input and notify", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames(
+      { type: "extension_ui_request", id: "f", method: "form", html: '<form><label>Env <select name="env"><option value="dev">Dev</option></select></label></form>' },
+      { type: "extension_ui_request", id: "c", method: "confirm", title: "Overwrite?", message: "notes.md exists" },
+      { type: "extension_ui_request", id: "i", method: "input", title: "Branch name" },
+      { type: "extension_ui_request", id: "n", method: "notify", message: "Indexed 3 files", notifyType: "info" },
+      { type: "extension_ui_request", id: "w", method: "setWidget", widgetKey: "x" },
+    );
+    await settle();
+    const [envCard, confirmCard, inputCard] = await context.controller.listPendingQuestions(session.id);
+    await context.controller.answerQuestion(session.id, envCard!.id, { selected: [], custom: "prod" });
+    expect((await context.controller.listPendingQuestions(session.id))[0]).toMatchObject({ status: "rejected", error: "목록에서 골라 주세요" });
+    expect(confirmCard).toMatchObject({ question: "Overwrite?\nnotes.md exists", options: [{ label: "예" }, { label: "아니요" }] });
+    await context.controller.answerQuestion(session.id, confirmCard!.id, { selected: ["예"] });
+    await context.controller.answerQuestion(session.id, inputCard!.id, { selected: [], custom: "feat/x" });
+    await settle();
+    expect(uiResponses(child)).toEqual([
+      { type: "extension_ui_response", id: "c", confirmed: true },
+      { type: "extension_ui_response", id: "i", value: "feat/x" },
+    ]);
+    const notice = (await context.controller.getTranscript(session.id)).find((item) => item.kind === "notice");
+    expect(notice).toMatchObject({ title: "omp", content: "Indexed 3 files", tone: "neutral" });
+  });
+
+  it("closes the open cards when omp ends", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames({ type: "extension_ui_request", id: "i", method: "input", title: "Branch name" });
+    await settle();
+    child.exit(1);
+    await settle();
+    const card = (await context.controller.getTranscript(session.id)).find((item) => item.kind === "question");
+    expect(card).toMatchObject({ status: "closed", answerable: false });
+    expect(await context.controller.listPendingQuestions(session.id)).toEqual([]);
   });
 });

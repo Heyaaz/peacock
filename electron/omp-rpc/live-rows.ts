@@ -18,6 +18,7 @@ import {
   TranscriptRows,
   type Row,
 } from "../herdr-core/transcript/transcript-records.js";
+import { transcriptItemEqual } from "../../shared/transcript-item-equal.js";
 import type { RpcFrame } from "./rpc-client.js";
 
 /** A tool call omp is running or has asked about, as the approvals pair a select with it. */
@@ -121,7 +122,7 @@ export class OmpLiveRows {
     const current = this.get(rowId);
     if (current?.kind !== "tool") return [];
     const next = change(current);
-    if (next === current) return [];
+    if (next === current || transcriptItemEqual(next, current)) return [];
     this.set(next);
     return [{ type: "tool.updated", tool: next }];
   }

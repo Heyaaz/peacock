@@ -9,13 +9,19 @@ import type {
   CreateSessionInput,
   MessageDelivery,
   NoticeActivity,
+  QuestionActivity,
+  QuestionSubmission,
   SessionCapabilities,
   SessionStatus,
+  ToolActivity,
+  ToolDecision,
   TranscriptChange,
   TranscriptItem,
   TranscriptPage,
   TranscriptPageRequest,
 } from "../../shared/agent-contract.js";
+import { normalizeRulePrefix, type CommandRuleDecision, type CommandRuleMatch } from "../../shared/command-rules.js";
+import { permissionOptionLabel } from "../../shared/permission-options.js";
 import { agentCatalogEntry } from "../../shared/agent-catalog.js";
 import { launchOptions } from "../../shared/agent-launch.js";
 import { selectTranscriptPage, transcriptSyncWindow } from "../../shared/transcript-page.js";
@@ -25,12 +31,22 @@ import { AgentUnsupportedError, type AgentRuntimeController } from "../agent-hos
 import type { ResolvedMessageInput } from "../gjc-sdk-model.js";
 import { recentLabel, timestampMs } from "../gjc-sdk-model.js";
 import { withoutInherited } from "../herdr-core/env.js";
-import { clockLabel, record, string } from "../herdr-core/transcript/transcript-records.js";
+import { bounded, clockLabel, record, string, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
 import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
 import { OmpRpcClient, type RpcFrame, type RpcProcess, type RpcPromptResult } from "./rpc-client.js";
 import { OMP_RPC_SESSION_PREFIX, type OmpRpcSessionRecord, type OmpRpcSessionStore } from "./session-store.js";
 import { transcriptSyncEvents } from "./transcript-sync.js";
+import {
+  approvalChoices,
+  approvalDetail,
+  approvalToolName,
+  formValue,
+  pairApproval,
+  parseHtmlForm,
+  type ApprovalChoice,
+  type FormField,
+} from "./ui-requests.js";
 
 export interface OmpRpcControllerOptions {
   store: OmpRpcSessionStore;
@@ -50,7 +66,49 @@ export interface OmpRpcControllerOptions {
   resyncDelaysMs?: readonly number[];
   /** Arguments a smoke run adds (`GAJAE_SMOKE_OMP_ARGS`), never the user's own runs. */
   extraArgs?: readonly string[];
+  /** Project command rules that answer an approval without a card (GJC's store). */
+  commandRules?: {
+    decide(projectPath: string, toolName: string, command: string): Promise<CommandRuleMatch | undefined>;
+    add(projectPath: string, prefix: string, decision: CommandRuleDecision): Promise<void>;
+  };
 }
+
+/** An approval card waiting for its answer. */
+interface PendingApproval {
+  kind: "approval";
+  requestId: string;
+  sessionId: string;
+  client: OmpRpcClient;
+  rowId: string;
+  /** The call it was paired with; unset for a card of its own. */
+  callId?: string;
+  toolName: string;
+  command?: string;
+  choices: ApprovalChoice[];
+}
+
+/** What one question card of a dialog answers with. */
+type QuestionShape =
+  | { kind: "form"; field: FormField }
+  | { kind: "ask"; id: string; labels: string[]; multi: boolean }
+  | { kind: "select"; labels: string[] }
+  | { kind: "confirm" }
+  | { kind: "input" };
+
+/** A dialog of one or more question cards, answered together once every card has its answer. */
+interface PendingQuestion {
+  kind: "question";
+  requestId: string;
+  sessionId: string;
+  client: OmpRpcClient;
+  method: "form" | "ask" | "select" | "confirm" | "input";
+  cards: { id: string; shape: QuestionShape; answer?: { value: unknown; summary: string } }[];
+}
+
+type PendingUi = PendingApproval | PendingQuestion;
+
+const YES = "예";
+const NO = "아니요";
 
 /** The approval mode a chat starts omp with when the window chose none: cards need omp to ask. */
 export const DEFAULT_APPROVAL_MODE = "always-ask";
@@ -104,6 +162,10 @@ export class OmpRpcController implements AgentRuntimeController {
   private readonly unread = new Set<string>();
   private readonly revisions = new Map<string, number>();
   private readonly chats = new Map<string, ChatRuntime>();
+  /** Open approval and question dialogs by omp's request id. */
+  private readonly pendingUi = new Map<string, PendingUi>();
+  /** Calls an approval was paired with, per chat, so a second prompt pairs with another. */
+  private readonly pairedCalls = new Map<string, Set<string>>();
   private disposed = false;
   protected readonly log: (message: string, error?: unknown) => void;
 
@@ -173,6 +235,8 @@ export class OmpRpcController implements AgentRuntimeController {
     const chat = this.chats.get(sessionId);
     if (chat?.resyncTimer) clearTimeout(chat.resyncTimer);
     this.chats.delete(sessionId);
+    for (const [requestId, pending] of this.pendingUi) if (pending.sessionId === sessionId) this.pendingUi.delete(requestId);
+    this.pairedCalls.delete(sessionId);
     this.statuses.delete(sessionId);
     this.unread.delete(sessionId);
     this.revisions.delete(sessionId);
@@ -391,17 +455,297 @@ export class OmpRpcController implements AgentRuntimeController {
     }
   }
 
-  /** A UI request omp sends (approvals and questions answer them). */
-  protected onUiRequest(_sessionId: string, _client: OmpRpcClient, _frame: RpcFrame): void {}
+  /** A UI request omp sends: an approval, a question, a notice, or the close of one of them. */
+  protected onUiRequest(sessionId: string, client: OmpRpcClient, frame: RpcFrame): void {
+    const requestId = string(frame.id);
+    if (!requestId) return;
+    switch (frame.method) {
+      case "select": {
+        const title = string(frame.title) ?? "";
+        const options = Array.isArray(frame.options) ? frame.options.filter((option): option is string => typeof option === "string") : [];
+        if (approvalToolName(title)) void this.requestApproval(sessionId, client, requestId, title, options);
+        else this.askQuestion(sessionId, client, requestId, "select", [{ question: title, options, multi: false, shape: { kind: "select", labels: options } }]);
+        return;
+      }
+      case "form": {
+        const fields = parseHtmlForm(string(frame.html) ?? "");
+        // a form with nothing to fill in has only its defaults to send
+        if (fields.length === 0) {
+          client.send({ type: "extension_ui_response", id: requestId, data: {} });
+          return;
+        }
+        this.askQuestion(
+          sessionId,
+          client,
+          requestId,
+          "form",
+          fields.map((field) => ({
+            question: field.label,
+            options: field.kind === "choice" ? field.options.filter((entry) => !entry.disabled).map((entry) => ({ label: entry.label, ...(entry.checked ? { recommended: true } : {}) })) : [],
+            multi: field.kind === "choice" && field.multi,
+            shape: { kind: "form", field },
+          })),
+        );
+        return;
+      }
+      case "ask": {
+        const questions = Array.isArray(frame.questions) ? frame.questions.map(record) : [];
+        this.askQuestion(
+          sessionId,
+          client,
+          requestId,
+          "ask",
+          questions.map((question) => {
+            const labels = (Array.isArray(question.options) ? question.options.map(record) : []).flatMap((option) => (typeof option.label === "string" ? [option.label] : []));
+            const recommended = typeof question.recommended === "number" ? question.recommended : -1;
+            return {
+              question: [string(question.header), string(question.question)].filter(Boolean).join("\n"),
+              options: labels.map((label, index) => ({ label, ...(index === recommended ? { recommended: true } : {}) })),
+              multi: question.multi === true,
+              shape: { kind: "ask", id: string(question.id) ?? "", labels, multi: question.multi === true },
+            };
+          }),
+        );
+        return;
+      }
+      case "confirm":
+        this.askQuestion(sessionId, client, requestId, "confirm", [
+          { question: [string(frame.title), string(frame.message)].filter(Boolean).join("\n"), options: [YES, NO], multi: false, shape: { kind: "confirm" } },
+        ]);
+        return;
+      case "input":
+      case "editor":
+        this.askQuestion(sessionId, client, requestId, "input", [{ question: string(frame.title) ?? "", options: [], multi: false, shape: { kind: "input" } }]);
+        return;
+      case "notify": {
+        const message = string(frame.message);
+        if (message) this.addNotice(sessionId, "omp", message, frame.notifyType === "error" || frame.notifyType === "warning" ? "warning" : "neutral");
+        return;
+      }
+      case "cancel": {
+        const target = string(frame.targetId);
+        if (target) this.closeDialog(target, "cancelled");
+        return;
+      }
+      default:
+        // setStatus, setWidget, setTitle, set_editor_text, open_url: nothing the chat shows
+        return;
+    }
+  }
+
+  // ---- approvals
+
+  private async requestApproval(sessionId: string, client: OmpRpcClient, requestId: string, title: string, options: string[]): Promise<void> {
+    const chat = this.chat(sessionId);
+    const paired = this.pairedCalls.get(sessionId) ?? new Set<string>();
+    this.pairedCalls.set(sessionId, paired);
+    const call = pairApproval(title, chat.live.runningTools(), paired);
+    if (call) paired.add(call.callId);
+    const toolName = call?.name ?? approvalToolName(title) ?? "tool";
+    const command = call && typeof call.input.command === "string" ? call.input.command : undefined;
+    let choices = approvalChoices(options);
+    if (!choices.some((choice) => choice.option.kind === "allow_once")) {
+      const allow = options.find((option) => option.startsWith("Approve"));
+      if (allow) choices = [{ option: { optionId: "allow_once", kind: "allow_once", name: "Allow once" }, label: allow }, ...choices];
+    }
+    const workspace = this.options.store.get(sessionId)?.workspace;
+    if (command !== undefined && toolName === "bash" && workspace && this.options.commandRules) {
+      let match: CommandRuleMatch | undefined;
+      try {
+        match = await this.options.commandRules.decide(workspace, "bash", command);
+      } catch {
+        match = undefined;
+      }
+      const choice = match && choices.find((entry) => entry.option.kind === (match.decision === "allow" ? "allow_once" : "reject_once"));
+      if (match && choice && call) {
+        client.send({ type: "extension_ui_response", id: requestId, value: choice.label });
+        this.emitLive(
+          sessionId,
+          chat.live.updateTool(call.rowId, (tool) => ({ ...dropOptions(tool), status: match.decision === "allow" ? "approved" : "denied", autoDecision: match })),
+        );
+        return;
+      }
+    }
+    // the call finished while the rules were read: nothing is left to ask
+    if (client.exited || (call && chat.live.tool(call.callId)?.endedAt !== undefined)) return;
+    const rowId = call?.rowId ?? `${sessionId}:ui:approval-${requestId}`;
+    const pending: PendingApproval = { kind: "approval", requestId, sessionId, client, rowId, toolName, choices, ...(call ? { callId: call.callId } : {}), ...(command !== undefined ? { command } : {}) };
+    this.pendingUi.set(requestId, pending);
+    const permissionOptions = choices.map((choice) => choice.option);
+    if (call) this.emitLive(sessionId, chat.live.updateTool(rowId, (tool) => ({ ...tool, status: "approval-required", permissionOptions })));
+    else {
+      const row = toolRow(new TranscriptRows(sessionId), rowId, toolName, {}, approvalDetail(title) || toolName, Date.now());
+      this.emitLive(sessionId, chat.live.put({ ...row, command: bounded(title), status: "approval-required", permissionOptions }));
+    }
+    this.markWaiting(sessionId);
+  }
+
+  toolDecisionInfo(toolId: string, decision: ToolDecision): { name: string; requiresConfirmation: boolean } {
+    const { choice } = this.approvalChoice(toolId, decision);
+    const allows = choice.option.kind.startsWith("allow");
+    const label = permissionOptionLabel(choice.option);
+    return {
+      name: decision.rule && allows ? `${label}\n"${decision.rule.prefix}"로 시작하는 명령은 이 프로젝트에서 앞으로 묻지 않고 허용합니다.` : label,
+      requiresConfirmation: allows,
+    };
+  }
+
+  /**
+   * Answers an approval card with omp's own option, remembering a command prefix for the project
+   * first when asked to. A rule that cannot be saved must not leave omp waiting: the call is
+   * answered either way and the save error is thrown afterwards. omp's select takes no words for a
+   * rejection, so a comment is not passed on.
+   */
+  async resolveToolCall(toolId: string, decision: ToolDecision): Promise<void> {
+    const { pending, choice } = this.approvalChoice(toolId, decision);
+    const allows = choice.option.kind.startsWith("allow");
+    let ruleFailure: unknown;
+    if (decision.rule) {
+      try {
+        const workspace = this.options.store.get(pending.sessionId)?.workspace;
+        const prefix = normalizeRulePrefix(decision.rule.prefix);
+        if (!this.options.commandRules || !workspace) throw new Error("Command rules are unavailable for this session");
+        if (pending.toolName !== "bash" || pending.command === undefined) throw new Error("Command rules apply to bash calls only");
+        if (!prefix) throw new Error("Command rule prefix is invalid");
+        await this.options.commandRules.add(workspace, prefix, allows ? "allow" : "reject");
+      } catch (error) {
+        ruleFailure = error;
+      }
+    }
+    if (this.pendingUi.get(pending.requestId) !== pending) throw new Error(`No pending permission for tool call ${toolId}`);
+    this.pendingUi.delete(pending.requestId);
+    pending.client.send({ type: "extension_ui_response", id: pending.requestId, value: choice.label });
+    const chat = this.chat(pending.sessionId);
+    this.emitLive(pending.sessionId, chat.live.updateTool(pending.rowId, (tool) => ({ ...dropOptions(tool), status: allows ? "approved" : "denied" })));
+    this.settleWaiting(pending.sessionId);
+    if (ruleFailure) throw ruleFailure;
+  }
+
+  private approvalChoice(toolId: string, decision: ToolDecision): { pending: PendingApproval; choice: ApprovalChoice } {
+    const pending = [...this.pendingUi.values()].find((entry): entry is PendingApproval => entry.kind === "approval" && entry.rowId === toolId);
+    if (!pending) throw new Error(`No pending permission for tool call ${toolId}`);
+    const choice = pending.choices.find((entry) => entry.option.optionId === decision.optionId);
+    if (!choice) throw new Error(`Unknown permission option ${decision.optionId}`);
+    return { pending, choice };
+  }
+
+  // ---- questions
+
+  private askQuestion(
+    sessionId: string,
+    client: OmpRpcClient,
+    requestId: string,
+    method: PendingQuestion["method"],
+    questions: { question: string; options: (string | { label: string; recommended?: boolean })[]; multi: boolean; shape: QuestionShape }[],
+  ): void {
+    const chat = this.chat(sessionId);
+    const createdAt = clockLabel(Date.now());
+    const pending: PendingQuestion = { kind: "question", requestId, sessionId, client, method, cards: [] };
+    const events: AgentEvent[] = [];
+    questions.forEach((entry, index) => {
+      const id = `${sessionId}:ui:question-${requestId}-${index}`;
+      pending.cards.push({ id, shape: entry.shape });
+      const card: QuestionActivity = {
+        id,
+        kind: "question",
+        sessionId,
+        question: entry.question || "omp",
+        options: entry.options.map((option) => (typeof option === "string" ? { label: option } : option)),
+        multi: entry.multi,
+        status: "pending",
+        createdAt,
+        answerable: true,
+        tag: "pending",
+        expectedSessionId: sessionId,
+      };
+      events.push(...chat.live.put(card));
+    });
+    this.pendingUi.set(requestId, pending);
+    this.emitLive(sessionId, events);
+    this.markWaiting(sessionId);
+  }
+
+  async listPendingQuestions(sessionId: string): Promise<QuestionActivity[]> {
+    return this.chat(sessionId)
+      .live.items()
+      .filter((item): item is QuestionActivity => item.kind === "question" && item.answerable && (item.status === "pending" || item.status === "rejected"));
+  }
+
+  /**
+   * Answers one question card. A dialog of several cards (a form with several fields, an ask with
+   * several questions) goes back to omp once every card has its answer.
+   */
+  async answerQuestion(sessionId: string, gateId: string, submission: QuestionSubmission): Promise<void> {
+    const pending = [...this.pendingUi.values()].find(
+      (entry): entry is PendingQuestion => entry.kind === "question" && entry.sessionId === sessionId && entry.cards.some((card) => card.id === gateId),
+    );
+    if (!pending) throw new Error("This question is no longer waiting for an answer");
+    const card = pending.cards.find((entry) => entry.id === gateId)!;
+    const chat = this.chat(sessionId);
+    const current = chat.live.get(gateId);
+    if (current?.kind !== "question") throw new Error("This question is no longer waiting for an answer");
+    const answer = cardAnswer(card.shape, submission);
+    if ("error" in answer) {
+      this.emitLive(sessionId, chat.live.put({ ...current, status: "rejected", error: answer.error }));
+      return;
+    }
+    card.answer = answer;
+    const { error: _error, ...settled } = current;
+    this.emitLive(sessionId, chat.live.put({ ...settled, status: "answered", answerSummary: answer.summary }));
+    if (pending.cards.some((entry) => !entry.answer)) return;
+    this.pendingUi.delete(pending.requestId);
+    pending.client.send({ type: "extension_ui_response", id: pending.requestId, ...dialogResponse(pending) });
+    this.settleWaiting(sessionId);
+  }
+
+  // ---- dialogs closing
+
+  /** omp closed a dialog (aborted, timed out) or it can no longer be answered. */
+  private closeDialog(requestId: string, status: "cancelled" | "closed"): void {
+    const pending = this.pendingUi.get(requestId);
+    if (!pending) return;
+    this.pendingUi.delete(requestId);
+    const chat = this.chats.get(pending.sessionId);
+    if (!chat) return;
+    if (pending.kind === "approval") {
+      this.emitLive(
+        pending.sessionId,
+        chat.live.updateTool(pending.rowId, (tool) => ({ ...dropOptions(tool), status: pending.callId && status === "cancelled" && chat.working ? "running" : "cancelled" })),
+      );
+    } else {
+      const events: AgentEvent[] = [];
+      for (const card of pending.cards) {
+        const current = chat.live.get(card.id);
+        if (current?.kind === "question" && current.status !== "answered") events.push(...chat.live.put({ ...current, status, answerable: false }));
+      }
+      this.emitLive(pending.sessionId, events);
+    }
+    this.settleWaiting(pending.sessionId);
+  }
+
+  private markWaiting(sessionId: string): void {
+    this.setStatusNow(sessionId, "waiting", "permission");
+  }
+
+  /** The chat waits no more on the user when its last dialog is answered. */
+  private settleWaiting(sessionId: string): void {
+    if (this.waitingOnUser(sessionId)) return;
+    const chat = this.chats.get(sessionId);
+    this.setStatusNow(sessionId, chat?.working ? "running" : "idle");
+  }
 
   /** A frame the turn's rows do not cover (commands, queue, model changes). */
   protected onOtherFrame(_sessionId: string, _client: OmpRpcClient, _frame: RpcFrame): void {}
 
-  /** The open cards of a chat whose turn ended or whose omp went away (approvals and questions close theirs). */
-  protected closeCards(_sessionId: string, _reason: "ended" | "exited"): void {}
+  /** The open cards of a chat whose turn ended or whose omp went away: nothing will read their answers. */
+  protected closeCards(sessionId: string, _reason: "ended" | "exited"): void {
+    for (const [requestId, pending] of [...this.pendingUi]) if (pending.sessionId === sessionId) this.closeDialog(requestId, "closed");
+    this.pairedCalls.delete(sessionId);
+  }
 
   /** Whether the chat waits on the user (an approval or a question). */
-  protected waitingOnUser(_sessionId: string): boolean {
+  protected waitingOnUser(sessionId: string): boolean {
+    for (const pending of this.pendingUi.values()) if (pending.sessionId === sessionId) return true;
     return false;
   }
 
@@ -512,6 +856,9 @@ export class OmpRpcController implements AgentRuntimeController {
   /** Whether a live row stays once the file is read back: what the file never holds. */
   protected keepAfterSync(sessionId: string, item: TranscriptItem): boolean {
     if (isLiveRowId(sessionId, item.id)) return false;
+    // a question read back is the ask tool's row in the file; one still open stays
+    if (item.kind === "question") return item.answerable && (item.status === "pending" || item.status === "rejected");
+    if (item.kind === "tool" && item.id.startsWith(`${sessionId}:ui:`)) return item.status === "approval-required";
     if (item.id.startsWith(`${sessionId}:ui:`)) return true;
     // a tool row the file does not have yet (a turn cut short) stays only while it waits on the user
     return item.kind === "tool" && item.status === "approval-required";
@@ -574,8 +921,6 @@ export class OmpRpcController implements AgentRuntimeController {
     const ceiling = entry.chatCapabilities ?? entry.capabilities;
     return {
       ...ceiling,
-      approvals: false,
-      questions: false,
       compact: false,
       sideQuestion: false,
       modelConfig: false,
@@ -585,9 +930,12 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   protected applyStatus(sessionId: string, status: SessionStatus, activity?: "completed" | "failed" | "permission"): void {
+    this.setStatusNow(sessionId, (status === "idle" || status === "running") && this.waitingOnUser(sessionId) ? "waiting" : status, activity);
+  }
+
+  private setStatusNow(sessionId: string, effective: SessionStatus, activity?: "completed" | "failed" | "permission"): void {
     const record = this.options.store.get(sessionId);
     if (!record) return;
-    const effective = status === "idle" && this.waitingOnUser(sessionId) ? "waiting" : status;
     const changed = this.statuses.get(sessionId) !== effective;
     this.statuses.set(sessionId, effective);
     if (changed) this.bump(sessionId);
@@ -667,6 +1015,61 @@ export function ompRpcArgs(record: Pick<OmpRpcSessionRecord, "workspace" | "sess
 export function sessionOfOmpToolId(toolId: string): string | undefined {
   const match = new RegExp(`^(${OMP_RPC_SESSION_PREFIX}[0-9a-f-]{36}):`, "u").exec(toolId);
   return match?.[1];
+}
+
+function dropOptions(tool: ToolActivity): ToolActivity {
+  if (!tool.permissionOptions) return tool;
+  const { permissionOptions: _options, ...rest } = tool;
+  return rest;
+}
+
+/** One card's answer as omp's dialog takes it, or why it cannot be one. */
+function cardAnswer(shape: QuestionShape, submission: QuestionSubmission): { value: unknown; summary: string } | { error: string } {
+  const custom = submission.custom?.trim();
+  const selected = submission.selected;
+  const summary = custom || selected.join(", ");
+  switch (shape.kind) {
+    case "form": {
+      const value = formValue(shape.field, selected, custom);
+      return "error" in value ? value : { value: value.value, summary };
+    }
+    case "ask": {
+      const chosen = custom ? [] : selected.filter((label) => shape.labels.includes(label));
+      if (!custom && chosen.length === 0) return { error: "하나를 골라 주세요" };
+      return { value: { id: shape.id, selectedOptions: shape.multi ? chosen : chosen.slice(0, 1), ...(custom ? { customInput: custom } : {}) }, summary };
+    }
+    case "select": {
+      const value = custom || selected[0];
+      return value ? { value, summary } : { error: "하나를 골라 주세요" };
+    }
+    case "confirm": {
+      if (selected[0] === YES) return { value: true, summary: YES };
+      if (selected[0] === NO) return { value: false, summary: NO };
+      return { error: "예 또는 아니요를 골라 주세요" };
+    }
+    case "input":
+      return custom ? { value: custom, summary } : { error: "답을 입력해 주세요" };
+  }
+}
+
+/** The `extension_ui_response` body of a dialog whose cards all have their answers. */
+function dialogResponse(pending: PendingQuestion): Record<string, unknown> {
+  const answers = pending.cards.map((card) => card.answer!.value);
+  switch (pending.method) {
+    case "form": {
+      const data: Record<string, unknown> = {};
+      pending.cards.forEach((card, index) => {
+        if (card.shape.kind === "form") data[card.shape.field.name] = answers[index];
+      });
+      return { data };
+    }
+    case "ask":
+      return { answers };
+    case "confirm":
+      return { confirmed: answers[0] === true };
+    default:
+      return { value: String(answers[0] ?? "") };
+  }
 }
 
 async function exists(file: string): Promise<boolean> {
