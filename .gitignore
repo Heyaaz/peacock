@@ -28,6 +28,7 @@ notarytool-profile*
 release
 build/herdr-core/
 .gajae-artifacts
+.playwright-mcp/
 docs/*
 !docs/features/
 !docs/usage.md
