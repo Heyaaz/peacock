@@ -1004,15 +1004,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "계정이 없나요? {0} 가입하기": "No account? Sign up for {0}",
   "GJC 설정": "GJC settings",
   "불러오거나 저장하지 못했습니다: {0}": "Could not load or save: {0}",
-  "켜고 끄는 설정과 숫자 설정 {0}개": "{0} on/off and number settings",
   "설정 이름이나 설명으로 찾기": "Search by name or description",
   "GJC 설정 찾기": "Search GJC settings",
   기본값: "Default",
   "찾는 설정이 없습니다.": "No settings match.",
-  "터미널과 함께 쓰는 GJC 전체 설정입니다. 자동 압축과 재시도는 열린 세션에도 바로 적용되고, 나머지는 세션을 다시 시작해야 할 수 있습니다.":
-    "These GJC settings are shared with the terminal. Auto-compaction and retry apply to open sessions right away. Others may need the session to restart.",
   "바꾼 설정": "Changed settings",
-  "바꾼 설정 {0}개": "{0} changed",
   "작업 내역": "Work log",
   "1분 안에 작업함": "Worked for under a minute",
   "{0}분 동안 작업함": "Worked for {0}m",
@@ -1302,4 +1298,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "GJC 세션은 다시 연결될 때까지 열 수 없습니다. 다른 에이전트는 그대로 쓸 수 있습니다.": "GJC sessions open again once it reconnects. Other agents keep working.",
   "다시 연결하는 중": "Reconnecting",
   "여기서는 GJC 세션만 시작할 수 있습니다. 작업할 폴더를 고르세요.": "Only GJC sessions can start from here. Pick a folder to work in.",
+  "설정 {0}개 · 자동 압축과 재시도는 열린 세션에도 바로 적용됩니다": "{0} settings · auto-compaction and retries apply to open sessions right away",
+  "바꾼 설정 {0}개 · 적용하면 터미널의 GJC에도 반영됩니다": "{0} changed · applying also changes GJC in your terminal",
 };

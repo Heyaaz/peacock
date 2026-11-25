@@ -1325,10 +1325,10 @@
   border: 0;
 }
 .agent-options legend {
-  margin-bottom: 7px;
+  margin-bottom: 8px;
   padding: 0;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 12px;
 }
 .agent-options label {
   position: relative;
@@ -1371,7 +1371,7 @@
   margin-left: auto;
   color: var(--text-tertiary);
   font:
-    10px ui-monospace,
+    10.5px ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -1381,6 +1381,10 @@
 }
 .agent-options__unavailable {
   opacity: 0.5;
+}
+.agent-options__unavailable small {
+  font-family: inherit;
+  font-size: 11px;
 }
 .agent-options label.agent-options__unavailable {
   cursor: not-allowed;
@@ -2512,21 +2516,21 @@
   display: grid;
   gap: 8px;
   margin: 16px 0 0;
-  padding: 12px 10px 10px;
+  padding: 12px 12px 12px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 .isolation-options legend {
   padding: 0 4px;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 12px;
 }
 .isolation-options__note {
   margin: 0;
   color: var(--warning);
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 .broad-workspace-warning {
@@ -3511,13 +3515,14 @@ button.diff-line-number:hover {
 }
 .empty-conversation h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 .empty-conversation p {
-  margin: 8px 0 20px;
+  margin: 8px 0 22px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 13px;
 }
 .empty-conversation__examples {
   display: grid;
@@ -3570,7 +3575,7 @@ button.diff-line-number:hover {
 }
 .empty-conversation__meta dt {
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -3619,7 +3624,7 @@ button.diff-line-number:hover {
   align-items: center;
   gap: 6px;
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 12px;
 }
 .empty-conversation__hints kbd {
   padding: 1px 6px;
@@ -6204,10 +6209,10 @@ button.diff-line-number:hover {
 
 .new-session-dialog {
   width: min(520px, calc(100vw - 40px));
-  padding: 20px;
+  padding: 22px;
   background: var(--bg-dialog);
   border: 1px solid var(--border-strong);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
 .new-session-dialog > header {
@@ -6228,12 +6233,14 @@ button.diff-line-number:hover {
 }
 .new-session-dialog h2 {
   margin: 1px 0 0;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 650;
 }
 .new-session-dialog header p {
   margin: 5px 0 0;
   color: var(--text-tertiary);
-  font-size: 10.5px;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .new-session-dialog > label,
 .new-session-dialog > .new-session-field {
@@ -6263,6 +6270,7 @@ button.diff-line-number:hover {
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   outline: 0;
+  font-size: 12.5px;
 }
 .new-session-dialog > label > select {
   width: 100%;
@@ -6322,7 +6330,7 @@ button.diff-line-number:hover {
   overflow: hidden;
   color: var(--text-secondary);
   font:
-    10px ui-monospace,
+    11.5px ui-monospace,
     SFMono-Regular,
     Menlo,
     monospace;
@@ -6413,12 +6421,14 @@ button.diff-line-number:hover {
 .workspace--empty h1 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 .workspace-empty__lede {
-  margin: -4px 0 0;
+  margin: -2px 0 4px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 13px;
 }
 /* one chip per installed agent: the new-session dialog opens on it */
 .workspace-empty__agents {
@@ -6464,13 +6474,16 @@ button.diff-line-number:hover {
 .workspace-offline__hint {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 .workspace-offline__actions {
   display: flex;
   gap: 8px;
   align-items: center;
   margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .onboarding {
@@ -8766,39 +8779,48 @@ button.diff-line-number:hover {
   border-left: 0;
 }
 
-.gjc-settings .settings-panel > label.gjc-settings-search {
-  min-height: 0;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 8px 13px;
+/* GJC's settings page: one search field, its count, then a section per group. */
+.gjc-settings-toolbar {
+  display: grid;
+  gap: 6px;
+}
+.gjc-settings-toolbar > small {
+  padding: 0 2px;
   color: var(--text-tertiary);
-  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+}
+.gjc-settings-toolbar > .button-secondary {
+  justify-self: start;
+}
+.gjc-settings-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--text-tertiary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+.gjc-settings-search:focus-within {
+  border-color: rgba(240, 100, 22, 0.58);
 }
 .gjc-settings-search input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
-  padding: 0 8px;
+  height: 100%;
+  padding: 0;
   color: var(--text-primary);
-  font-size: 11px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  background: transparent;
+  border: 0;
+  outline: 0;
 }
-.gjc-settings-group > h3 {
-  margin: 0;
-  padding: 9px 13px 7px;
-  color: var(--text-tertiary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border-bottom: 1px solid var(--border);
+.gjc-settings-group .settings-panel > div.settings-toggle-row {
+  min-height: 50px;
 }
-.gjc-settings-group > div.settings-toggle-row {
-  min-height: 44px;
-}
-.gjc-settings-group > div.settings-toggle-row > span strong {
+.gjc-settings-group .settings-panel > div.settings-toggle-row > span strong {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -8806,28 +8828,29 @@ button.diff-line-number:hover {
 }
 .gjc-settings-group code {
   overflow: hidden;
-  font-size: 10.5px;
+  font-size: 11.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .gjc-settings-group em {
-  padding: 1px 5px;
+  padding: 1px 6px;
   color: var(--text-tertiary);
-  font-size: 9px;
+  font-size: 10.5px;
   font-style: normal;
   border: 1px solid var(--border);
   border-radius: 999px;
 }
-.gjc-settings-group > div.settings-toggle-row.is-changed {
+.gjc-settings-group .settings-panel > div.settings-toggle-row.is-changed {
   box-shadow: inset 2px 0 0 var(--accent-bright);
 }
 .gjc-settings-group input[type="number"] {
-  flex: 0 0 96px;
-  width: 96px;
-  height: 26px;
-  padding: 0 8px;
+  flex: 0 0 104px;
+  width: 104px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   background: var(--bg-input);
@@ -8842,9 +8865,9 @@ button.diff-line-number:hover {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
-  padding: 9px 13px;
+  padding: 10px 14px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;

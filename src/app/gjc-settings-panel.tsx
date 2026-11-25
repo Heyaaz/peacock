@@ -7,6 +7,7 @@ import type {
 } from "../../shared/gjc-settings";
 import { t, useLanguage, type ResolvedLanguage } from "../i18n";
 import { GJC_SETTING_GROUP_TEXT, GJC_SETTING_TEXT } from "./gjc-settings-text";
+import { SettingsSection } from "./settings-layout";
 
 type Bridge = Pick<SettingsDesktopBridge, "listGjcSettings" | "applyGjcSettings">;
 
@@ -150,30 +151,9 @@ export function GjcSettingsPanel({ bridge }: { bridge: Bridge | undefined }) {
 
   return (
     <div className="settings-stack gjc-settings">
-      <div className="settings-panel">
-        <div className="settings-toggle-row">
-          <span>
-            <strong>{t("GJC 설정")}</strong>
-            <small>
-              {!bridge
-                ? t("데스크톱 앱에서만 설정할 수 있습니다.")
-                : error
-                ? t`불러오거나 저장하지 못했습니다: ${error}`
-                : settings
-                  ? t`켜고 끄는 설정과 숫자 설정 ${settings.length}개`
-                  : t("불러오는 중…")}
-            </small>
-          </span>
-          <span className="settings-row-actions">
-            {error && !settings && (
-              <button type="button" onClick={() => setAttempt((n) => n + 1)}>
-                {t("다시 시도")}
-              </button>
-            )}
-          </span>
-        </div>
+      <div className="gjc-settings-toolbar">
         <label className="gjc-settings-search">
-          <Search size={13} aria-hidden="true" />
+          <Search size={14} aria-hidden="true" />
           <input
             type="search"
             value={query}
@@ -182,10 +162,23 @@ export function GjcSettingsPanel({ bridge }: { bridge: Bridge | undefined }) {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        <small role={error ? "alert" : undefined}>
+          {!bridge
+            ? t("데스크톱 앱에서만 설정할 수 있습니다.")
+            : error
+              ? t`불러오거나 저장하지 못했습니다: ${error}`
+              : settings
+                ? t`설정 ${settings.length}개 · 자동 압축과 재시도는 열린 세션에도 바로 적용됩니다`
+                : t("불러오는 중…")}
+        </small>
+        {error && !settings && (
+          <button type="button" className="button-secondary" onClick={() => setAttempt((n) => n + 1)}>
+            {t("다시 시도")}
+          </button>
+        )}
       </div>
       {groups.map(([group, rows]) => (
-        <section className="settings-panel gjc-settings-group" key={group}>
-          <h3>{group}</h3>
+        <SettingsSection className="gjc-settings-group" title={group} key={group}>
           {rows.map((setting) => {
             const staged = draft.get(setting.key);
             const value = staged ?? setting.value;
@@ -226,19 +219,14 @@ export function GjcSettingsPanel({ bridge }: { bridge: Bridge | undefined }) {
               </div>
             );
           })}
-        </section>
+        </SettingsSection>
       ))}
       {settings && groups.length === 0 && (
-        <p className="settings-note">{t("찾는 설정이 없습니다.")}</p>
+        <p className="settings-empty">{t("찾는 설정이 없습니다.")}</p>
       )}
-      <p className="settings-note">
-        {t(
-          "터미널과 함께 쓰는 GJC 전체 설정입니다. 자동 압축과 재시도는 열린 세션에도 바로 적용되고, 나머지는 세션을 다시 시작해야 할 수 있습니다.",
-        )}
-      </p>
       {draft.size > 0 && (
         <div className="gjc-settings-apply" role="region" aria-label={t("바꾼 설정")}>
-          <span>{t`바꾼 설정 ${draft.size}개`}</span>
+          <span>{t`바꾼 설정 ${draft.size}개 · 적용하면 터미널의 GJC에도 반영됩니다`}</span>
           <button
             type="button"
             className="button-secondary"

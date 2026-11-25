@@ -90,7 +90,7 @@ describe("GjcSettingsPanel", () => {
       toggle.click();
       setNumber(retries, "5");
     });
-    expect(container.querySelector(".gjc-settings-apply span")?.textContent).toBe("바꾼 설정 2개");
+    expect(container.querySelector(".gjc-settings-apply span")?.textContent).toBe("바꾼 설정 2개 · 적용하면 터미널의 GJC에도 반영됩니다");
     const applyButton = [...container.querySelectorAll<HTMLButtonElement>(".gjc-settings-apply button")]
       .find((button) => button.textContent === "적용")!;
     await act(async () => applyButton.click());
