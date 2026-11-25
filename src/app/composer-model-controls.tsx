@@ -1,8 +1,8 @@
+import type { ReactNode } from "react";
 import { Check, Zap } from "lucide-react";
 import type { AgentCommand, AgentConfigOption } from "../backend/types";
 import { t } from "../i18n";
 import { FastTierControls } from "./composer-fast-tier";
-import { ModelPicker } from "./composer-model-picker";
 import { ModelCatalogPicker } from "./model-catalog-picker";
 
 interface ModelControlsProps {
@@ -19,7 +19,43 @@ interface ModelControlsProps {
   configMenu: string | null;
   onToggleMenu: (id: string) => void;
   onSelectConfig: (configId: string, value: string) => void;
+  /** Changes a setting and leaves the menu open (the thinking level inside the model picker). */
+  onChangeConfig?: (configId: string, value: string) => void;
   onSetFastTier: (fast: boolean) => Promise<void>;
+}
+
+/** The strip under the model picker's search: the thinking level, and GJC's Fast tier pair. */
+function PickerTools({
+  thinkingOption,
+  fast,
+  onThinking,
+}: {
+  thinkingOption: AgentConfigOption | undefined;
+  fast: ReactNode;
+  onThinking: (value: string) => void;
+}) {
+  const levels = thinkingOption?.options ?? [];
+  if (levels.length === 0 && !fast) return null;
+  return (
+    <>
+      {levels.length > 0 && (
+        <span className="model-catalog-thinking" role="group" aria-label={t("사고 수준")}>
+          <small>{t("사고 수준")}</small>
+          {levels.map((choice) => (
+            <button
+              key={choice.value}
+              type="button"
+              aria-pressed={choice.value === thinkingOption?.currentValue}
+              onClick={() => onThinking(choice.value)}
+            >
+              {choice.name}
+            </button>
+          ))}
+        </span>
+      )}
+      {fast}
+    </>
+  );
 }
 
 export function ModelControls({
@@ -35,8 +71,11 @@ export function ModelControls({
   configMenu,
   onToggleMenu,
   onSelectConfig: selectConfig,
+  onChangeConfig,
   onSetFastTier,
 }: ModelControlsProps) {
+  // a catalog-backed menu is omp's, whose switches sit off the context bar; GJC's keeps its Fast pair here
+  const catalogBacked = modelOption.options?.some((choice) => choice.catalog) ?? false;
   return (
             <span className="composer-model">
               {/* Left enabled during a run: this popover is where the Fast tier is
@@ -81,25 +120,31 @@ export function ModelControls({
                   </>
                 )}
               </button>
-              {configMenu === modelOption.id && modelOption.options?.some((choice) => choice.catalog) ? (
+              {configMenu === modelOption.id && (
                 <ModelCatalogPicker
                   option={modelOption}
-                  onSelect={(value) => selectConfig(modelOption.id, value)}
-                  onClose={() => onToggleMenu(modelOption.id)}
-                />
-              ) : configMenu === modelOption.id && (
-                <ModelPicker
-                  option={modelOption}
-                  header={
-                    <FastTierControls
-                      commands={commands}
-                      fastMode={fastMode}
-                      busy={fastBusy}
-                      readOnly={readOnly}
-                      onSelect={(fast) => void onSetFastTier(fast)}
+                  favorites={!catalogBacked}
+                  tools={
+                    <PickerTools
+                      thinkingOption={thinkingOption}
+                      fast={
+                        catalogBacked ? null : (
+                          <FastTierControls
+                            commands={commands}
+                            fastMode={fastMode}
+                            busy={fastBusy}
+                            readOnly={readOnly}
+                            onSelect={(fast) => void onSetFastTier(fast)}
+                          />
+                        )
+                      }
+                      onThinking={(value) =>
+                        thinkingOption && (onChangeConfig ?? selectConfig)(thinkingOption.id, value)
+                      }
                     />
                   }
                   onSelect={(value) => selectConfig(modelOption.id, value)}
+                  onClose={() => onToggleMenu(modelOption.id)}
                 />
               )}
               {thinkingOption && configMenu === thinkingOption.id && (

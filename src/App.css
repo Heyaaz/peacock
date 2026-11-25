@@ -5078,162 +5078,6 @@ button.diff-line-number:hover {
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(18px);
 }
-.config-option-menu--model {
-  bottom: calc(100% + 9px);
-  left: 0;
-  width: 300px;
-  /* A row for the header and a flexible row for the options. Implicit rows are
-     max-content sized, so with 37 profiles the option track grew as tall as its
-     content: max-height clamped the menu, overflow: hidden clipped the rest, and
-     the list itself never overflowed, so nothing could scroll. The list track has
-     to be allowed below its content, and the header keeps its own row, so it stays
-     in place (and grows) whatever controls sit in it. */
-  max-height: min(430px, 55vh);
-  grid-template-rows: auto minmax(0, 1fr);
-}
-/* Tabs and a search field may sit between the header and the list, so the
-   menu stacks its rows and only the list shrinks below its content. */
-.config-option-menu--model:has(.model-picker-tabs) {
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-}
-.config-option-menu--model:has(.model-picker-tabs) > .config-option-scroll {
-  flex: 1 1 auto;
-}
-.model-picker-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 7px 8px 0;
-}
-.model-picker-tabs > button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 9px;
-  color: var(--text-tertiary);
-  font-size: 10.5px;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-}
-.model-picker-tabs > button small {
-  color: var(--text-tertiary);
-  font-size: 9.5px;
-  font-variant-numeric: tabular-nums;
-}
-.model-picker-tabs > button:hover {
-  color: var(--text-primary);
-}
-.model-picker-tabs > button.is-active {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-.model-picker-search {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 7px 8px 0;
-  padding: 0 8px;
-  color: var(--text-tertiary);
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.model-picker-search:focus-within {
-  border-color: var(--accent-bright);
-}
-.config-option-menu .model-picker-search input:focus-visible {
-  outline: none;
-}
-.config-option-menu .model-picker-search input {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
-  height: 26px;
-  padding: 0;
-  color: var(--text-primary);
-  font-size: 11px;
-  background: transparent;
-  border: 0;
-  outline: none;
-  box-shadow: none;
-}
-.model-choice {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.model-choice > button:first-child {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 31px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 8px;
-  color: var(--text-secondary);
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-}
-.model-choice > button:first-child:hover,
-.model-choice > button:first-child.is-current {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-.model-choice > button:first-child > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.model-choice > button:first-child strong {
-  overflow: hidden;
-  font-size: 10.5px;
-  font-weight: 520;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.model-choice > button:first-child small {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.model-favorite {
-  display: grid;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  place-items: center;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  opacity: 0;
-}
-.model-choice:hover .model-favorite,
-.model-favorite:focus-visible,
-.model-favorite.is-on {
-  opacity: 1;
-}
-.model-favorite:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-.model-favorite.is-on {
-  color: var(--accent-bright);
-}
-.model-picker-hint {
-  padding: 10px 8px 6px;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  line-height: 1.5;
-}
 .config-option-menu--effort {
   bottom: calc(100% + 9px);
   left: 0;
@@ -5253,10 +5097,6 @@ button.diff-line-number:hover {
 .config-option-menu > header small {
   color: var(--text-tertiary);
   font-size: 10px;
-}
-.config-option-menu--model > header {
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .config-option-menu-fast {
   display: flex;
@@ -5281,29 +5121,6 @@ button.diff-line-number:hover {
   opacity: 0.5;
   cursor: default;
 }
-.config-option-scroll {
-  display: grid;
-  min-height: 0;
-  padding: 6px;
-  overflow-y: auto;
-}
-.config-option-group {
-  display: grid;
-}
-.config-option-group + .config-option-group {
-  margin-top: 7px;
-  padding-top: 7px;
-  border-top: 1px solid var(--border);
-}
-.config-option-group > strong {
-  padding: 4px 8px 6px;
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
-}
-.config-option-group > button,
 .config-option-menu--effort > button {
   display: flex;
   width: 100%;
@@ -5318,28 +5135,10 @@ button.diff-line-number:hover {
   border: 0;
   border-radius: 6px;
 }
-.config-option-group > button:hover,
-.config-option-group > button.is-current,
 .config-option-menu--effort > button:hover,
 .config-option-menu--effort > button.is-current {
   color: var(--text-primary);
   background: var(--bg-hover);
-}
-.config-option-group > button > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.config-option-group > button strong {
-  overflow: hidden;
-  font-size: 10.5px;
-  font-weight: 520;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.config-option-group > button small {
-  color: var(--text-tertiary);
-  font-size: 10px;
 }
 .send-button {
   display: grid;
@@ -8034,7 +7833,7 @@ button.diff-line-number:hover {
     flex-shrink: 0;
   }
   .workspace-menu,
-  .config-option-menu--model,
+  .model-catalog-picker,
   .config-option-menu--effort {
     left: 8px;
     right: 8px;
@@ -10667,4 +10466,92 @@ button.diff-line-number:hover {
 .session-tree-actions button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* the strip under the model picker's search: thinking level and GJC's Fast tier */
+.model-catalog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 6px 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.model-catalog-thinking {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+.model-catalog-thinking > small {
+  margin-right: 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.model-catalog-thinking > button {
+  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.model-catalog-thinking > button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.model-catalog-thinking > button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.model-catalog-tools .config-option-menu-fast {
+  width: auto;
+}
+.model-catalog-tools .config-option-menu-fast > button {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  font-size: 11px;
+  border-radius: 999px;
+}
+.model-catalog-provider--profile {
+  color: var(--text-secondary);
+}
+.model-catalog-desc {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-catalog-star {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  opacity: 0;
+  cursor: pointer;
+}
+.model-catalog-row:hover .model-catalog-star,
+.model-catalog-row.is-active .model-catalog-star,
+.model-catalog-star:focus-visible,
+.model-catalog-star.is-on {
+  opacity: 1;
+}
+.model-catalog-star:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.model-catalog-star.is-on {
+  color: var(--accent-bright);
+}
+.model-catalog-row.is-profile .model-catalog-id {
+  font-family: inherit;
 }

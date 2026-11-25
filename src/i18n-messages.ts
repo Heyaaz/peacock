@@ -1344,4 +1344,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "이 메시지까지를 새 채팅으로 복사합니다": "Copies the conversation up to this message into a new chat",
   "여기까지 포크": "Fork up to here",
   "도구": "Tool",
+  "프로필": "Profiles",
+  "프로필이나 모델 이름, provider로 찾기": "Search profiles, models or providers",
 };

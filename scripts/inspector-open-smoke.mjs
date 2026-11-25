@@ -310,16 +310,16 @@ const openModelMenuProbe = `(async (profiles) => {
   for (let i = 0; i < 80 && !document.querySelector('.composer-model > button'); i += 1) await wait(100);
   const trigger = document.querySelector('.composer-model > button');
   if (!trigger) return { error: 'model menu trigger not found' };
-  if (!document.querySelector('.config-option-menu--model')) trigger.click();
-  for (let i = 0; i < 80 && !document.querySelector('.config-option-menu--model'); i += 1) await wait(25);
-  const menu = document.querySelector('.config-option-menu--model');
+  if (!document.querySelector('.model-catalog-picker')) trigger.click();
+  for (let i = 0; i < 80 && !document.querySelector('.model-catalog-picker'); i += 1) await wait(25);
+  const menu = document.querySelector('.model-catalog-picker');
   if (!menu) return { error: 'model menu never opened' };
   const header = menu.querySelector('header');
-  const scroll = menu.querySelector('.config-option-scroll');
+  const scroll = menu.querySelector('.model-catalog-list');
   if (!header || !scroll) return { error: 'model menu has no header or option list' };
 
-  const groups = [...scroll.querySelectorAll('.config-option-group')];
-  const rowsIn = () => scroll.querySelectorAll('.config-option-group > .model-choice > button:first-child').length;
+  const groups = [...scroll.querySelectorAll('.model-catalog-group')];
+  const rowsIn = () => scroll.querySelectorAll('.model-catalog-group > .model-catalog-row').length;
   if (groups.length === 0 || rowsIn() === 0) return { error: 'model menu has no options' };
   for (let i = 1, copies = Math.ceil(profiles / rowsIn()); i < copies; i += 1) {
     for (const group of groups) scroll.append(group.cloneNode(true));
@@ -362,11 +362,11 @@ const openModelMenuProbe = `(async (profiles) => {
 const readModelMenuProbe = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(250);
-  const menu = document.querySelector('.config-option-menu--model');
+  const menu = document.querySelector('.model-catalog-picker');
   if (!menu) return { error: 'model menu closed while scrolling' };
   const header = menu.querySelector('header');
-  const scroll = menu.querySelector('.config-option-scroll');
-  const rows = [...scroll.querySelectorAll('.config-option-group > .model-choice > button:first-child')];
+  const scroll = menu.querySelector('.model-catalog-list');
+  const rows = [...scroll.querySelectorAll('.model-catalog-group > .model-catalog-row')];
   if (rows.length === 0) return { error: 'model list is empty' };
   const lastBox = rows[rows.length - 1].getBoundingClientRect();
   const menuBox = menu.getBoundingClientRect();
@@ -1748,6 +1748,9 @@ app.whenReady().then(async () => {
     else {
       settings.click();
       await wait(400);
+      // the dialog opens on 에이전트; the Enter behavior lives in GJC's tab
+      [...document.querySelectorAll('.settings-dialog nav button')].find(button => button.textContent.trim() === 'GJC')?.click();
+      await wait(200);
       const trigger = document.querySelector('button[aria-label="실행 중 Enter 동작"]');
       if (!trigger) issues.push('running Enter dropdown missing');
       else {

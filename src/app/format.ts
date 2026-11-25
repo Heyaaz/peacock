@@ -1,6 +1,5 @@
 import type {
   AgentCommand,
-  AgentConfigOption,
   AgentSession,
   BackendConnection,
   ToolActivity,
@@ -196,20 +195,6 @@ export function toolStatusLabel(status: ToolActivity["status"]): string {
   if (status === "failed" || status === "denied") return t("실패");
   if (status === "cancelled") return t("취소됨");
   return t("승인 대기");
-}
-
-export function configOptionGroups(
-  options: AgentConfigOption["options"],
-): Array<{ name: string; options: NonNullable<AgentConfigOption["options"]> }> {
-  const groups = new Map<string, NonNullable<AgentConfigOption["options"]>>();
-  for (const option of options ?? []) {
-    const name = option.group ?? "Session profiles";
-    groups.set(name, [...(groups.get(name) ?? []), option]);
-  }
-  return [...groups].map(([name, groupedOptions]) => ({
-    name,
-    options: groupedOptions,
-  }));
 }
 
 export const BUNDLED_GJC_COMMANDS: AgentCommand[] = [

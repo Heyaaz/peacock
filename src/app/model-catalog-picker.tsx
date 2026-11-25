@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, ChevronDown, Layers, Search, Star } from "lucide-react";
 import type { AgentConfigOption, AgentConfigOptionValue } from "../../shared/agent-contract";
 import { t } from "../i18n";
 
-/** Rows a search shows past the recent block; the catalog can hold a thousand models. */
+/** Rows a section shows; a catalog can hold a thousand models. */
 const ROW_LIMIT = 300;
+const FAVORITES_KEY = "gajae:model-favorites";
 
 type Column = "intelligence" | "speed" | "context" | "price";
 
@@ -46,9 +47,19 @@ function price(choice: AgentConfigOptionValue): string {
   return `$${trim(cost.input)}·${trim(cost.output)}`;
 }
 
-/** The model's id without its provider, as the row names it. */
+/** A model profile (GJC's presets), not a concrete `provider/id` model. */
+function isProfile(choice: AgentConfigOptionValue): boolean {
+  return choice.kind !== "model" && !choice.catalog;
+}
+
+function providerOf(choice: AgentConfigOptionValue): string | undefined {
+  return choice.catalog?.provider ?? (choice.kind === "model" ? choice.group : undefined);
+}
+
+/** The model's id without its provider, as the row names it; a profile goes by its name. */
 function rowName(choice: AgentConfigOptionValue): string {
-  const provider = choice.catalog?.provider;
+  if (isProfile(choice)) return choice.name;
+  const provider = providerOf(choice);
   return provider && choice.value.startsWith(`${provider}/`) ? choice.value.slice(provider.length + 1) : choice.value;
 }
 
@@ -60,27 +71,66 @@ function monogram(provider: string): string {
 
 function matchesQuery(choice: AgentConfigOptionValue, needle: string): boolean {
   if (!needle) return true;
-  const haystack = `${choice.value} ${choice.name} ${choice.catalog?.roles?.map((role) => role.label).join(" ") ?? ""}`.toLowerCase();
+  const haystack = `${choice.value} ${choice.name} ${choice.description ?? ""} ${choice.group ?? ""} ${choice.catalog?.roles?.map((role) => role.label).join(" ") ?? ""}`.toLowerCase();
   return needle.split(/\s+/u).every((part) => haystack.includes(part));
 }
 
+function readFavorites(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]");
+    return Array.isArray(stored) ? stored.filter((value): value is string => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function useFavorites(enabled: boolean) {
+  const [favorites, setFavorites] = useState(() => (enabled ? readFavorites() : []));
+  const toggle = (value: string) =>
+    setFavorites((current) => {
+      const next = current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value];
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(next));
+      } catch {
+        // favorites stay for this window when storage is unavailable
+      }
+      return next;
+    });
+  return { favorites, toggle };
+}
+
+interface Section {
+  key: string;
+  label: string;
+  count: number;
+  rows: AgentConfigOptionValue[];
+}
+
 /**
- * A model catalog picker (omp's chat): search, the scope a choice is for, the agent's recent
- * models first, then every model, each row with its provider, role tags and what the catalog knows
- * of it (score, speed, context window, price). ↑/↓ move, Enter chooses, Esc closes. Columns
- * nothing in the catalog fills are left out.
+ * The composer's model picker, for every chat: search, the scope a choice is for, the
+ * agent's recent models (omp) or the one in use and the starred ones (GJC) first, then
+ * profiles and models, each row with its provider, role tags and what the catalog knows
+ * of it (score, speed, context window, price). Columns and scopes nothing fills are left
+ * out. ↑/↓ move, Enter chooses, Esc closes. `tools` holds the strip under the search
+ * (thinking level, GJC's Fast tier).
  */
 export function ModelCatalogPicker({
   option,
   onSelect,
   onClose,
+  tools,
+  favorites: starring = false,
 }: {
   option: AgentConfigOption;
   onSelect(value: string): void;
   onClose(): void;
+  tools?: ReactNode;
+  /** Rows can be starred, and the starred ones lead the list (GJC's menu kept them). */
+  favorites?: boolean;
 }) {
   const all = useMemo(() => option.options ?? [], [option.options]);
   const scopes = option.scopes ?? [];
+  const { favorites, toggle } = useFavorites(starring);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState(() => scopes.find((entry) => entry.enabled)?.id ?? "");
   const [scopeOpen, setScopeOpen] = useState(false);
@@ -88,15 +138,42 @@ export function ModelCatalogPicker({
   const listRef = useRef<HTMLDivElement>(null);
   const needle = query.trim().toLowerCase();
 
-  const { recent, rest, matched } = useMemo(() => {
+  const { sections, matched } = useMemo(() => {
     const found = all.filter((choice) => matchesQuery(choice, needle));
-    return {
-      recent: found.filter((choice) => choice.catalog?.recent),
-      rest: found.filter((choice) => !choice.catalog?.recent).slice(0, ROW_LIMIT),
-      matched: found.length,
-    };
-  }, [all, needle]);
-  const rows = useMemo(() => [...recent, ...rest], [recent, rest]);
+    const shown = new Set<string>();
+    const take = (rows: AgentConfigOptionValue[]) => rows.filter((choice) => !shown.has(choice.value) && shown.add(choice.value));
+    const list: Section[] = [];
+    const recent = take(found.filter((choice) => choice.catalog?.recent));
+    if (recent.length > 0) list.push({ key: "recent", label: t("최근"), count: recent.length, rows: recent });
+    if (starring) {
+      const byValue = new Map(found.map((choice) => [choice.value, choice]));
+      const values = [...(typeof option.currentValue === "string" ? [option.currentValue] : []), ...favorites];
+      const pinned = take(values.flatMap((value) => (byValue.has(value) ? [byValue.get(value)!] : [])));
+      if (pinned.length > 0) list.push({ key: "pinned", label: t("사용 중·즐겨찾기"), count: pinned.length, rows: pinned });
+    }
+    const rest = found.filter((choice) => !shown.has(choice.value));
+    const profiles = rest.filter(isProfile);
+    const models = rest.filter((choice) => !isProfile(choice));
+    // profiles keep the groups the runtime gives them (GJC: built-in, custom); one group reads as "프로필"
+    const groups = new Map<string, AgentConfigOptionValue[]>();
+    for (const choice of profiles) groups.set(choice.group ?? "", [...(groups.get(choice.group ?? "") ?? []), choice]);
+    for (const [group, members] of groups)
+      list.push({
+        key: `profiles:${group}`,
+        label: groups.size > 1 && group ? group : t("프로필"),
+        count: members.length,
+        rows: members.slice(0, ROW_LIMIT),
+      });
+    if (models.length > 0)
+      list.push({
+        key: "models",
+        label: profiles.length > 0 || starring ? t("모델") : needle ? t("검색 결과") : t("모든 모델"),
+        count: models.length,
+        rows: models.slice(0, ROW_LIMIT),
+      });
+    return { sections: list, matched: found.length };
+  }, [all, needle, starring, favorites, option.currentValue]);
+  const rows = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
   const columns = useMemo(
     () =>
       (Object.keys(COLUMN_LABELS) as Column[]).filter((column) =>
@@ -131,7 +208,7 @@ export function ModelCatalogPicker({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((current) => Math.max(0, current - 1));
-    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+    } else if (event.key === "Enter" && !event.nativeEvent.isComposing && event.target instanceof HTMLInputElement) {
       event.preventDefault();
       choose(rows[active]);
     }
@@ -139,29 +216,33 @@ export function ModelCatalogPicker({
 
   const currentScope = scopes.find((entry) => entry.id === scope);
   const current = all.find((choice) => choice.value === option.currentValue);
-  const gridColumns = `minmax(0, 1fr) ${columns.map((column) => (column === "price" ? "64px" : "46px")).join(" ")} 18px`;
+  const gridColumns = `minmax(0, 1fr) ${columns.map((column) => (column === "price" ? "64px" : "46px")).join(" ")} ${starring ? "22px " : ""}18px`;
   const row = (choice: AgentConfigOptionValue, index: number) => {
     const isCurrent = choice.value === option.currentValue;
     const facts = choice.catalog;
+    const profile = isProfile(choice);
+    const provider = providerOf(choice);
+    const name = rowName(choice);
+    const starred = favorites.includes(choice.value);
     return (
-      <button
+      <div
         key={choice.value}
-        type="button"
         role="option"
         aria-selected={isCurrent}
         data-row={index}
-        className={`model-catalog-row${index === active ? " is-active" : ""}${isCurrent ? " is-current" : ""}`}
+        className={`model-catalog-row${index === active ? " is-active" : ""}${isCurrent ? " is-current" : ""}${profile ? " is-profile" : ""}`}
         style={{ gridTemplateColumns: gridColumns }}
         onMouseEnter={() => setActive(index)}
         onClick={() => choose(choice)}
       >
         <span className="model-catalog-name">
-          <span className="model-catalog-provider" title={facts?.provider}>
-            {monogram(facts?.provider ?? choice.group ?? "")}
+          <span className={`model-catalog-provider${profile ? " model-catalog-provider--profile" : ""}`} title={profile ? choice.group : provider}>
+            {profile ? <Layers size={11} aria-hidden="true" /> : monogram(provider ?? choice.group ?? "")}
           </span>
-          <span className="model-catalog-id" title={choice.value}>
-            {rowName(choice)}
+          <span className="model-catalog-id" title={choice.name !== name ? `${choice.name} · ${choice.value}` : choice.value}>
+            {name}
           </span>
+          {profile && choice.description && <small className="model-catalog-desc">{choice.description}</small>}
           {free(choice) && <span className="model-catalog-pill model-catalog-pill--free">{t("무료")}</span>}
           {facts?.roles?.map((role) => (
             <span key={role.role} className={`model-catalog-pill model-catalog-pill--role model-catalog-tone--${ROLE_TONES[role.role] ?? "muted"}`}>
@@ -178,11 +259,27 @@ export function ModelCatalogPicker({
             {column === "price" ? price(choice) : null}
           </span>
         ))}
+        {starring && (
+          <button
+            type="button"
+            className={`model-catalog-star${starred ? " is-on" : ""}`}
+            aria-pressed={starred}
+            aria-label={t`${choice.name} 즐겨찾기`}
+            title={starred ? t("즐겨찾기에서 빼기") : t("즐겨찾기에 추가")}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggle(choice.value);
+            }}
+          >
+            <Star size={12} fill={starred ? "currentColor" : "none"} />
+          </button>
+        )}
         <span className="model-catalog-check">{isCurrent && <Check size={13} aria-label={t("사용 중")} />}</span>
-      </button>
+      </div>
     );
   };
 
+  let index = 0;
   return (
     <div className="model-catalog-picker" role="dialog" aria-label={t("모델 고르기")} onKeyDown={onKeyDown}>
       <header className="model-catalog-bar">
@@ -192,7 +289,7 @@ export function ModelCatalogPicker({
             type="search"
             autoFocus
             value={query}
-            placeholder={t("모델 이름, provider, 역할로 찾기")}
+            placeholder={scopes.length > 0 || columns.length > 0 ? t("모델 이름, provider, 역할로 찾기") : t("프로필이나 모델 이름, provider로 찾기")}
             aria-label={t("모델 찾기")}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -233,34 +330,36 @@ export function ModelCatalogPicker({
         <span className="model-catalog-count">{t`${matched} / ${all.length}`}</span>
         <kbd>esc</kbd>
       </header>
-      <div className="model-catalog-head" style={{ gridTemplateColumns: gridColumns }} aria-hidden="true">
-        <span />
-        {columns.map((column) => (
-          <span key={column} title={t(COLUMN_LABELS[column].title)}>
-            {COLUMN_LABELS[column].label}
-          </span>
-        ))}
-        <span />
-      </div>
+      {tools && <div className="model-catalog-tools">{tools}</div>}
+      {columns.length > 0 && (
+        <div className="model-catalog-head" style={{ gridTemplateColumns: gridColumns }} aria-hidden="true">
+          <span />
+          {columns.map((column) => (
+            <span key={column} title={t(COLUMN_LABELS[column].title)}>
+              {COLUMN_LABELS[column].label}
+            </span>
+          ))}
+          {starring && <span />}
+          <span />
+        </div>
+      )}
       <div className="model-catalog-list" role="listbox" aria-label={t("모델")} ref={listRef}>
-        {recent.length > 0 && (
-          <div className="model-catalog-section">
-            {t("최근")} <small>{recent.length}</small>
+        {sections.map((section) => (
+          <div className="model-catalog-group" key={section.key}>
+            <div className="model-catalog-section">
+              {section.label} <small>{section.count}</small>
+            </div>
+            {section.rows.map((choice) => row(choice, index++))}
           </div>
-        )}
-        {recent.map((choice, index) => row(choice, index))}
-        {rest.length > 0 && (
-          <div className="model-catalog-section">
-            {needle ? t("검색 결과") : t("모든 모델")} <small>{matched - recent.length}</small>
-          </div>
-        )}
-        {rest.map((choice, index) => row(choice, recent.length + index))}
+        ))}
         {rows.length === 0 && <p className="model-catalog-empty">{t("맞는 모델이 없습니다")}</p>}
       </div>
       <footer className="model-catalog-foot">
-        <span>
-          {t("범위")}: {currentScope?.name ?? t("메인")}
-        </span>
+        {scopes.length > 0 && (
+          <span>
+            {t("범위")}: {currentScope?.name ?? t("메인")}
+          </span>
+        )}
         {current && (
           <span className="model-catalog-foot-current" title={current.value}>
             {t("사용 중")}: {current.name}

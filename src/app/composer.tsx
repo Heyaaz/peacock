@@ -1549,6 +1549,7 @@ export const Composer = memo(function Composer({
                 setConfigMenu((open) => (open === id ? null : id))
               }
               onSelectConfig={selectConfig}
+              onChangeConfig={onConfigChange}
               onSetFastTier={setFastTier}
             />
           )}

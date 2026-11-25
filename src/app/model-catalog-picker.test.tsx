@@ -86,7 +86,8 @@ describe("ModelCatalogPicker", () => {
   it("offers only the scopes a choice can be set for, and leaves out columns nothing fills", async () => {
     const bare: AgentConfigOption = { ...PICKER_OPTION, scopes: undefined, options: PICKER_OPTION.options!.map((choice) => ({ ...choice, catalog: { provider: choice.catalog!.provider } })) };
     const { node } = await mount(bare);
-    expect(node.querySelector(".model-catalog-head")?.textContent).toBe("");
+    // no column has figures, so the header row is left out
+    expect(node.querySelector(".model-catalog-head")).toBeNull();
     expect(node.querySelector(".model-catalog-scope")).toBeNull();
     await act(async () => root!.unmount());
     root = undefined;
@@ -97,5 +98,68 @@ describe("ModelCatalogPicker", () => {
       ["메인flash", false],
       ["smolGPT-6.2 Sol", true],
     ]);
+  });
+});
+
+/** GJC's model menu: profiles in their groups and concrete models, no catalog figures. */
+const GJC_OPTION: AgentConfigOption = {
+  id: "model",
+  name: "Model",
+  category: "model",
+  type: "select",
+  currentValue: "codex-medium",
+  options: [
+    { value: "opga-high", name: "OPGA High", group: "Built-in profiles", description: "Bundled with GJC" },
+    { value: "codex-medium", name: "Codex Medium", group: "Built-in profiles" },
+    { value: "mine", name: "Mine", group: "Custom profiles" },
+    ...Array.from({ length: 5 }, (_, index) => ({ value: `bedrock/gpt-${index}`, name: `GPT ${index}`, group: "bedrock", kind: "model" as const })),
+  ],
+};
+
+describe("ModelCatalogPicker for GJC", () => {
+  afterEach(() => localStorage.clear());
+
+  async function mountGjc(tools?: ReturnType<typeof createElement>) {
+    const onSelect = vi.fn();
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () =>
+      root!.render(createElement(ModelCatalogPicker, { option: GJC_OPTION, onSelect, onClose: () => undefined, favorites: true, tools })),
+    );
+    return { node: host, onSelect };
+  }
+  const sections = (node: Element) => [...node.querySelectorAll(".model-catalog-section")].map((section) => section.textContent);
+  const names = (node: Element) => [...node.querySelectorAll(".model-catalog-id")].map((name) => name.textContent);
+
+  it("leads with the one in use, keeps the profile groups, and lists models by id with no columns or scope", async () => {
+    const { node, onSelect } = await mountGjc();
+    expect(sections(node)).toEqual(["사용 중·즐겨찾기 1", "Built-in profiles 1", "Custom profiles 1", "모델 5"]);
+    expect(names(node).slice(0, 4)).toEqual(["Codex Medium", "OPGA High", "Mine", "gpt-0"]);
+    expect(node.querySelector(".model-catalog-desc")?.textContent).toBe("Bundled with GJC");
+    expect(node.querySelector(".model-catalog-head")).toBeNull();
+    expect(node.querySelector(".model-catalog-scope")).toBeNull();
+    await act(async () => node.querySelectorAll<HTMLElement>(".model-catalog-row")[3]!.click());
+    expect(onSelect).toHaveBeenCalledWith("bedrock/gpt-0");
+  });
+
+  it("stars a row into the lead section and remembers it", async () => {
+    const { node } = await mountGjc();
+    const star = [...node.querySelectorAll<HTMLButtonElement>(".model-catalog-star")].find((button) => button.getAttribute("aria-label") === "Mine 즐겨찾기")!;
+    await act(async () => star.click());
+    expect(names(node).slice(0, 2)).toEqual(["Codex Medium", "Mine"]);
+    expect(JSON.parse(localStorage.getItem("gajae:model-favorites")!)).toEqual(["mine"]);
+  });
+
+  it("searches profiles and models together and shows the tools strip", async () => {
+    const { node } = await mountGjc(createElement("span", { className: "probe-tool" }, "tools"));
+    expect(node.querySelector(".model-catalog-tools .probe-tool")).not.toBeNull();
+    const input = node.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "gpt 3");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(sections(node)).toEqual(["모델 1"]);
+    expect(names(node)).toEqual(["gpt-3"]);
   });
 });
