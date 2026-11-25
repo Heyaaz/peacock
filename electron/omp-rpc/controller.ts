@@ -1615,7 +1615,27 @@ export class OmpRpcController implements AgentRuntimeController {
     const chat = this.chat(sessionId);
     chat.liveVersion += 1;
     if (chat.published) chat.published = this.composed(chat);
-    for (const event of events) this.options.emit(event);
+    // A page read can already show the session file's copy of a prompt before omp's live
+    // message_start arrives (omp writes the prompt first). Announcing the live row then
+    // put the same request on screen twice until the next sync; composed() pairs the two,
+    // so the event is already covered by the file's row.
+    const filePrompts = new Map<string, number>();
+    for (const item of chat.fileRows) {
+      const key = promptKey(item);
+      if (key !== undefined) filePrompts.set(key, (filePrompts.get(key) ?? 0) + 1);
+    }
+    const livePrompts = new Map<string, number>();
+    for (const item of chat.live.items()) {
+      const key = promptKey(item);
+      if (key !== undefined) livePrompts.set(key, (livePrompts.get(key) ?? 0) + 1);
+    }
+    for (const event of events) {
+      if (event.type === "transcript.appended") {
+        const key = promptKey(event.item);
+        if (key !== undefined && (filePrompts.get(key) ?? 0) >= (livePrompts.get(key) ?? 0)) continue;
+      }
+      this.options.emit(event);
+    }
   }
 
   // ---- resync: the file after a turn
@@ -1712,7 +1732,28 @@ export class OmpRpcController implements AgentRuntimeController {
       const watched = replaced.kind === "thought" && replaced.durationMs === undefined ? chat.thoughtDurations.get(replaced.id) : undefined;
       return watched !== undefined && replaced.kind === "thought" ? { ...replaced, durationMs: watched } : replaced;
     });
-    for (const item of live) if (!fileIds.has(item.id)) rows.push(item);
+    // omp names a prompt twice: the live RPC row (`msg-N`) and the session file's entry
+    // id. Reading the file mid-turn therefore held the file's copy and the live copy at
+    // once, and the same request appeared twice (in the transcript and in the recent
+    // requests). Pair them by what both sides carry and count the file's copies, so two
+    // genuinely repeated requests still keep both their rows.
+    const recorded = new Map<string, number>();
+    for (const item of chat.fileRows) {
+      const key = promptKey(item);
+      if (key !== undefined) recorded.set(key, (recorded.get(key) ?? 0) + 1);
+    }
+    for (const item of live) {
+      if (fileIds.has(item.id)) continue;
+      const key = promptKey(item);
+      if (key !== undefined) {
+        const left = recorded.get(key) ?? 0;
+        if (left > 0) {
+          recorded.set(key, left - 1);
+          continue;
+        }
+      }
+      rows.push(item);
+    }
     return rows;
   }
 
@@ -1889,6 +1930,16 @@ export function ompRpcArgs(record: Pick<OmpRpcSessionRecord, "workspace" | "sess
 export function sessionOfOmpToolId(toolId: string): string | undefined {
   const match = new RegExp(`^(${OMP_RPC_SESSION_PREFIX}[0-9a-f-]{36}):`, "u").exec(toolId);
   return match?.[1];
+}
+
+/**
+ * Identity of a prompt both the live RPC turn and the session file carry. omp gives the
+ * two sides different row ids (`msg-N` while it streams, the entry id once written), so
+ * ids cannot tell that they are the same request; the minute it was sent and its text can.
+ */
+function promptKey(item: TranscriptItem): string | undefined {
+  if (item.kind !== "message" || item.role !== "user") return undefined;
+  return `${item.createdAt}\u0000${item.content}`;
 }
 
 /** omp's todo phases (`get_state.todoPhases`) as the status line's checklist. */
