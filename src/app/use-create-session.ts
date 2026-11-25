@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { AgentSession, TranscriptItem } from "../backend/types";
 import type { NewSessionChoice } from "../../shared/agent-contract";
-import { agentCatalogEntry } from "../../shared/agent-catalog";
+import { agentCatalogEntry, sessionRuntimeFor } from "../../shared/agent-catalog";
 import type { AgentBackend } from "../backend/agent-backend";
 import type { NewSessionPrefill } from "../../shared/settings-ipc";
 import { cacheTranscript } from "../transcript-utils";
@@ -31,9 +31,11 @@ export function useCreateSession(
         setAppError("");
         const agentKind = input.agentKind ?? "shell";
         const choice: NewSessionChoice = { agentKind, surface: input.surface ?? agentCatalogEntry(agentKind).defaultSurface };
+        // omp's chat screen is an RPC chat of its own (design §10); every other screen is a herdr terminal
+        const runtime = sessionRuntimeFor(agentKind, choice.surface) === "omp-rpc" ? "omp-rpc" : "herdr";
         return backend
           .createSession({
-            runtime: "herdr",
+            runtime,
             title: input.title,
             workspace: input.workspace,
             isolation: "workspace",

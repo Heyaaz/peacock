@@ -474,7 +474,12 @@ export default function App() {
       : null;
   const terminalSession = terminalRuntime && !agentChat ? selectedSession : null;
   const chatId = terminalSession ? null : selectedId;
-  const selectedSessionId = terminalRuntime ? undefined : selectedSession?.id;
+  // an omp chat (design §10) is a conversation like GJC's, with omp's own features: GJC's reads
+  // (goal, subagents, git) follow what the session says it offers
+  const ompChat = selectedSession?.runtime === "omp-rpc" ? selectedSession : null;
+  const selectedCapabilities = selectedSession ? capabilitiesOf(selectedSession) : null;
+  const selectedSessionId = terminalRuntime || !selectedCapabilities?.goal ? undefined : selectedSession?.id;
+  const gitSessionId = terminalRuntime || !selectedCapabilities?.git ? undefined : selectedSession?.id;
   const agentEntry = agentChat ? agentCatalogEntry(agentChat.agentKind ?? "claude") : null;
   const agentSurface =
     agentChat && agentEntry
@@ -482,7 +487,8 @@ export default function App() {
         ? (agentSurfaces[agentChat.id] ?? agentEntry.defaultSurface)
         : "chat"
       : null;
-  const viewSurface = agentSurface ?? surface;
+  // an omp chat has no terminal of its own here: it always shows its conversation
+  const viewSurface = agentSurface ?? (ompChat ? "chat" : surface);
   const setViewSurface = useCallback(
     (next: SessionSurface): void => {
       if (!agentChat) {
@@ -593,7 +599,7 @@ export default function App() {
     syncAppBadge(unreadCount);
   }, [unreadCount]);
 
-  const selectedGit = useGitStatus(backend, selectedSessionId, selectedSessionStatus);
+  const selectedGit = useGitStatus(backend, gitSessionId, selectedSessionStatus);
 
   const { diff, diffLoading, refreshDiff } = useDiff(
     backend,
@@ -762,6 +768,7 @@ export default function App() {
     terminalRuntime ? null : selectedSession,
     connection,
     language,
+    !ompChat,
   );
   const recentWorkspaces = useMemo(
     () => [
@@ -1346,9 +1353,10 @@ export default function App() {
             setDiffOpen={setDiffOpen}
             inspectorOpen={inspectorOpen}
             setInspectorOpen={setInspectorOpen}
-            {...(askSideBackend && !agentChat ? { sideOpen, setSideOpen } : {})}
-            terminalAgent={agentChat !== null}
-            surfaceToggle={!agentChat || agentTerminalReachable}
+            {...(askSideBackend && !agentChat && selectedCapabilities?.sideQuestion ? { sideOpen, setSideOpen } : {})}
+            terminalAgent={agentChat !== null || ompChat !== null}
+            agentIcon={ompChat ? "chat" : "terminal"}
+            surfaceToggle={!ompChat && (!agentChat || agentTerminalReachable)}
           />
 
           <div className="workspace-body">
@@ -1414,7 +1422,7 @@ export default function App() {
                     : (text) => prefillComposerDraft(selectedSession.id, text)
                 }
                 emptyStateMeta={
-                  agentChat
+                  agentChat || ompChat
                     ? { workspace: selectedSession.workspace, recentWorkspaces: [selectedSession.workspace] }
                     : {
                         workspace: selectedSession.workspace,
@@ -1464,6 +1472,8 @@ export default function App() {
                   }}
                   onFocusChange={setFocusedApprovalId}
                 />
+                {selectedCapabilities?.goal && (
+                <>
                 <WorkflowStatusCards
                   progress={goal.progress}
                   onEnd={(skill) => void endWorkflow(skill)}
@@ -1478,6 +1488,8 @@ export default function App() {
                   busy={goalBusySessionId === selectedSession.id}
                   onOperate={(operation) => void operateGoal(operation)}
                 />
+                </>
+                )}
                 <Composer
                   sessionId={selectedSession.id}
                   running={composerTurnLive(
@@ -1486,7 +1498,7 @@ export default function App() {
                   )}
                   sessionTitle={selectedSession.title}
                   workspace={selectedSession.workspace}
-                  workspaces={recentWorkspaces}
+                  workspaces={ompChat ? recentWorkspaces.filter((workspace) => workspace !== selectedSession.workspace) : recentWorkspaces}
                   commands={selectedCommands}
                   commandsLoad={commandsLoad}
                   configOptions={composerConfigOptions}
@@ -1500,13 +1512,13 @@ export default function App() {
                   onFlushQueued={onComposerFlushQueued}
                   onCompact={onComposerCompact}
                   onNewSession={onComposerNewSession}
-                  onLogin={onboardingBridge ? openLogin : undefined}
+                  onLogin={onboardingBridge && !ompChat ? openLogin : undefined}
                   onWorkspaceChange={onComposerWorkspaceChange}
                   onConfigChange={onComposerConfigChange}
                   onCycleThinking={onComposerCycleThinking}
                   onCommandPaletteOpen={onCommandPaletteOpen}
                   readOnly={remoteViewOnly}
-                  onSuggestNextInput={suggestNextInput}
+                  onSuggestNextInput={selectedCapabilities?.suggestion ? suggestNextInput : undefined}
                   turnCompletion={turnCompletion}
                 />
                 </>
@@ -1524,7 +1536,7 @@ export default function App() {
                 />
               )
             ) : (
-              terminalMounted && (
+              terminalMounted && !ompChat && (
                 <TerminalView
                   key={selectedSession.workspace || selectedSession.id}
                   cwd={selectedSession.workspace}
@@ -1533,7 +1545,7 @@ export default function App() {
                 />
               )
             )}
-            {surface === "chat" && !agentChat && sideOpen && askSideBackend && (
+            {viewSurface === "chat" && !agentChat && sideOpen && askSideBackend && selectedCapabilities?.sideQuestion && (
               <SideQuestionPanel
                 key={selectedSession.id}
                 exchanges={sideThreads[selectedSession.id] ?? NO_SIDE_EXCHANGES}
@@ -1544,7 +1556,7 @@ export default function App() {
                 onClose={() => setSideOpen(false)}
               />
             )}
-            {surface === "chat" && !agentChat && inspectorOpen && (
+            {surface === "chat" && !agentChat && !ompChat && inspectorOpen && (
               <Inspector
                 session={selectedSession}
                 transcript={selectedTranscript}
@@ -1555,7 +1567,7 @@ export default function App() {
                 onClose={closeInspector}
               />
             )}
-            {surface === "chat" && !agentChat && diffOpen && (
+            {surface === "chat" && !agentChat && !ompChat && diffOpen && (
               <DiffPanel
                 session={selectedSession}
                 backend={backend}

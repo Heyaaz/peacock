@@ -25,12 +25,14 @@ export function useComposerModel(
   selectedSession: AgentSession | null,
   connection: BackendConnection,
   language: string,
+  /** GJC's bundled commands come first; another agent's chat (omp's) lists only its own. */
+  bundledCommands = true,
 ) {
   const selectedCommands = useMemo(() => {
     const live = selectedId ? (commands[selectedId] ?? []) : [];
     return [
       ...new Map(
-        [...BUNDLED_GJC_COMMANDS, ...live].map((command) => [
+        [...(bundledCommands ? BUNDLED_GJC_COMMANDS : []), ...live].map((command) => [
           command.name,
           {
             ...command,
@@ -40,7 +42,7 @@ export function useComposerModel(
         ]),
       ).values(),
     ];
-  }, [commands, selectedId, language]);
+  }, [commands, selectedId, language, bundledCommands]);
   const selectedConfigOptions = useMemo(
     () => (selectedId && configOptions[selectedId]) || [],
     [configOptions, selectedId],

@@ -88,7 +88,8 @@ export class GjcAgentBackend implements AgentBackend {
         ...(input.launch ? { launch: input.launch } : {}),
       });
     }
-    if (input.runtime !== "gjc")
+    // an omp chat (design §10) is a session of the main process's router, like GJC's
+    if (input.runtime !== "gjc" && input.runtime !== "omp-rpc")
       return Promise.reject(new Error("Hermes is not connected yet"));
     return this.bridge.createSession(input);
   }

@@ -116,6 +116,41 @@ describe("new session dialog", () => {
     });
   });
 
+  it("offers omp's chat with its own default of asking before each tool", async () => {
+    const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
+    Object.assign(window, {
+      agentControlDesktop: {
+        terminal: { listAgents: async () => [AGENT("omp"), AGENT("shell")] },
+      },
+    });
+    const node = await mount(
+      createElement(NewSessionDialog, {
+        defaultWorkspace: "/work/repo",
+        terminalSessions: true,
+        choice: { agentKind: "omp", surface: "chat" },
+        onCancel: noop,
+        onCreate,
+      }),
+    );
+    await act(async () => undefined);
+    Reflect.deleteProperty(window, "agentControlDesktop");
+    expect(node.querySelector('[aria-pressed="true"]')?.textContent).toBe("채팅");
+    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')?.options[0]?.textContent).toBe("기본: 매번 묻기");
+    await submit(node);
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({
+      title: "repo",
+      workspace: "/work/repo",
+      kind: "terminal",
+      agentKind: "omp",
+      surface: "chat",
+      remember: true,
+    });
+    // the terminal screen keeps omp's own setting
+    const terminalButton = [...node.querySelectorAll("button")].find((button) => button.textContent === "터미널")!;
+    await act(async () => terminalButton.click());
+    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')?.options[0]?.textContent).toBe("에이전트 설정 따름");
+  });
+
   it("keeps a handed-over request on a GJC session whatever was chosen before", async () => {
     const onCreate = vi.fn<(input: NewSessionInput) => void>();
     const node = await mount(

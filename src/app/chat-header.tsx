@@ -1,4 +1,4 @@
-import { FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal } from "lucide-react";
+import { Bot, FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal } from "lucide-react";
 import type { GitStatusSnapshot } from "../../shared/agent-contract";
 import type { AgentSession, ToolViewMode } from "../backend/types";
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
@@ -26,6 +26,8 @@ interface ChatHeaderProps {
    * GJC's changed-files and session-info panels have nothing to read for it.
    */
   terminalAgent?: boolean;
+  /** The mark of such an agent: a terminal agent's terminal, or the bot of a chat the app drives (omp's RPC chat). */
+  agentIcon?: "terminal" | "chat";
   /** Absent where the session has one screen only (a phone shows a terminal agent's chat). */
   surfaceToggle?: boolean;
 }
@@ -45,6 +47,7 @@ export function ChatHeader({
   sideOpen = false,
   setSideOpen,
   terminalAgent = false,
+  agentIcon = "terminal",
   surfaceToggle = true,
 }: ChatHeaderProps) {
   return (
@@ -52,7 +55,7 @@ export function ChatHeader({
     <div className="chat-identity">
       {terminalAgent ? (
         <span className="header-avatar header-avatar--terminal">
-          <SquareTerminal size={18} aria-hidden="true" />
+          {agentIcon === "chat" ? <Bot size={18} aria-hidden="true" /> : <SquareTerminal size={18} aria-hidden="true" />}
         </span>
       ) : (
         <span className="header-avatar">

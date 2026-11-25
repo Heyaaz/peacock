@@ -327,6 +327,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Starting screen",
   "권한 모드":
     "Permission mode",
+  "기본: 매번 묻기": "Default: always ask",
   "에이전트 설정 따름":
     "Follow the agent's own setting",
   "{0}을(를) 실행할 폴더를 선택하세요.":

@@ -3,6 +3,14 @@ import { DEFAULT_SESSION_TITLE } from "../../shared/session-title";
 import type { MutableRefObject } from "react";
 import type { AgentSession } from "../backend/types";
 import type { NewSessionInput } from "./dialogs";
+import { directoryName } from "./format";
+
+/** A new session like `session` in `workspace`: an omp chat starts another omp chat, anything else GJC. */
+export function newSessionLike(session: AgentSession | null, workspace: string): NewSessionInput {
+  if (session?.runtime === "omp-rpc")
+    return { title: directoryName(workspace), workspace, kind: "terminal", agentKind: "omp", surface: "chat" };
+  return { title: DEFAULT_SESSION_TITLE, workspace };
+}
 
 export interface ComposerActions {
   cancelRun: (sessionId: string) => Promise<void>;
@@ -39,16 +47,10 @@ export function useComposerCallbacks(
   const onComposerNewSession = useCallback(() => {
     const session = composerActionsRef.current.session;
     if (!session) return;
-    composerActionsRef.current.createSession({
-      title: DEFAULT_SESSION_TITLE,
-      workspace: session.workspace,
-    });
+    composerActionsRef.current.createSession(newSessionLike(session, session.workspace));
   }, []);
   const onComposerWorkspaceChange = useCallback((workspace: string) => {
-    composerActionsRef.current.createSession({
-      title: DEFAULT_SESSION_TITLE,
-      workspace,
-    });
+    composerActionsRef.current.createSession(newSessionLike(composerActionsRef.current.session, workspace));
   }, []);
   const onComposerConfigChange = useCallback((configId: string, value: string) => {
     const session = composerActionsRef.current.session;

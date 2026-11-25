@@ -380,6 +380,16 @@ describe("GjcAgentBackend", () => {
     vi.useRealTimers();
   });
 
+  it("creates an omp chat through the main process's router, not the terminal bridge (design §10)", async () => {
+    const bridge = new FakeGjcBridge();
+    const terminal = { createSession: vi.fn() } as unknown as TerminalDesktopBridge;
+    const backend = new GjcAgentBackend(bridge, terminal);
+    await backend.createSession({ runtime: "omp-rpc", workspace: "/tmp/project", isolation: "workspace", agentKind: "omp" });
+    expect(bridge.createCalls).toBe(1);
+    expect(terminal.createSession).not.toHaveBeenCalled();
+    backend.dispose();
+  });
+
   it("rejects Hermes session creation on the GJC-only bridge", async () => {
     const backend = new GjcAgentBackend(new FakeGjcBridge());
     await expect(

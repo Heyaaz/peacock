@@ -740,6 +740,33 @@ describe("terminal sessions", () => {
     expect(markup).not.toContain("변경 파일 보기");
   });
 
+  it("shows an omp RPC chat as a conversation with GJC's composer and none of GJC's own panels (design §10)", async () => {
+    const row = session("omp-0f8fad5b-d9cb-469f-a165-70867728950e", {
+      title: "omp 채팅",
+      subtitle: "Oh My Pi · gajae-bot",
+      runtime: "omp-rpc",
+      agentKind: "omp",
+      surfaces: ["chat"],
+      capabilities: { send: true, cancel: true, streaming: true },
+    });
+    actionProbe.forkSession.mockResolvedValueOnce(row);
+    renderApp();
+    actionProbe.sidebar!.onFork(session("source-1"));
+    await settle();
+    renderApp();
+    actionProbe.sidebar!.onSelect(row.id);
+    const markup = renderApp();
+    expect(markup).toContain('data-surface="chat"');
+    expect(markup).toContain("conversation--");
+    expect(markup).toContain("Oh My Pi · gajae-bot");
+    // one screen: no switch to a terminal it does not have, no terminal-agent composer
+    expect(markup).not.toContain("surface-mode-toggle");
+    expect(markup).not.toContain("composer--terminal-agent");
+    expect(markup).not.toContain("세션 정보");
+    expect(markup).not.toContain("변경 파일 보기");
+    expect(markup).not.toContain("사이드 채팅");
+  });
+
   it("shows a terminal agent's session as its chat on a device that reaches no terminal", async () => {
     actionProbe.terminalSessions = false;
     const row = session("terminal-3", {

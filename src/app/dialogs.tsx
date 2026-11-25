@@ -343,7 +343,8 @@ export function NewSessionDialog({
               value={permissionMode}
               onChange={(event) => setPermissionMode(event.target.value)}
             >
-              <option value="">{t("에이전트 설정 따름")}</option>
+              {/* omp's chat asks before each tool unless told otherwise: its cards are how it asks (design §10) */}
+              <option value="">{agentEntry.chatRuntime && surface === "chat" ? t("기본: 매번 묻기") : t("에이전트 설정 따름")}</option>
               {modes.map((mode) => (
                 <option key={mode} value={mode}>
                   {mode}
