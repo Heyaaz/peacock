@@ -146,10 +146,10 @@ if (!smokeMode && !terminalSmokeMode && !app.requestSingleInstanceLock()) {
 }
 const appIconPath = app.isPackaged
   ? path.join(process.resourcesPath, "electron.icns")
-  : path.join(app.getAppPath(), "src/assets/gajae-icon.png");
+  : path.join(app.getAppPath(), "src/assets/peacock-icon.png");
 const menuBarIconPath = app.isPackaged
-  ? path.join(process.resourcesPath, "gajae-menubar-Template.png")
-  : path.join(app.getAppPath(), "src/assets/gajae-menubar-Template.png");
+  ? path.join(process.resourcesPath, "peacock-menubar-Template.png")
+  : path.join(app.getAppPath(), "src/assets/peacock-menubar-Template.png");
 const userDataDirectory = app.getPath("userData");
 // Search index, session metadata, artifacts, and automations all live under this
 // directory, and Electron only creates it lazily. A first launch on a clean

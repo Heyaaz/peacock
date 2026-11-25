@@ -49,7 +49,7 @@ export const ROTATING_WORK_LABELS = [
   "명령 실행 중…",
 ] as const;
 
-/** Sprite frames, left to right. Index is the frame offset in the sheet. */
+/** The poses the progress row's mark takes. */
 export const GAJAE_EMOTICONS = [
   "coding",
   "sleepy",
@@ -73,9 +73,6 @@ export function gajaeEmoticonFor(kind: TurnActivityKind): GajaeEmoticon {
   return EMOTICON_BY_KIND[kind];
 }
 
-export function gajaeEmoticonFrame(emoticon: GajaeEmoticon): number {
-  return GAJAE_EMOTICONS.indexOf(emoticon);
-}
 
 /**
  * Reserved height of the progress virtual row.

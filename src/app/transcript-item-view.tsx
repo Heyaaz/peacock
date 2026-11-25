@@ -1,4 +1,3 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 import type { TranscriptItem } from "../backend/types";
 import { QuestionCard } from "./question-card";
 import {
@@ -6,7 +5,7 @@ import {
   copyableMessageText,
   parseSkillInvocation,
 } from "../transcript-utils";
-import { Brain, Check, ListChecks, Paperclip } from "lucide-react";
+import { Bot, Brain, Check, ListChecks, Paperclip } from "lucide-react";
 import { memo } from "react";
 import { httpUrls } from "./format";
 import { LinkPreviewCard, MessageCopyButton } from "./primitives";
@@ -104,7 +103,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
         {item.role === "assistant" && (
           <div className="message-author">
             <span className="assistant-mark">
-              <img src={gajaeIconUrl} alt="" />
+              <Bot size={14} aria-hidden="true" />
             </span>
             <strong>Gajae</strong>
             <time>{item.createdAt}</time>

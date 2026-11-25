@@ -1,13 +1,9 @@
-import sprite80 from "../assets/gajae-progress-sprite@80.webp";
-import sprite160 from "../assets/gajae-progress-sprite@160.webp";
 import {
-  GAJAE_EMOTICONS,
   GAJAE_PROGRESS_ROW_HEIGHT,
   QUIET_AFTER_MS,
   ROTATING_WORK_LABELS,
   elapsedTurnMs,
   gajaeEmoticonFor,
-  gajaeEmoticonFrame,
   type GajaeEmoticon,
   type TurnActivityKind,
   type TurnApproval,
@@ -18,10 +14,9 @@ import { t, useLanguage } from "../i18n";
 import { LoginHintContext } from "./login-hint";
 import { formatDuration } from "./format";
 import type { SessionRetry } from "../backend/types";
+import { PeacockMark } from "./peacock-mark";
 
 
-const SHEET_80_WIDTH = 80 * GAJAE_EMOTICONS.length;
-const SHEET_160_WIDTH = 160 * GAJAE_EMOTICONS.length;
 const LABEL_ROTATE_MS = 2400;
 
 function prefersReducedMotion(): boolean {
@@ -32,54 +27,11 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-function decodeSprite(src: string): Promise<void> {
-  if (typeof Image === "undefined") return Promise.resolve();
-  const image = new Image();
-  image.src = src;
-  const pending =
-    typeof image.decode === "function"
-      ? image.decode()
-      : new Promise<void>((resolve) => {
-          image.onload = () => resolve();
-          image.onerror = () => resolve();
-        });
-  return pending.then(
-    () => undefined,
-    () => undefined,
-  );
-}
-
-// One decode for the whole sheet, started at import so the first row does not
-// paint an undecoded frame. Both densities are warmed; the browser picks one.
-const spritesDecoded: Promise<void> =
-  typeof window === "undefined"
-    ? Promise.resolve()
-    : Promise.all([decodeSprite(sprite80), decodeSprite(sprite160)]).then(
-        () => undefined,
-      );
-
-function GajaeSprite({
-  emoticon,
-  size,
-  ready,
-}: {
-  emoticon: GajaeEmoticon;
-  size: 40 | 20;
-  ready: boolean;
-}) {
-  const frame = gajaeEmoticonFrame(emoticon);
+/** The turn's state as the mark: its pose (the animation the avatar's class sets) and color. */
+function GajaeSprite({ emoticon, size }: { emoticon: GajaeEmoticon; size: 40 | 20 }) {
   return (
-    <span className={`gajae-sprite gajae-sprite--${size}`} aria-hidden="true">
-      {ready ? (
-        <img
-          src={sprite160}
-          srcSet={`${sprite80} ${SHEET_80_WIDTH}w, ${sprite160} ${SHEET_160_WIDTH}w`}
-          sizes={`${size * GAJAE_EMOTICONS.length}px`}
-          alt=""
-          draggable={false}
-          style={{ transform: `translate3d(${-frame * size}px, 0, 0)` }}
-        />
-      ) : null}
+    <span className={`gajae-sprite gajae-sprite--${size} gajae-sprite--${emoticon}`} aria-hidden="true">
+      <PeacockMark />
     </span>
   );
 }
@@ -210,7 +162,6 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
   // GJC's own error says nothing the user can act on.
   const loginCause = kind === "error" && needsSignIn && openLogin !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
-  const [spriteReady, setSpriteReady] = useState(false);
   const [labelIndex, setLabelIndex] = useState(0);
   const [summary, setSummary] = useState(
     () => kind === "done" && prefersReducedMotion(),
@@ -233,16 +184,6 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
     : rotates
     ? t(ROTATING_WORK_LABELS[labelIndex] ?? ROTATING_WORK_LABELS[0])
     : (label ?? (kind === "done" ? t("완료") : ""));
-
-  useEffect(() => {
-    let live = true;
-    void spritesDecoded.then(() => {
-      if (live) setSpriteReady(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (kind !== "done" || summary || prefersReducedMotion()) return;
@@ -306,7 +247,7 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
     >
       <div className="gajae-progress-live" aria-hidden={summary || undefined}>
         <span className={`gajae-avatar gajae-avatar--${emoticon}`}>
-          <GajaeSprite emoticon={emoticon} size={40} ready={spriteReady} />
+          <GajaeSprite emoticon={emoticon} size={40} />
           {kind === "waiting" && (
             <>
               <span className="gajae-z gajae-z-1">z</span>
@@ -369,7 +310,7 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
         aria-hidden={summary ? undefined : true}
         aria-live={summary ? "polite" : undefined}
       >
-        <GajaeSprite emoticon="celebrate" size={20} ready={spriteReady} />
+        <GajaeSprite emoticon="celebrate" size={20} />
         <span>{t("완료")}</span>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
+import { PeacockMark } from "./peacock-mark";
 import type { GjcUpdateStatus } from "../../shared/agent-contract";
 import { capabilitiesOf, runsInTerminal } from "../../shared/agent-contract";
 import type { AgentSession, BackendConnection } from "../backend/types";
@@ -810,7 +810,7 @@ function SidebarView({
           }}
         >
           <span className="profile-avatar">
-            <img src={gajaeIconUrl} alt="" />
+            <PeacockMark />
           </span>
           <span>
             {editingWorkspace ? (

@@ -18,7 +18,7 @@ import { electronStatusSurface, menuBarIcon } from '../dist-electron/electron/de
  * regression.
  */
 const appPath = path.resolve(import.meta.dirname, '..')
-const iconPath = path.join(appPath, 'src/assets/gajae-menubar-Template.png')
+const iconPath = path.join(appPath, 'src/assets/peacock-menubar-Template.png')
 
 app.setName('Gajae Menu Bar Smoke')
 

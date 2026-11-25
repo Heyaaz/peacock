@@ -1,4 +1,3 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 import type {
   ChangedFile,
   DiffSnapshot,
@@ -9,7 +8,7 @@ import type {
 } from "../../shared/agent-contract";
 import type { AgentBackend } from "../backend/agent-backend";
 import type { AgentSession, ToolActivity, TranscriptItem } from "../backend/types";
-import { ChevronRight, Copy, RotateCcw, Target, X } from "lucide-react";
+import { Bot, ChevronRight, Copy, RotateCcw, Target, X } from "lucide-react";
 import { todoStatusView } from "./todo-status";
 import type { ReactNode } from "react";
 import {
@@ -146,7 +145,7 @@ function InspectorView({
       </header>
       <section className="inspector-identity">
         <span className="inspector-avatar">
-          <img src={gajaeIconUrl} alt="" />
+          <Bot size={26} aria-hidden="true" />
         </span>
         <h2>{sessionTitleText(session.title)}</h2>
         <button

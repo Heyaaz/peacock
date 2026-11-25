@@ -6,7 +6,7 @@ import {
   type RemoteClientStatus,
 } from "../../shared/remote-protocol";
 import { readPairingCodeFromHash } from "../remote/client";
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
+import { PeacockMark, PeacockWordmark } from "./peacock-mark";
 import { t } from "../i18n";
 
 
@@ -77,8 +77,9 @@ export function RemoteGate({
     <div className="remote-gate">
       <div className="remote-gate__card">
         <span className="remote-gate__mark">
-          <img src={gajaeIconUrl} alt="" />
+          <PeacockMark />
         </span>
+        <PeacockWordmark className="remote-gate__wordmark" />
         <h1>{revoked ? t("접근이 해제되었습니다") : t("원격 접속")}</h1>
         <p className="remote-gate__detail">
           {revoked

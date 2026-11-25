@@ -1,4 +1,3 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 import {
   BUILT_IN_MODEL_PRESETS,
   DEFAULT_MODEL_PRESET,
@@ -15,7 +14,7 @@ import type {
   NotificationPreferences,
 } from "../../shared/agent-contract";
 import type { AgentControlPreferences, BackendConnection } from "../backend/types";
-import { Bell, Bot, CalendarClock, ChartNoAxesColumn, Check, Command, FolderOpen, Monitor, Palette, Server, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Stethoscope, X } from "lucide-react";
+import { Bell, Bot, CalendarClock, ChartNoAxesColumn, Check, Command, FolderOpen, Monitor, Palette, Server, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, SquareTerminal, Stethoscope, X } from "lucide-react";
 import {
   DEFAULT_DESKTOP_INTEGRATION,
   type DesktopIntegrationPreferences,
@@ -875,7 +874,7 @@ export function SettingsDialog({
             <div className="settings-stack">
               <article className="backend-card">
                 <span className="backend-logo backend-logo--gjc">
-                  <img src={gajaeIconUrl} alt="" />
+                  <SquareTerminal size={20} aria-hidden="true" />
                 </span>
                 <span>
                   <strong>{connection.label}</strong>

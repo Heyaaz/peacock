@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/assets/gajae-icon.png" alt="Gajae" width="128">
+  <img src="src/assets/peacock-icon.png" alt="Peacock" width="128">
 </p>
 
 <h1 align="center">Gajae</h1>

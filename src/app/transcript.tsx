@@ -1,4 +1,4 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
+import { PeacockMark } from "./peacock-mark";
 import type { ArtifactContent } from "../../shared/agent-contract";
 import type { QuestionSubmission, SessionRetry, ToolViewMode, TranscriptItem } from "../backend/types";
 import type { MessageDeliveryAttempt } from "../message-delivery";
@@ -1176,7 +1176,7 @@ export function Transcript({
     return (
       <div className="empty-conversation">
         <span className="empty-conversation__mark">
-          <img src={gajaeIconUrl} alt="" />
+          <PeacockMark />
         </span>
         <h2>{t("Gajae에게 어떤 작업을 맡길까요?")}</h2>
         {loadingPage && <p role="status">{t("최근 대화 불러오는 중…")}</p>}

@@ -11,7 +11,7 @@ import {
   type SignInProvider,
 } from "../../shared/onboarding";
 import { t } from "../i18n";
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
+import { PeacockMark, PeacockWordmark } from "./peacock-mark";
 
 type Stage =
   | { stage: "agent"; agents: AgentAvailability[] | null; selected?: AgentKindId; busy: boolean; error?: string }
@@ -174,8 +174,9 @@ export function OnboardingView({
     <div className="onboarding" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
       <div className="onboarding-card">
         <span className="workspace-empty__mark">
-          <img src={gajaeIconUrl} alt="" />
+          <PeacockMark />
         </span>
+        <PeacockWordmark className="onboarding-wordmark" />
         {stage.stage === "agent" && (
           <>
             <h1 id="onboarding-title">{t("어떤 에이전트로 시작할까요?")}</h1>

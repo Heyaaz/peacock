@@ -1,7 +1,6 @@
 import { Bot, FolderGit2, GitBranch, Layers, ListTree, MessageCircleQuestion, PanelRight, SquareTerminal, Users } from "lucide-react";
 import type { GitStatusSnapshot } from "../../shared/agent-contract";
 import type { AgentSession, ToolViewMode } from "../backend/types";
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
 import { t } from "../i18n";
 import { statusLabel } from "./format";
 import { Dropdown } from "./primitives";
@@ -69,8 +68,8 @@ export function ChatHeader({
           {agentIcon === "chat" ? <Bot size={18} aria-hidden="true" /> : <SquareTerminal size={18} aria-hidden="true" />}
         </span>
       ) : (
-        <span className="header-avatar">
-          <img src={gajaeIconUrl} alt="" />
+        <span className="header-avatar header-avatar--terminal">
+          <Bot size={18} aria-hidden="true" />
         </span>
       )}
       <span>

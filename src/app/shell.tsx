@@ -1,4 +1,4 @@
-import gajaeIconUrl from "../assets/gajae-icon-ui.png";
+import { PeacockMark, PeacockWordmark } from "./peacock-mark";
 import { DEFAULT_SESSION_TITLE } from "../../shared/session-title";
 import type {
   GoalOperation,
@@ -1324,7 +1324,7 @@ export default function App() {
       {runtimeUnavailable ? (
         <main className="workspace workspace--empty workspace--offline">
           <span className="workspace-empty__mark">
-            <img src={gajaeIconUrl} alt="" />
+            <PeacockMark />
           </span>
           <h1>{t("GJC runtime에 연결되지 않았습니다")}</h1>
           <p className="workspace-offline__detail">{connection.detail}</p>
@@ -1737,8 +1737,9 @@ export default function App() {
       ) : (
         <main className="workspace workspace--empty">
           <span className="workspace-empty__mark">
-            <img src={gajaeIconUrl} alt="" />
+            <PeacockMark />
           </span>
+          <PeacockWordmark className="workspace-empty__wordmark" />
           <h1>{t("선택된 세션이 없습니다")}</h1>
           <button
             className="button-primary"

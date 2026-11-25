@@ -95,11 +95,11 @@ const [outputDirectory] = await packager({
   // Info.plist CFBundleURLTypes: macOS routes gajae:// links to this bundle.
   protocols: [{ name: 'Gajae', schemes: ['gajae'] }],
   appVersion: packageJson.version,
-  icon: path.join(root, 'src/assets/gajae-icon'),
+  icon: path.join(root, 'src/assets/peacock-icon'),
   // The menu bar image is derived from this at runtime; see menuBarIconPath.
   extraResource: [
-    path.join(root, 'src/assets/gajae-menubar-Template.png'),
-    path.join(root, 'src/assets/gajae-menubar-Template@2x.png'),
+    path.join(root, 'src/assets/peacock-menubar-Template.png'),
+    path.join(root, 'src/assets/peacock-menubar-Template@2x.png'),
     herdrCore.bundle,
     // Apache-2.0 asks for its license, and hc's own notices for what it includes, to travel with it
     herdrCore.licenses,
