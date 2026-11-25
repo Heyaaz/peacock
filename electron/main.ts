@@ -1047,8 +1047,7 @@ function createWindow(): BrowserWindow {
                     shell: Boolean(document.querySelector('.app-shell')),
                     desktopBridge: Boolean(window.agentControlDesktop),
                     gjcBridge: Boolean(window.agentControlDesktop?.gjc),
-                    connected: connection.textContent?.includes('연결됨') ?? false,
-                    connectionLabel: connection.textContent?.trim() ?? '',
+                    connected: !offline,
                     sessions: sessions.length,
                     headerLabelsRemoved: !document.querySelector('.runtime-badge, .model-badge'),
                     inspectorControl: Boolean(document.querySelector('button[title="세션 정보"]')),
@@ -1091,6 +1090,18 @@ function createWindow(): BrowserWindow {
           path.join(artifactDirectory, "ui-smoke.png"),
           image.toPNG(),
         );
+        // the same screen in both themes, for a look at the identity (design §11)
+        const captureThemes = async (name: string): Promise<void> => {
+          const before = await window.webContents.executeJavaScript("document.documentElement.dataset.theme ?? ''");
+          for (const theme of ["dark", "light"]) {
+            await window.webContents.executeJavaScript(
+              `document.documentElement.dataset.theme = ${JSON.stringify(theme)}; new Promise((resolve) => setTimeout(resolve, 200))`,
+            );
+            await writeFile(path.join(artifactDirectory, `${name}-${theme}.png`), (await window.webContents.capturePage()).toPNG());
+          }
+          await window.webContents.executeJavaScript(`document.documentElement.dataset.theme = ${JSON.stringify(before || "dark")}`);
+        };
+        await captureThemes("ui-smoke-chat");
         const report = await window.webContents.executeJavaScript(`
           (async () => {
             const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -1622,6 +1633,7 @@ function createWindow(): BrowserWindow {
             };
           })()
         `);
+        await captureThemes("ui-smoke-end");
         await writeFile(
           path.join(artifactDirectory, "smoke-report.json"),
           `${JSON.stringify(report, null, 2)}\n`,
