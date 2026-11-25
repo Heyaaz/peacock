@@ -83,7 +83,6 @@ app.whenReady().then(async () => {
           fabricatedSessionRows: document.querySelectorAll('.session-row').length,
           claimsConnected: text.includes('연결됨'),
           rendersComposer: Boolean(document.querySelector('.composer textarea')),
-          connectionDotState: document.querySelector('.connection-dot')?.className ?? null,
         }
       })()
     `)
@@ -101,10 +100,6 @@ app.whenReady().then(async () => {
     require(report.fabricatedSessionRows === 0, `Fabricated ${report.fabricatedSessionRows} session rows for an unreachable runtime`)
     require(!report.claimsConnected, 'Unreachable runtime was reported as connected')
     require(!report.rendersComposer, 'Composer rendered for a session that cannot receive input')
-    require(
-      report.connectionDotState?.includes('connection-dot--error'),
-      `Connection indicator did not report the failure: ${report.connectionDotState}`,
-    )
 
     console.log(JSON.stringify(report, null, 2))
     clearTimeout(timeout)

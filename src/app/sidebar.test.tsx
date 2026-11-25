@@ -3,7 +3,7 @@ import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, afterEach } from "vitest";
-import type { AgentSession, BackendConnection } from "../backend/types";
+import type { AgentSession } from "../backend/types";
 import { setLanguageMode } from "../i18n";
 import { ALL_PROJECTS_ID } from "./project-model";
 import type { ProjectGroup } from "./project-model";
@@ -17,13 +17,6 @@ import type { SessionRowProps } from "./sidebar";
 
 afterEach(() => setLanguageMode("ko"));
 
-const connection: BackendConnection = {
-  state: "connected",
-  backend: "gjc",
-  label: "GJC",
-  detail: "",
-  workspace: "/tmp/project",
-};
 
 function session(
   index: number,
@@ -62,7 +55,6 @@ function props(
 ) {
   return {
     sessions,
-    connection,
     selectedId: sessions[0]?.id ?? null,
     projects: [project("project", "/tmp/project", sessions)],
     projectId: ALL_PROJECTS_ID,
@@ -82,15 +74,9 @@ function props(
     onCreate: noop,
     onFork: noop,
     onResume: noop,
-    onResumePicker: noop,
     onRename: noop,
     onDelete: noop,
     onSettings: noop,
-    workspaceLabel: "project",
-    onWorkspaceLabelChange: noop,
-    updateStatus: undefined,
-    updateBusy: false,
-    onUpdate: noop,
     ...overrides,
   } as unknown as Parameters<typeof Sidebar>[0];
 }
@@ -129,9 +115,8 @@ describe("Sidebar memoization", () => {
     expect(buttons.length + 1).toBe(columns?.length);
     expect(row).toContain('title="새 세션"');
     expect(row).toContain('title="Inbox (⌥⌘U)"');
-    // Resume moved to the footer, where a label fits.
-    expect(row).not.toContain("지난 세션");
-    expect(markup).toContain("지난 세션 이어서 진행");
+    // GJC's past-session picker is not the rail's: it lists GJC sessions only (`/resume` in a GJC chat)
+    expect(markup).not.toContain("지난 세션");
   });
 
   it("offers exactly one way to start a session", () => {
@@ -161,56 +146,14 @@ function headings(markup: string): string[] {
   );
 }
 
-describe("Sidebar sign-in status", () => {
-  it("does not call a GJC with no signed-in provider connected, and opens the sign-in", () => {
-    const signedOut = renderToStaticMarkup(
-      createElement(Sidebar, props([session(0)], { needsSignIn: true, onLogin: noop })),
-    );
-    expect(signedOut).toContain("로그인 필요");
-    expect(signedOut).not.toContain("연결됨");
-    expect(signedOut).toContain("connection-dot--connecting");
-
-    const signedIn = renderToStaticMarkup(createElement(Sidebar, props([session(0)])));
-    expect(signedIn).toContain("연결됨");
-    expect(signedIn).not.toContain("로그인 필요");
-
-    // Without a host that can run the sign-in the status stays the plain one.
-    const remote = renderToStaticMarkup(
-      createElement(Sidebar, props([session(0)], { needsSignIn: true })),
-    );
-    expect(remote).toContain("연결됨");
-  });
-});
-
-describe("Sidebar runtime version warning", () => {
-  it("warns about a runtime older than the minimum and stays quiet otherwise", () => {
-    const old = renderToStaticMarkup(
-      createElement(
-        Sidebar,
-        props([session(0)], {
-          connection: { ...connection, version: "0.18.10" },
-        }),
-      ),
-    );
-    expect(old).toContain('class="gjc-version-warning" role="alert"');
-    expect(old).toContain("older than the required 0.18.12");
-    expect(old).toContain("gjc update");
-
-    const current = renderToStaticMarkup(
-      createElement(
-        Sidebar,
-        props([session(0)], {
-          connection: { ...connection, version: "0.18.12" },
-        }),
-      ),
-    );
-    expect(current).not.toContain("gjc-version-warning");
-
-    // An unknown version is not evidence of an old runtime.
-    const unknown = renderToStaticMarkup(
-      createElement(Sidebar, props([session(0)])),
-    );
-    expect(unknown).not.toContain("gjc-version-warning");
+describe("Sidebar footer", () => {
+  it("holds only 설정: no profile card, connection dot or resume row", () => {
+    const markup = renderToStaticMarkup(createElement(Sidebar, props([session(0)])));
+    const footer = /<div class="sidebar-footer">([\s\S]*?)<\/div>/u.exec(markup)?.[1] ?? "";
+    expect(footer).toContain("설정");
+    expect(footer.match(/<button/gu)).toHaveLength(1);
+    expect(markup).not.toContain("profile-row");
+    expect(markup).not.toContain("connection-dot");
   });
 });
 
@@ -603,23 +546,23 @@ describe("Sidebar project selector", () => {
     setLanguageMode("en");
     const markup = renderToStaticMarkup(createElement(Sidebar, props([])));
     expect(markup).toContain("No sessions");
-    expect(markup).toContain("View past sessions");
+    expect(markup).toContain("New session");
     expect(markup).not.toContain("세션이 없습니다");
   });
 
   it("tells an empty project apart from an empty rail", () => {
     // A project with no sessions is a filter to widen, not a missing session, so the
-    // empty list offers the way back to the whole rail instead of the resume picker.
+    // empty list offers the way back to the whole rail instead of a new session.
     const empty = renderToStaticMarkup(
       createElement(Sidebar, props([], { projectId: "/tmp/project" })),
     );
     expect(empty).toContain("이 프로젝트에 세션이 없습니다");
     expect(empty).toContain("전체 프로젝트 보기");
-    expect(empty).not.toContain("지난 세션 보기");
+    expect(empty).not.toContain("sidebar-empty__new");
 
     const allEmpty = renderToStaticMarkup(createElement(Sidebar, props([])));
     expect(allEmpty).toContain("세션이 없습니다");
-    expect(allEmpty).toContain("지난 세션 보기");
+    expect(allEmpty).toContain("sidebar-empty__new");
   });
 
   it("keeps the repository entry point out of the row it belongs to", () => {
@@ -631,7 +574,7 @@ describe("Sidebar project selector", () => {
         props([session(0)], { projectId: "/tmp/project" }),
       ),
     );
-    const bar = markup.match(/<div class="project-bar">([\s\S]*?)<\/div><\/div>/u)?.[1];
+    const bar = markup.match(/<div class="project-bar">([\s\S]*?)<\/span><\/button><\/div>/u)?.[1];
     expect(bar).toBeTruthy();
     expect(bar).toContain('class="project-entry"');
     expect(bar).toContain("레포 보기");

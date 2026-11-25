@@ -21,6 +21,7 @@ import {
 } from "../../shared/desktop-integration";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { connectionStateLabel } from "./format";
+import { gjcVersionWarning } from "../../shared/gjc-version";
 import { readStoredTheme, setThemeMode, type ThemeMode } from "../theme";
 import { getLanguage, setLanguageMode, t, useLanguageMode } from "../i18n";
 import { LazyViewBoundary } from "./lazy-boundary";
@@ -886,6 +887,11 @@ export function SettingsDialog({
                   <Check size={13} /> {connectionStateLabel(connection.state)}
                 </span>
               </article>
+              {gjcVersionWarning(connection.version) && (
+                <div className="gjc-version-warning" role="alert">
+                  {gjcVersionWarning(connection.version)}
+                </div>
+              )}
               {onLogin && (
                 <div className="settings-panel">
                   <div className="gjc-update-row">

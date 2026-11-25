@@ -149,6 +149,8 @@ export interface ComposerProps {
   onNewSession: () => void;
   /** Opens the AI sign-in flow for `/login`; without it `/login` is not offered. */
   onLogin?: () => void;
+  /** Opens GJC's past-session picker for `/resume`; only a GJC chat has it, and only it offers `/resume`. */
+  onResumePicker?: () => void;
   onWorkspaceChange: (workspace: string) => void;
   onConfigChange: (configId: string, value: string) => void;
   onCycleThinking: () => void;
@@ -182,6 +184,7 @@ export const Composer = memo(function Composer({
   onCompact,
   onNewSession,
   onLogin,
+  onResumePicker,
   onWorkspaceChange,
   onConfigChange,
   onCycleThinking,
@@ -293,6 +296,7 @@ export const Composer = memo(function Composer({
       : commands.filter(
           (command) =>
             (onLogin || command.name !== "login") &&
+            (onResumePicker || command.name !== "resume") &&
             // "!" marks a runtime that runs `!command`; it is typed as is, not picked as "/!"
             command.name !== "!" &&
             command.name.toLowerCase().includes(commandQuery),
@@ -895,6 +899,13 @@ export const Composer = memo(function Composer({
       onLogin();
       return;
     }
+    // GJC's past sessions, picked in the window: GJC itself has no `/resume` over its SDK
+    if (onResumePicker && /^\/resume\s*$/iu.test(content) && images.length === 0 && files.length === 0) {
+      if (textareaRef.current) textareaRef.current.value = "";
+      setValue("");
+      onResumePicker();
+      return;
+    }
     const modelCommand = content.match(/^\/(?:model|models)(?:\s+(.+))?$/iu);
     if (modelCommand && images.length === 0 && files.length === 0) {
       const query = modelCommand[1]?.trim();
@@ -1065,6 +1076,11 @@ export const Composer = memo(function Composer({
     if (command.name === "login" && onLogin) {
       setValue("");
       onLogin();
+      return;
+    }
+    if (command.name === "resume" && onResumePicker) {
+      setValue("");
+      onResumePicker();
       return;
     }
     if (command.name === "model") {

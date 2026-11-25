@@ -212,6 +212,7 @@ export const BUNDLED_GJC_COMMANDS: AgentCommand[] = [
   { name: "compact", description: "현재 세션 context 압축" },
   { name: "new", description: "이 workspace에서 새 세션 시작" },
   { name: "login", description: "AI 로그인 / 제공자 추가" },
+  { name: "resume", description: "지난 GJC 세션 이어서 진행" },
   { name: "model", description: "세션 모델 프로필 선택" },
   { name: "effort", description: "추론 effort 변경 (단축키: ⇧⇥)" },
 ];

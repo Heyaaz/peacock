@@ -83,7 +83,7 @@ describe("i18n", () => {
   it("translates Korean source strings when English is selected", () => {
     setLanguageMode("en");
     expect(t("세션이 없습니다")).toBe("No sessions");
-    expect(t("지난 세션 보기")).toBe("View past sessions");
+    expect(t("새 세션")).toBe("New session");
   });
 
   it("keeps Korean as the source language", () => {

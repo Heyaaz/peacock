@@ -673,7 +673,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "지금 보고 있는 세션의 완료·실패·승인 알림은 생략합니다. 창이 앞에 있어도 다른 세션의 결과는 알립니다. 원격 PWA에는 같은 이벤트의 읽지 않은 세션 수가 앱 배지로 표시됩니다.":
     "Notifications for the session you are viewing are skipped for completion, failure, and approval. Other sessions still notify you even when the window is in front. The remote PWA shows the number of unread sessions for these events as an app badge.",
   "지금 실행": "Run now",
-  "지난 세션 보기": "View past sessions",
   "지난 세션 이어서 진행": "Continue a previous session",
   "진행 중": "In progress",
   "진행 중인 작업 중단": "Stop current work",
@@ -1360,4 +1359,5 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "이 메시지 전으로 대화를 옮기고 내용을 입력창에 넣습니다": "Moves the conversation to before this message and puts it in the composer",
   "대화를 이 지점으로 옮깁니다 (같은 세션 파일 안에서)": "Moves the conversation to this point (within the same session file)",
   "여기로 이동": "Move here",
+  "지난 GJC 세션 이어서 진행": "Continue a past GJC session",
 };

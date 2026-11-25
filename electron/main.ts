@@ -930,11 +930,11 @@ function createWindow(): BrowserWindow {
               const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
               const deadline = Date.now() + 45_000;
               while (Date.now() < deadline) {
-                const connection = document.querySelector('.profile-row small');
+                const offline = document.querySelector('.workspace--offline');
                 const sessions = document.querySelectorAll('.session-row');
                 const chatIdentity = document.querySelector('.chat-identity');
                 const composer = document.querySelector('.composer textarea');
-                if (connection?.textContent?.includes('연결됨') && sessions.length > 0 && chatIdentity && composer) {
+                if (!offline && sessions.length > 0 && chatIdentity && composer) {
                   let customProfiles = false;
                   let builtInProfiles = false;
                   let modelOptionMarked = false;
@@ -1196,7 +1196,7 @@ function createWindow(): BrowserWindow {
             document.querySelector('.global-search-backdrop')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             await wait(50);
             assert(!document.querySelector('.global-search-dialog'), 'Global transcript search did not close');
-            assert(document.querySelector('.workspace-rename-button'), 'Editable workspace identity control did not render');
+            assert(!document.querySelector('.profile-row'), 'The removed sidebar profile card came back');
             assert(document.querySelector('.session-context-usage')?.textContent?.trim() === '22.2%', 'Session context usage did not render in the sidebar');
 
             const commandTextarea = document.querySelector('.composer textarea');
@@ -1446,9 +1446,13 @@ function createWindow(): BrowserWindow {
             assert(!document.querySelector('.composer-queue'), 'Queued steer indicator survived the flush: ' + steerChips().join(' | '));
             assert(document.body.textContent?.includes('체크'), 'Flushed steer did not reach the transcript');
 
-            // Past sessions are unreachable from the sidebar once the broker stops
-            // reporting them live, so the picker is the only way back to them.
-            document.querySelector('button[title="지난 세션 이어서 진행"]')?.click();
+            // Past GJC sessions are unreachable from the sidebar once the broker stops
+            // reporting them live: /resume in a GJC chat opens the picker.
+            commandValueSetter.call(commandTextarea, '/resume');
+            commandTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+            await wait(40);
+            commandTextarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            document.querySelector('.composer-submit-actions .send-button')?.click();
             await wait(120);
             const resumeDialog = document.querySelector('.resume-session-dialog');
             assert(resumeDialog, 'Resume session picker did not open');

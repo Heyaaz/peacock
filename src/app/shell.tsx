@@ -264,7 +264,6 @@ export default function App() {
   useEffect(() => {
     preferencesRef.current = preferences;
   }, [preferences]);
-  const workspaceLabel = preferences.workspaceLabel;
   const pendingSessions = useRef(new Map<string, Promise<AgentSession>>());
   const selectedIdRef = useRef<string | null>(null);
   // Rows the user removed while the backend still works on it; a list refresh
@@ -487,14 +486,6 @@ export default function App() {
   // terminal: its conversation is read, but GJC's own reads (goal, subagents, git,
   // commands) are not, so `selectedSessionId` leaves it out.
   const terminalRuntime = selectedSession ? runsInTerminal(selectedSession) : false;
-  // GJC that is not connected, not what new sessions open and in no session is not in use here:
-  // the footer names the agent new sessions open instead of "GJC · 연결 중" (P6)
-  const gjcUnused = useMemo(() => {
-    if (backend.terminalSessions !== true || connection.state === "connected") return undefined;
-    const choice = preferences.newSession;
-    if (choice?.agentKind === "gjc" || sessions.some((session) => !runsInTerminal(session))) return undefined;
-    return choice ? { defaultAgent: choice.agentKind === "shell" ? t("셸") : agentCatalogEntry(choice.agentKind).name } : {};
-  }, [backend.terminalSessions, connection.state, preferences.newSession, sessions]);
   // a phone reaches no terminal: there an agent whose transcript Gajae reads shows as its chat,
   // even one (Claude Code) whose window offers only the terminal
   const agentTerminalReachable = backend.terminalSessions === true;
@@ -959,7 +950,6 @@ export default function App() {
     cycleThinking,
     compactSession,
     flushQueuedNow,
-    renameWorkspace,
     renameSession,
     openResumePicker,
     resumeSession,
@@ -969,7 +959,6 @@ export default function App() {
     resolveSessionId,
     setAppError,
     setConfigOptions,
-    setPreferences,
     setSessions,
     setResumeOpen,
     setHistoryLoading,
@@ -1048,8 +1037,6 @@ export default function App() {
     forkSession,
     resumeSession,
     renameSession,
-    renameWorkspace,
-    installUpdate,
     openResumePicker,
   };
   const handlersRef = useRef(handlers);
@@ -1083,12 +1070,6 @@ export default function App() {
   }, []);
   const startRename = useCallback((sessionId: string, title: string) => {
     void handlersRef.current.renameSession(sessionId, title);
-  }, []);
-  const startWorkspaceRename = useCallback((label: string) => {
-    void handlersRef.current.renameWorkspace(label);
-  }, []);
-  const startUpdate = useCallback(() => {
-    void handlersRef.current.installUpdate();
   }, []);
   const closeInspector = useCallback(() => setInspectorOpen(false), []);
   // The inspector is memoized for the same reason as the sidebar: it is a child of the
@@ -1143,7 +1124,6 @@ export default function App() {
         setAppError(humanErrorMessage(error));
       });
   }, [repoBridge, projectRoot]);
-  const updateBusyFlag = Boolean(updateBusy);
 
   const {
     askSideBackend,
@@ -1278,10 +1258,6 @@ export default function App() {
       )}
       <Sidebar
         sessions={filteredSessions}
-        connection={connection}
-        needsSignIn={needsSignIn}
-        onLogin={onboardingBridge ? openLogin : undefined}
-        {...(gjcUnused ? { gjcUnused } : {})}
         selectedId={selectedId}
         projects={projectGroups}
         projectId={activeProjectId}
@@ -1305,17 +1281,11 @@ export default function App() {
         onCreate={openNewSession}
         onFork={startFork}
         onResume={startResume}
-        onResumePicker={openResumePickerStable}
         onRename={startRename}
         onDelete={onDeleteSession}
         onHide={onHideSession}
         onExportHtml={backend.exportSessionHtml ? exportSessionHtml : undefined}
         onSettings={openSettings}
-        workspaceLabel={workspaceLabel}
-        onWorkspaceLabelChange={startWorkspaceRename}
-        updateStatus={updateStatus}
-        updateBusy={updateBusyFlag}
-        onUpdate={startUpdate}
         parallelGroups={parallelGroups}
         openParallelGroupId={centerView === "parallel" ? parallelGroupId : null}
         onOpenParallelGroup={openParallelGroup}
@@ -1648,6 +1618,7 @@ export default function App() {
                   onCompact={onComposerCompact}
                   onNewSession={onComposerNewSession}
                   onLogin={onboardingBridge && !ompChat ? openLogin : undefined}
+                  onResumePicker={!ompChat && !remoteViewOnly ? openResumePickerStable : undefined}
                   onWorkspaceChange={onComposerWorkspaceChange}
                   onConfigChange={onComposerConfigChange}
                   onCycleThinking={onComposerCycleThinking}

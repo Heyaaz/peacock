@@ -52,7 +52,7 @@ function resolve(tokens: Map<string, string>, body: string, property: "color" | 
   return token(plain[1]!);
 }
 
-describe("sidebar empty-state button (지난 세션 보기)", () => {
+describe("sidebar empty-state button (전체 프로젝트 보기)", () => {
   for (const theme of ["dark", "light"] as const) {
     it(`reaches WCAG AA 4.5:1 in the ${theme} theme, resting and hovered`, () => {
       const tokens = themeTokens(theme);

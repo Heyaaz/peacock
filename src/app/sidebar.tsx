@@ -1,9 +1,6 @@
-import { PeacockMark } from "./peacock-mark";
-import type { GjcUpdateStatus } from "../../shared/agent-contract";
 import { capabilitiesOf, runsInTerminal } from "../../shared/agent-contract";
-import type { AgentSession, BackendConnection } from "../backend/types";
+import type { AgentSession } from "../backend/types";
 import {
-  ArrowDown,
   ChevronRight,
   ExternalLink,
   EyeOff,
@@ -26,13 +23,11 @@ import {
 import { memo, useEffect, useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import {
-  connectionStateLabel,
   parallelStateLabel,
   sessionTitleText,
   statusLabel,
 } from "./format";
 import type { ParallelGroup } from "../../shared/parallel-run";
-import { gjcVersionWarning } from "../../shared/gjc-version";
 import { Dropdown } from "./primitives";
 import { ALL_PROJECTS_ID } from "./project-model";
 import type { ProjectGroup } from "./project-model";
@@ -329,17 +324,6 @@ export function SessionRow({
 
 export interface SidebarProps {
   sessions: AgentSession[];
-  connection: BackendConnection;
-  /** GJC is connected but has no signed-in AI provider, so no session can work. */
-  needsSignIn?: boolean;
-  /** Opens the AI sign-in flow; absent where the host cannot run it. */
-  onLogin?: () => void;
-  /**
-   * GJC is neither connected nor what new sessions open (P6): the footer names the agent
-   * new sessions open instead of a GJC connection that is not coming. Empty when that is
-   * automatic (the first installed agent).
-   */
-  gjcUnused?: { defaultAgent?: string };
   selectedId: string | null;
   /** Every project the rail can filter by, in selector order. */
   projects: ProjectGroup[];
@@ -364,18 +348,12 @@ export interface SidebarProps {
   onCreate: () => void;
   onFork: (session: AgentSession) => void;
   onResume: (session: AgentSession) => void;
-  onResumePicker: () => void;
   onRename: (sessionId: string, title: string) => void;
   onDelete: (session: AgentSession) => void;
   onHide: (session: AgentSession) => void;
   /** Saves a session as an HTML page, where its runtime can (omp's chat). */
   onExportHtml?: (session: AgentSession) => void;
   onSettings: () => void;
-  workspaceLabel: string;
-  onWorkspaceLabelChange: (label: string) => void;
-  updateStatus: GjcUpdateStatus | null;
-  updateBusy: boolean;
-  onUpdate: () => void;
   /** Best-of-N groups whose attempts the rail nests under one row. */
   parallelGroups?: readonly ParallelGroup[];
   /** The group the comparison view is showing, so its row reads as selected. */
@@ -399,10 +377,6 @@ export interface SidebarProps {
  */
 function SidebarView({
   sessions,
-  connection,
-  needsSignIn = false,
-  onLogin,
-  gjcUnused,
   selectedId,
   projects,
   projectId,
@@ -421,17 +395,11 @@ function SidebarView({
   onCreate,
   onFork,
   onResume,
-  onResumePicker,
   onRename,
   onDelete,
   onHide,
   onExportHtml,
   onSettings,
-  workspaceLabel,
-  onWorkspaceLabelChange,
-  updateStatus,
-  updateBusy,
-  onUpdate,
   parallelGroups,
   openParallelGroupId,
   onOpenParallelGroup,
@@ -442,7 +410,6 @@ function SidebarView({
   onToggleProject,
 }: SidebarProps) {
   useLanguage();
-  const versionWarning = gjcVersionWarning(connection.version);
   const [contextMenu, setContextMenu] = useState<
     | { kind: "session"; session: AgentSession; x: number; y: number }
     | { kind: "project"; x: number; y: number }
@@ -450,8 +417,6 @@ function SidebarView({
   >(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [editingWorkspace, setEditingWorkspace] = useState(false);
-  const [workspaceValue, setWorkspaceValue] = useState(workspaceLabel);
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -520,13 +485,6 @@ function SidebarView({
     const value = renameValue.trim();
     setRenamingId(null);
     if (value) onRename(sessionId, value);
-  }
-
-  function commitWorkspaceName(): void {
-    const value = workspaceValue.trim();
-    setEditingWorkspace(false);
-    if (value && value !== workspaceLabel) onWorkspaceLabelChange(value);
-    else setWorkspaceValue(workspaceLabel);
   }
 
   function renderNode(node: SessionRowNode) {
@@ -774,8 +732,9 @@ function SidebarView({
                 : t("이 프로젝트에 세션이 없습니다")}
             </span>
             {projectId === ALL_PROJECTS_ID ? (
-              <button type="button" onClick={onResumePicker}>
-                {t("지난 세션 보기")} </button>
+              <button type="button" className="sidebar-empty__new" onClick={onCreate}>
+                <Plus size={14} aria-hidden="true" /> {t("새 세션")}
+              </button>
             ) : (
               <button
                 type="button"
@@ -790,114 +749,10 @@ function SidebarView({
       <div className="sidebar-footer">
         {/* The title is what the narrow rail leans on: it hides footer labels, so
             without it this button becomes an unlabelled icon. */}
-        <button
-          type="button"
-          title={t("지난 세션 이어서 진행")}
-          onClick={onResumePicker}
-        >
-          <RotateCcw size={16} />
-          <span>{t("지난 세션 이어서 진행")}</span>
-        </button>
         <button type="button" title={t("설정")} onClick={onSettings}>
           <Settings size={16} />
           <span>{t("설정")}</span>
         </button>
-        <div
-          className="profile-row"
-          onDoubleClick={() => {
-            setWorkspaceValue(workspaceLabel);
-            setEditingWorkspace(true);
-          }}
-        >
-          <span className="profile-avatar">
-            <PeacockMark />
-          </span>
-          <span>
-            {editingWorkspace ? (
-              <input
-                className="workspace-name-input"
-                value={workspaceValue}
-                autoFocus
-                onChange={(event) => setWorkspaceValue(event.target.value)}
-                onBlur={commitWorkspaceName}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") commitWorkspaceName();
-                  if (consumeEscapeKey(event)) {
-                    setEditingWorkspace(false);
-                    setWorkspaceValue(workspaceLabel);
-                  }
-                }}
-              />
-            ) : (
-              <strong>{workspaceLabel}</strong>
-            )}
-            {gjcUnused ? (
-              <small title={connection.detail}>
-                {gjcUnused.defaultAgent ? t`새 세션: ${gjcUnused.defaultAgent}` : t("새 세션: 설치된 첫 에이전트")}
-              </small>
-            ) : needsSignIn && onLogin && connection.state === "connected" ? (
-              <small>
-                {connection.label} ·{" "}
-                <button
-                  type="button"
-                  className="profile-login-link"
-                  title={t("AI에 로그인합니다")}
-                  onClick={onLogin}
-                >
-                  {t("로그인 필요")}
-                </button>
-              </small>
-            ) : (
-              <small>
-                {connection.label} · {connectionStateLabel(connection.state)}
-              </small>
-            )}
-          </span>
-          {!editingWorkspace && (
-            <button
-              type="button"
-              className="workspace-rename-button"
-              title={t("작업 공간 이름 바꾸기")}
-              onClick={() => {
-                setWorkspaceValue(workspaceLabel);
-                setEditingWorkspace(true);
-              }}
-            >
-              <Pencil size={12} />
-            </button>
-          )}
-          <span className="profile-actions">
-            {updateStatus?.updateAvailable ? (
-              <button
-                type="button"
-                className="profile-update-button"
-                title={t`GJC ${updateStatus.latestVersion} 업데이트`}
-                disabled={updateBusy}
-                onClick={onUpdate}
-              >
-                {updateBusy ? (
-                  <span className="mini-spinner" />
-                ) : (
-                  <ArrowDown size={13} />
-                )}
-              </button>
-            ) : gjcUnused ? null : (
-              <span
-                className={`connection-dot connection-dot--${
-                  needsSignIn && onLogin && connection.state === "connected"
-                    ? "connecting"
-                    : connection.state
-                }`}
-                title={connection.detail}
-              />
-            )}
-          </span>
-        </div>
-        {versionWarning && (
-          <div className="gjc-version-warning" role="alert">
-            {versionWarning}
-          </div>
-        )}
       </div>
       {contextMenu && (
         <div

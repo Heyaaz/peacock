@@ -153,6 +153,39 @@ describe("composer slash palette loading", () => {
     });
   });
 
+  describe("/resume", () => {
+    const commands = [{ name: "resume", description: "지난 GJC 세션 이어서 진행" }];
+
+    it("opens GJC's past-session picker from the palette or typed, never sending it", async () => {
+      const onResumePicker = vi.fn();
+      const test = await mount({ commands, onResumePicker });
+      try {
+        await type(test.node, "/res");
+        const item = [...test.node.querySelectorAll<HTMLButtonElement>(".command-palette-item")].find((button) =>
+          button.textContent?.includes("/resume"),
+        );
+        await act(async () => item!.click());
+        await type(test.node, "/resume");
+        const form = test.node.querySelector("form")!;
+        await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+        expect(onResumePicker).toHaveBeenCalledTimes(2);
+        expect(test.send).not.toHaveBeenCalled();
+      } finally {
+        await test.close();
+      }
+    });
+
+    it("is not offered outside a GJC chat", async () => {
+      const test = await mount({ commands });
+      try {
+        await type(test.node, "/res");
+        expect(test.node.querySelector(".command-palette")).toBeNull();
+      } finally {
+        await test.close();
+      }
+    });
+  });
+
   it("labels the model button with the selected profile immediately", async () => {
     const test = await mount({
       commands: [],

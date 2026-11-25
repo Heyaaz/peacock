@@ -2,7 +2,6 @@ import type { Dispatch, SetStateAction } from "react";
 import type { HistorySession } from "../../shared/agent-contract";
 import type {
   AgentConfigOption,
-  AgentControlPreferences,
   AgentSession,
 } from "../backend/types";
 import type { AgentBackend } from "../backend/agent-backend";
@@ -15,7 +14,6 @@ export interface SessionActionsContext {
   resolveSessionId: (sessionId: string) => Promise<string>;
   setAppError: (message: string) => void;
   setConfigOptions: Dispatch<SetStateAction<Record<string, AgentConfigOption[]>>>;
-  setPreferences: Dispatch<SetStateAction<AgentControlPreferences>>;
   setSessions: Dispatch<SetStateAction<AgentSession[]>>;
   setResumeOpen: Dispatch<SetStateAction<boolean>>;
   setHistoryLoading: Dispatch<SetStateAction<boolean>>;
@@ -31,7 +29,6 @@ export function createSessionActions(context: SessionActionsContext) {
     resolveSessionId,
     setAppError,
     setConfigOptions,
-    setPreferences,
     setSessions,
     setResumeOpen,
     setHistoryLoading,
@@ -105,17 +102,6 @@ export function createSessionActions(context: SessionActionsContext) {
     }
   }
 
-  async function renameWorkspace(label: string): Promise<void> {
-    try {
-      const saved =
-        await window.agentControlDesktop?.settings.setWorkspaceLabel(label);
-      if (saved)
-        setPreferences((current) => ({ ...current, workspaceLabel: saved }));
-    } catch (error) {
-      setAppError(error instanceof Error ? error.message : String(error));
-    }
-  }
-
   async function renameSession(
     sessionId: string,
     title: string,
@@ -167,7 +153,6 @@ export function createSessionActions(context: SessionActionsContext) {
     cycleThinking,
     compactSession,
     flushQueuedNow,
-    renameWorkspace,
     renameSession,
     openResumePicker,
     resumeSession,

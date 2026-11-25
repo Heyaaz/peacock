@@ -173,7 +173,6 @@ describe("new session dialog", () => {
 });
 
 const SIDEBAR_PROPS = {
-  connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/repo" },
   selectedId: null,
   grouping: "status",
   onGroupingChange: () => undefined,
@@ -196,16 +195,10 @@ const SIDEBAR_PROPS = {
   onCreate: noop,
   onFork: noop,
   onResume: noop,
-  onResumePicker: noop,
   onRename: noop,
   onDelete: noop,
   onHide: noop,
   onSettings: noop,
-  workspaceLabel: "",
-  onWorkspaceLabelChange: noop,
-  updateStatus: null,
-  updateBusy: false,
-  onUpdate: noop,
   parallelGroups: [],
   openParallelGroupId: null,
   onOpenParallelGroup: noop,
@@ -305,21 +298,6 @@ describe("terminal agents in the new session dialog", () => {
   });
 });
 
-describe("sidebar footer without GJC", () => {
-  it("names the agent new sessions open instead of a GJC connection that is not coming", async () => {
-    const connecting = { state: "connecting" as const, backend: "gjc" as const, label: "GJC", detail: "gjc를 찾지 못했습니다", workspace: "/repo" };
-    const node = await mount(createElement(Sidebar, { ...SIDEBAR_PROPS, sessions: [], connection: connecting, gjcUnused: { defaultAgent: "Claude Code" } }));
-    const footer = node.querySelector(".profile-row")!;
-    expect(footer.textContent).toContain("새 세션: Claude Code");
-    expect(footer.textContent).not.toContain("GJC · 연결 중");
-    expect(footer.querySelector(".connection-dot")).toBeNull();
-    const automatic = await mount(createElement(Sidebar, { ...SIDEBAR_PROPS, sessions: [], connection: connecting, gjcUnused: {} }));
-    expect(automatic.querySelector(".profile-row")!.textContent).toContain("새 세션: 설치된 첫 에이전트");
-    const used = await mount(createElement(Sidebar, { ...SIDEBAR_PROPS, sessions: [], connection: connecting }));
-    expect(used.querySelector(".profile-row")!.textContent).toContain("GJC · 연결 중");
-  });
-});
-
 describe("terminal session row", () => {
   it("shows an agent session's status instead of the terminal mark", async () => {
     const node = await mount(
@@ -337,7 +315,6 @@ describe("terminal session row", () => {
     const node = await mount(
       createElement(Sidebar, {
         sessions: [row("terminal-1", { runtime: "herdr", agentKind: "shell", title: "셸" })],
-        connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/repo" },
         selectedId: null,
         grouping: "status",
         onGroupingChange: () => undefined,
@@ -360,16 +337,10 @@ describe("terminal session row", () => {
         onCreate: noop,
         onFork: noop,
         onResume: noop,
-        onResumePicker: noop,
         onRename: noop,
         onDelete: noop,
         onHide: noop,
         onSettings: noop,
-        workspaceLabel: "",
-        onWorkspaceLabelChange: noop,
-        updateStatus: null,
-        updateBusy: false,
-        onUpdate: noop,
         parallelGroups: [],
         openParallelGroupId: null,
         onOpenParallelGroup: noop,
