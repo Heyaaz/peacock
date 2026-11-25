@@ -6,6 +6,7 @@ import type {
   AgentCommand,
   AgentConfigOption,
   AgentEvent,
+  ModelCatalogFacts,
   AgentSession,
   BackendConnection,
   CreateSessionInput,
@@ -150,8 +151,8 @@ interface ChatRuntime {
   notices: number;
   /** omp's slash commands (`available_commands_update`). */
   commands?: AgentCommand[];
-  /** Models omp's picker offers (`get_model_picker`), read when the chat opens. */
-  models?: { value: string; name: string; group: string }[];
+  /** Models omp's picker offers (`get_model_picker` with catalog facts from `get_available_models`), read when the chat opens. */
+  models?: { value: string; name: string; group: string; catalog: ModelCatalogFacts }[];
   /** omp's queue of steering and follow-up messages (`queue_update`). */
   queue: { steering: string[]; followUp: string[] };
   /** A compaction is running. */
@@ -170,8 +171,21 @@ interface PendingSideQuestion {
 
 /** How long a side question may take. */
 const SIDE_QUESTION_TIMEOUT_MS = 5 * 60_000;
-/** How many models the composer's picker lists. */
-const MODEL_PICKER_LIMIT = 100;
+/** How many models the composer's picker lists: omp's whole catalog (P4: 286 on this Mac). */
+const MODEL_PICKER_LIMIT = 1000;
+/** omp's chat model roles a picker scope names, in omp's order (config/model-roles.ts). */
+const MODEL_ROLE_NAMES: Readonly<Record<string, string>> = {
+  default: "메인",
+  smol: "smol",
+  slow: "slow",
+  plan: "plan",
+  task: "task",
+  advisor: "advisor",
+  commit: "commit",
+  tiny: "tiny",
+  vision: "vision",
+  memory: "memory",
+};
 
 /**
  * omp chats driven over `omp --mode rpc-ui` (design §10), as a runtime next to GJC and herdr.
@@ -317,18 +331,7 @@ export class OmpRpcController implements AgentRuntimeController {
         .call<{ commands?: unknown }>({ type: "get_available_commands" })
         .then((data) => this.applyCommands(sessionId, data?.commands))
         .catch(() => undefined);
-    if (!chat.models)
-      void client
-        .call<{ rows?: unknown }>({ type: "get_model_picker", limit: MODEL_PICKER_LIMIT })
-        .then((data) => {
-          chat.models = (Array.isArray(data?.rows) ? data.rows.map(record) : []).flatMap((row) => {
-            const provider = string(row.provider);
-            const id = string(row.id);
-            return provider && id ? [{ value: `${provider}/${id}`, name: string(row.name) ?? id, group: provider }] : [];
-          });
-          this.emitConfig(sessionId);
-        })
-        .catch(() => undefined);
+    if (!chat.models) void this.loadModels(sessionId, client);
     else this.emitConfig(sessionId);
   }
 
@@ -863,6 +866,49 @@ export class OmpRpcController implements AgentRuntimeController {
     }
   }
 
+  /**
+   * omp's model picker as the composer shows it: the picker's own order, recent block and role tags
+   * (`get_model_picker`), with each model's score, speed, context and price from the catalog
+   * (`get_available_models`, P4: `int` on 131 of 286, `tps` on 33).
+   */
+  private async loadModels(sessionId: string, client: OmpRpcClient): Promise<void> {
+    const [picker, available] = await Promise.all([
+      client.call<{ rows?: unknown; recent?: unknown }>({ type: "get_model_picker", limit: MODEL_PICKER_LIMIT }).catch(() => undefined),
+      client.call<{ models?: unknown }>({ type: "get_available_models" }, 60_000).catch(() => undefined),
+    ]);
+    if (!picker) return;
+    const facts = new Map<string, Record<string, unknown>>();
+    for (const model of Array.isArray(available?.models) ? available.models.map(record) : []) {
+      const provider = string(model.provider);
+      const id = string(model.id);
+      if (provider && id) facts.set(`${provider}/${id}`, model);
+    }
+    const recent = typeof picker.recent === "number" ? picker.recent : 0;
+    this.chat(sessionId).models = (Array.isArray(picker.rows) ? picker.rows.map(record) : []).flatMap((row, index) => {
+      const provider = string(row.provider);
+      const id = string(row.id);
+      if (!provider || !id) return [];
+      const value = `${provider}/${id}`;
+      const model = facts.get(value) ?? {};
+      const cost = record(model.cost);
+      const roles = (Array.isArray(row.roles) ? row.roles.map(record) : []).flatMap((role) => {
+        const name = string(role.role);
+        return name ? [{ role: name, label: string(role.label) ?? name }] : [];
+      });
+      const catalog: ModelCatalogFacts = {
+        provider,
+        ...(roles.length > 0 ? { roles } : {}),
+        ...(index < recent ? { recent: true } : {}),
+        ...(finite(model.int) ? { intelligence: model.int as number } : {}),
+        ...(finite(model.tps) ? { tokensPerSecond: model.tps as number } : {}),
+        ...(finite(model.contextWindow) ? { contextWindow: model.contextWindow as number } : {}),
+        ...(finite(cost.input) && finite(cost.output) ? { cost: { input: cost.input as number, output: cost.output as number } } : {}),
+      };
+      return [{ value, name: string(row.name) ?? id, group: provider, catalog }];
+    });
+    this.emitConfig(sessionId);
+  }
+
   private applyCommands(sessionId: string, value: unknown): void {
     const commands = (Array.isArray(value) ? value.map(record) : []).flatMap((command): AgentCommand[] => {
       const name = string(command.name);
@@ -902,8 +948,15 @@ export class OmpRpcController implements AgentRuntimeController {
     const id = string(model.id);
     const current = provider && id ? `${provider}/${id}` : "";
     const known = chat.models ?? [];
-    const models = current && !known.some((entry) => entry.value === current) ? [{ value: current, name: string(model.name) ?? id ?? current, group: provider ?? "" }, ...known] : known;
+    const models = current && !known.some((entry) => entry.value === current) ? [{ value: current, name: string(model.name) ?? id ?? current, group: provider ?? "", catalog: { provider: provider ?? "" } as ModelCatalogFacts }, ...known] : known;
     const options: AgentConfigOption[] = [];
+    // the roles models hold now; over RPC a choice switches this session's model (`set_model` keeps
+    // role assignments as they are), so only the main scope takes one
+    const holders = new Map<string, string>();
+    for (const entry of known) for (const role of entry.catalog.roles ?? []) if (!holders.has(role.role)) holders.set(role.role, entry.name);
+    const scopes = Object.entries(MODEL_ROLE_NAMES)
+      .filter(([role]) => role === "default" || holders.has(role))
+      .map(([role, name]) => ({ id: role, name, enabled: role === "default", ...(role === "default" ? { current: string(model.name) ?? id ?? current } : holders.has(role) ? { current: holders.get(role)! } : {}) }));
     if (current)
       options.push({
         id: "model",
@@ -911,7 +964,8 @@ export class OmpRpcController implements AgentRuntimeController {
         category: "model",
         type: "select",
         currentValue: current,
-        options: models.map((entry) => ({ value: entry.value, name: entry.name, group: entry.group, kind: "model" as const })),
+        options: models.map((entry) => ({ value: entry.value, name: entry.name, group: entry.group, kind: "model" as const, catalog: entry.catalog })),
+        ...(known.length > 0 ? { scopes } : {}),
       });
     const levels = Array.isArray(state.thinkingLevels) ? state.thinkingLevels.filter((level): level is string => typeof level === "string") : [];
     const level = string(state.configuredThinkingLevel, state.thinkingLevel);
@@ -1301,6 +1355,10 @@ export function ompRpcArgs(record: Pick<OmpRpcSessionRecord, "workspace" | "sess
 export function sessionOfOmpToolId(toolId: string): string | undefined {
   const match = new RegExp(`^(${OMP_RPC_SESSION_PREFIX}[0-9a-f-]{36}):`, "u").exec(toolId);
   return match?.[1];
+}
+
+function finite(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 /** The latest turn of a side-question topic: its last follow-up, or the record itself. */

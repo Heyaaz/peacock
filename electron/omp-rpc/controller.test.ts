@@ -68,7 +68,21 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
         prompts += 1;
         answer();
       } else if (frame.type === "get_model_picker")
-        answer({ rows: [{ provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash" }, { provider: "anthropic", id: "claude-x", name: "Claude X" }], recent: 1, total: 2 });
+        answer({
+          rows: [
+            { provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash", current: true },
+            { provider: "anthropic", id: "claude-x", name: "Claude X", roles: [{ role: "smol", label: "SMOL" }] },
+          ],
+          recent: 1,
+          total: 2,
+        });
+      else if (frame.type === "get_available_models")
+        answer({
+          models: [
+            { provider: "opencodex", id: "deepseek-flash", contextWindow: 950000, cost: { input: 0, output: 0 }, tps: 132 },
+            { provider: "anthropic", id: "claude-x", contextWindow: 200000, cost: { input: 3, output: 15 }, int: 61.5 },
+          ],
+        });
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
@@ -142,7 +156,7 @@ describe("OmpRpcController", () => {
     expect(started!.args).toEqual(["--mode", "rpc-ui", "--cwd", context.workspace, "--approval-mode=always-ask"]);
     expect(started!.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/me" });
     // opening also reads omp's command list and model picker for the composer
-    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "get_state", "get_available_commands", "get_model_picker"]);
+    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "get_state", "get_available_commands", "get_model_picker", "get_available_models"]);
     expect(started!.child.sent("set_event_filter")[0]).toMatchObject({ events: null, messageUpdates: "delta" });
     expect(context.store.get(session.id)).toMatchObject({ sessionFile: context.sessionFile, ompSessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3" });
     expect((await context.controller.listSessions())[0]).toMatchObject({ model: "opencodex/deepseek-flash", modelDisplay: "DeepSeek Flash", thinking: "low", usagePercent: 2 });
@@ -480,7 +494,8 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
     const context = setup();
     const session = await newChat(context);
     await context.controller.refreshSessionContext(session.id);
-    await settle();
+    // the picker and the catalog answer after the chat opens
+    for (let tries = 0; tries < 20 && !context.events.some((event) => event.type === "session.config" && event.options[0]?.scopes); tries += 1) await settle();
     const config = context.events.filter((event) => event.type === "session.config").at(-1);
     expect(config).toMatchObject({
       sessionId: session.id,
@@ -489,6 +504,16 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
         { id: "thinking", category: "thought_level", currentValue: "low", options: [{ value: "off" }, { value: "auto" }, { value: "low" }, { value: "high" }] },
       ],
     });
+    // the picker's rows carry the catalog's figures and the roles models hold; only the main scope takes a choice
+    const model = config?.type === "session.config" ? config.options.find((option) => option.id === "model") : undefined;
+    expect(model?.options?.map((choice) => choice.catalog)).toEqual([
+      { provider: "opencodex", recent: true, tokensPerSecond: 132, contextWindow: 950000, cost: { input: 0, output: 0 } },
+      { provider: "anthropic", roles: [{ role: "smol", label: "SMOL" }], intelligence: 61.5, contextWindow: 200000, cost: { input: 3, output: 15 } },
+    ]);
+    expect(model?.scopes).toEqual([
+      { id: "default", name: "메인", enabled: true, current: "DeepSeek Flash" },
+      { id: "smol", name: "smol", enabled: false, current: "Claude X" },
+    ]);
     await context.controller.setSessionConfig(session.id, "model", "opencodex/opengateway/deepseek/flash");
     await context.controller.setSessionConfig(session.id, "thinking", "auto");
     await expect(context.controller.cycleThinking(session.id)).resolves.toBe("high");

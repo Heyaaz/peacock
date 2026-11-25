@@ -9313,3 +9313,279 @@ button.diff-line-number:hover {
 .onboarding-agents button[aria-pressed="true"] {
   border-color: var(--accent-bright);
 }
+
+/* omp chat's model catalog picker (model-catalog-picker.tsx): a dense list with a search bar,
+   a scope switch and right-aligned figures. Theme colors only, so light and dark both hold. */
+.model-catalog-picker {
+  position: absolute;
+  z-index: 16;
+  bottom: calc(100% + 9px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(660px, calc(100vw - 48px));
+  max-height: min(470px, 62vh);
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-menu);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+}
+.model-catalog-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.model-catalog-search {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--text-tertiary);
+  background: var(--bg-input-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.model-catalog-search:focus-within {
+  border-color: var(--accent);
+}
+.model-catalog-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.model-catalog-scope {
+  position: relative;
+  flex: 0 0 auto;
+}
+.model-catalog-scope > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  font: inherit;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.model-catalog-scope > button strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.model-catalog-scope-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 2;
+  display: grid;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg-menu);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.model-catalog-scope-menu > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.model-catalog-scope-menu > button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.model-catalog-scope-menu > button:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.model-catalog-scope-menu small {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-catalog-count {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.model-catalog-bar kbd {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  color: var(--text-tertiary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.model-catalog-head,
+.model-catalog-row {
+  display: grid;
+  align-items: center;
+  column-gap: 8px;
+}
+.model-catalog-head {
+  padding: 6px 16px 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.model-catalog-head > span {
+  text-align: right;
+}
+.model-catalog-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+.model-catalog-section {
+  padding: 8px 10px 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.model-catalog-section small {
+  margin-left: 4px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.model-catalog-row {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 10px;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.model-catalog-row.is-active {
+  background: var(--bg-hover);
+}
+.model-catalog-row.is-current .model-catalog-id {
+  color: var(--text-secondary);
+}
+.model-catalog-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.model-catalog-provider {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 5px;
+}
+.model-catalog-id {
+  overflow: hidden;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-catalog-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 15px;
+  border-radius: 999px;
+}
+.model-catalog-pill--free {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+.model-catalog-pill--role {
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+.model-catalog-pill--role > i {
+  width: 6px;
+  height: 6px;
+  background: var(--text-tertiary);
+  border-radius: 50%;
+}
+.model-catalog-tone--success > i { background: var(--success); }
+.model-catalog-tone--warning > i { background: var(--warning); }
+.model-catalog-tone--accent > i { background: var(--accent); }
+.model-catalog-tone--info > i { background: var(--info); }
+.model-catalog-tone--danger > i { background: var(--danger); }
+.model-catalog-num {
+  color: var(--text-secondary);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.model-catalog-check {
+  display: inline-flex;
+  justify-content: flex-end;
+  color: var(--success);
+}
+.model-catalog-empty {
+  margin: 16px 10px;
+  color: var(--text-tertiary);
+}
+.model-catalog-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+.model-catalog-foot-current {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-catalog-keys {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+@media (max-width: 720px) {
+  .model-catalog-picker {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+}

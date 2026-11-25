@@ -3,6 +3,7 @@ import type { AgentCommand, AgentConfigOption } from "../backend/types";
 import { t } from "../i18n";
 import { FastTierControls } from "./composer-fast-tier";
 import { ModelPicker } from "./composer-model-picker";
+import { ModelCatalogPicker } from "./model-catalog-picker";
 
 interface ModelControlsProps {
   modelOption: AgentConfigOption;
@@ -75,7 +76,13 @@ export function ModelControls({
                   </>
                 )}
               </button>
-              {configMenu === modelOption.id && (
+              {configMenu === modelOption.id && modelOption.options?.some((choice) => choice.catalog) ? (
+                <ModelCatalogPicker
+                  option={modelOption}
+                  onSelect={(value) => selectConfig(modelOption.id, value)}
+                  onClose={() => onToggleMenu(modelOption.id)}
+                />
+              ) : configMenu === modelOption.id && (
                 <ModelPicker
                   option={modelOption}
                   header={

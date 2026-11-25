@@ -541,6 +541,24 @@ export interface AgentConfigOptionValue {
   group?: string;
   /** A concrete `provider/id` model rather than a model profile. */
   kind?: "model";
+  /** What a model catalog knows about this model, for a picker that shows it (omp's chat). */
+  catalog?: ModelCatalogFacts;
+}
+
+/** One model's catalog facts: the roles it holds and what it costs and offers. */
+export interface ModelCatalogFacts {
+  provider: string;
+  /** Roles this model is assigned to (omp: smol, slow, plan, advisor …). */
+  roles?: { role: string; label: string }[];
+  /** In the agent's recently used block. */
+  recent?: boolean;
+  /** An intelligence score the catalog keeps (omp's `int`). */
+  intelligence?: number;
+  /** Output speed in tokens per second. */
+  tokensPerSecond?: number;
+  contextWindow?: number;
+  /** Dollars per million input and output tokens; zero both ways is free. */
+  cost?: { input: number; output: number };
 }
 
 export interface AgentConfigOption {
@@ -550,6 +568,11 @@ export interface AgentConfigOption {
   type: "select" | "boolean";
   currentValue: string | boolean;
   options?: AgentConfigOptionValue[];
+  /**
+   * What a choice can be set for (omp's model roles). Only enabled scopes take a choice; the
+   * rest are shown with the model they hold.
+   */
+  scopes?: { id: string; name: string; enabled: boolean; current?: string }[];
 }
 
 export interface ImageAttachment {
