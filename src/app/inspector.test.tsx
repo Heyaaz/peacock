@@ -218,6 +218,18 @@ describe("GoalProgressRow", () => {
     }
   });
 
+  it("offers only the operations the runtime takes (omp's goal has no complete)", async () => {
+    const { host, cleanup } = await mount(ultragoalGoal({ progress: undefined, operations: ["pause", "resume", "drop"] }));
+    try {
+      expect([...host.querySelectorAll(".goal-progress-actions button")].map((button) => button.textContent?.trim())).toEqual([
+        "일시정지",
+        "해제",
+      ]);
+    } finally {
+      cleanup();
+    }
+  });
+
   it("keeps pause and resume beside the story toggle", async () => {
     const active = await mount(ultragoalGoal());
     try {

@@ -11,6 +11,8 @@ import type {
   BackendConnection,
   ContextBreakdown,
   CreateSessionInput,
+  GoalOperation,
+  GoalSnapshot,
   MessageDelivery,
   NoticeActivity,
   QueuedMessage,
@@ -175,6 +177,8 @@ interface ChatRuntime {
   subagents: Map<string, Record<string, unknown>>;
   /** Calls reading a slash command's `command_output` themselves; the chat shows none meanwhile. */
   readingOutput: number;
+  /** omp's goal as last read. */
+  goal?: GoalSnapshot;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -183,6 +187,10 @@ interface PendingSideQuestion {
   reject(error: Error): void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+/** What omp's `goal` command does to a goal; it has no "complete". */
+const GOAL_OPERATIONS: GoalOperation[] = ["pause", "resume", "drop"];
+const NO_GOAL: GoalSnapshot = { enabled: false, completed: 0, total: 0, operations: GOAL_OPERATIONS };
 
 /** How long a side question may take. */
 const SIDE_QUESTION_TIMEOUT_MS = 5 * 60_000;
@@ -359,6 +367,9 @@ export class OmpRpcController implements AgentRuntimeController {
     if (!record) throw new AgentUnsupportedError("sending messages", sessionId);
     const text = input.text.trim();
     this.checkAttachments(sessionId, input);
+    // `/goal` is omp's TUI command; over RPC it is the `goal` command
+    const goal = /^\/goal(?:\s+([\s\S]*))?$/u.exec(text);
+    if (goal && input.images.length === 0 && input.files.length === 0) return this.goalCommand(sessionId, goal[1]?.trim() ?? "");
     const steer = /^\/steer(?:\s+|$)/u.exec(text);
     const queue = /^\/queue(?:\s+|$)/u.exec(text);
     const body = steer || queue ? text.slice((steer ?? queue)![0].length).trim() : text;
@@ -397,6 +408,68 @@ export class OmpRpcController implements AgentRuntimeController {
     chat.turnStartedAt ??= Date.now();
     if (!wasWorking) this.applyStatus(sessionId, "running");
     return wasWorking && steer ? "steer" : "prompt";
+  }
+
+  // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)
+
+  /** omp's goal for the goal row; a chat whose omp is not running reads as the last one seen. */
+  async getGoal(sessionId: string): Promise<GoalSnapshot> {
+    const client = this.client(sessionId);
+    const chat = this.chats.get(sessionId);
+    if (!client || !chat) return chat?.goal ?? NO_GOAL;
+    return this.goalSnapshot(sessionId, await client.call({ type: "goal", op: "get" }));
+  }
+
+  async operateGoal(sessionId: string, operation: GoalOperation): Promise<GoalSnapshot> {
+    // omp ends a goal itself (its goal tool reports it complete); a host can only drop it
+    if (operation === "complete") throw new AgentUnsupportedError("completing a goal", sessionId);
+    const client = await this.ensureProcess(sessionId);
+    return this.goalSnapshot(sessionId, await client.call({ type: "goal", op: operation }));
+  }
+
+  /** `/goal [set] <objective>`, `/goal pause|resume|drop|show` typed in the composer. */
+  private async goalCommand(sessionId: string, args: string): Promise<MessageDelivery> {
+    const client = await this.ensureProcess(sessionId);
+    const [word = "", ...rest] = args.split(/\s+/u);
+    const op = word.toLowerCase();
+    if (!args || op === "show") {
+      const goal = this.goalSnapshot(sessionId, await client.call({ type: "goal", op: "get" }));
+      this.addNotice(sessionId, "goal", goal.enabled ? `${goal.objective} (${goal.mode})` : "진행 중인 목표가 없습니다", "neutral");
+      return "prompt";
+    }
+    if (op === "pause" || op === "resume" || op === "drop") {
+      this.goalSnapshot(sessionId, await client.call({ type: "goal", op }));
+      return "prompt";
+    }
+    if (op === "budget") return { kind: "not_executed", detail: "omp RPC는 목표의 토큰 예산을 바꾸지 않습니다" };
+    const objective = op === "set" ? rest.join(" ").trim() : args;
+    if (!objective) throw new Error("목표를 적어 주세요: /goal <목표>");
+    this.goalSnapshot(sessionId, await client.call({ type: "goal", op: "create", objective }, 0));
+    return "prompt";
+  }
+
+  /** omp's goal (`RpcGoalResult`) as the goal row shows it, with the todo list it works through. */
+  private goalSnapshot(sessionId: string, data: unknown): GoalSnapshot {
+    const goal = record(record(data).goal);
+    const objective = string(goal.objective);
+    const status = string(goal.status);
+    const chat = this.chat(sessionId);
+    let snapshot: GoalSnapshot = NO_GOAL;
+    if (objective && status && status !== "dropped") {
+      const tasks = todoPhases(chat.state?.todoPhases).flatMap((phase) => phase.tasks);
+      snapshot = {
+        enabled: true,
+        // a goal over its token budget stops like a finished one: only dropping it is left
+        mode: status === "paused" ? "paused" : status === "active" ? "active" : "complete",
+        objective,
+        completed: tasks.filter((task) => task.status === "completed" || task.status === "done").length,
+        total: tasks.length,
+        ...(tasks.length > 0 ? { tasks } : {}),
+        operations: GOAL_OPERATIONS,
+      };
+    }
+    chat.goal = snapshot;
+    return snapshot;
   }
 
   /** Stops the running turn (`abort`). */
@@ -1000,6 +1073,9 @@ export class OmpRpcController implements AgentRuntimeController {
     // omp answers `/btw` over RPC (the `btw` command) though its slash list leaves it out (19.1.1)
     if (!commands.some((command) => command.name === "btw"))
       commands.push({ name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" });
+    // `/goal` is TUI-only in omp; this chat sends it as the `goal` command
+    if (!commands.some((command) => command.name === "goal"))
+      commands.push({ name: "goal", description: "목표 모드: 목표 정하기, pause, resume, drop", hint: "[set] <목표>" });
     this.chat(sessionId).commands = commands;
     this.options.emit({ type: "session.commands", sessionId, commands });
   }

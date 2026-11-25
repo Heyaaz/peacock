@@ -56,6 +56,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
   );
   const processes: { child: FakeRpcProcess; command: string; args: readonly string[]; env: Record<string, string> }[] = [];
   let prompts = 0;
+  let goal: Record<string, unknown> | null = null;
   const spawn = vi.fn((command: string, args: readonly string[], spawnOptions: { cwd: string; env: Record<string, string> }) => {
     const child = new FakeRpcProcess();
     processes.push({ child, command, args, env: spawnOptions.env });
@@ -111,7 +112,13 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
-      else if (frame.type === "btw") answer({ record: { id: "btw-1", leafId: null, question: frame.question, answer: "", status: "running", createdAt: 1, updatedAt: 1 } });
+      else if (frame.type === "goal") {
+        if (frame.op === "create") goal = { id: "g1", objective: frame.objective, status: "active", tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 };
+        else if (frame.op === "pause" && goal) goal = { ...goal, status: "paused" };
+        else if (frame.op === "resume" && goal) goal = { ...goal, status: "active" };
+        else if (frame.op === "drop") goal = null;
+        answer({ goal, state: goal ? { enabled: goal.status === "active", mode: "active", goal } : null });
+      } else if (frame.type === "btw") answer({ record: { id: "btw-1", leafId: null, question: frame.question, answer: "", status: "running", createdAt: 1, updatedAt: 1 } });
       else answer();
     });
     queueMicrotask(() => child.ready());
@@ -151,7 +158,7 @@ describe("OmpRpcController", () => {
     });
     expect(session.id).toMatch(/^omp-[0-9a-f-]{36}$/u);
     expect(runsInTerminal(session)).toBe(false);
-    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: false, fork: false, git: false });
+    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: true, fork: false, git: false });
     expect(context.claim).toHaveBeenCalledWith(session.id);
     expect(context.events).toEqual([{ type: "session.created", session }]);
     expect(await context.controller.listSessions()).toEqual([session]);
@@ -559,14 +566,16 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
       { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" },
     );
     await settle();
-    expect(context.events).toContainEqual({ type: "session.commands", sessionId: session.id, commands: [{ name: "btw", description: "Side question" }] });
-    // a list without btw still offers it: the RPC answers it
+    const goalCommand = { name: "goal", description: "목표 모드: 목표 정하기, pause, resume, drop", hint: "[set] <목표>" };
+    expect(context.events).toContainEqual({ type: "session.commands", sessionId: session.id, commands: [{ name: "btw", description: "Side question" }, goalCommand] });
+    // a list without btw or goal still offers them: the RPC answers them
     expect(context.events).toContainEqual({
       type: "session.commands",
       sessionId: session.id,
       commands: [
         { name: "compact", description: "Compact the context", hint: "[instructions]" },
         { name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" },
+        goalCommand,
       ],
     });
     const row = (await context.controller.listSessions())[0]!;
@@ -702,5 +711,32 @@ describe("OmpRpcController slash commands omp answers itself", () => {
     const session = await newChat(context);
     await context.controller.getContextBreakdown(session.id);
     expect(context.events.some((event) => event.type === "transcript.appended" && event.item.kind === "notice")).toBe(false);
+  });
+});
+
+describe("OmpRpcController goal mode", () => {
+  it("sets a goal from /goal, shows it on the goal row with omp's operations, and pauses, resumes and drops it", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.getGoal(session.id)).resolves.toMatchObject({ enabled: false });
+    await expect(context.controller.sendMessage(session.id, { text: "/goal ship the parser", images: [], files: [] })).resolves.toBe("prompt");
+    const child = context.processes[0]!.child;
+    expect(child.sent("goal").at(-1)).toMatchObject({ op: "create", objective: "ship the parser" });
+    expect(child.sent("prompt")).toEqual([]);
+    await expect(context.controller.getGoal(session.id)).resolves.toEqual({
+      enabled: true,
+      mode: "active",
+      objective: "ship the parser",
+      completed: 0,
+      total: 0,
+      operations: ["pause", "resume", "drop"],
+    });
+    await expect(context.controller.operateGoal(session.id, "pause")).resolves.toMatchObject({ mode: "paused" });
+    await context.controller.sendMessage(session.id, { text: "/goal resume", images: [], files: [] });
+    await expect(context.controller.getGoal(session.id)).resolves.toMatchObject({ mode: "active" });
+    await expect(context.controller.operateGoal(session.id, "complete")).rejects.toMatchObject({ code: "unsupported" });
+    await expect(context.controller.sendMessage(session.id, { text: "/goal budget 5000", images: [], files: [] })).resolves.toMatchObject({ kind: "not_executed" });
+    await expect(context.controller.operateGoal(session.id, "drop")).resolves.toMatchObject({ enabled: false });
+    expect(context.prompts()).toBe(0);
   });
 });

@@ -223,6 +223,7 @@ export function GoalProgressRow({
   const tasks = goal.tasks ?? [];
   const stories = ultragoal?.stories ?? [];
   const hasList = tasks.length > 0 || stories.length > 0;
+  const offers = (operation: GoalOperation) => !goal.operations || goal.operations.includes(operation);
   const copy = (
     <>
       <strong>{goal.objective}</strong>
@@ -265,14 +266,16 @@ export function GoalProgressRow({
       )}
       <span className="goal-progress-actions">
         {goal.mode === "paused" ? (
+          offers("resume") && (
           <button
             type="button"
             disabled={busy}
             onClick={() => onOperate("resume")}
           >
             {t("재개")} </button>
+          )
         ) : (
-          goal.mode !== "complete" && (
+          goal.mode !== "complete" && offers("pause") && (
             <button
               type="button"
               disabled={busy}
@@ -281,7 +284,7 @@ export function GoalProgressRow({
               {t("일시정지")} </button>
           )
         )}
-        {goal.mode !== "complete" && (
+        {goal.mode !== "complete" && offers("complete") && (
           <button
             type="button"
             disabled={busy}
@@ -289,8 +292,10 @@ export function GoalProgressRow({
           >
             {t("완료")} </button>
         )}
+        {offers("drop") && (
         <button type="button" disabled={busy} onClick={() => onOperate("drop")}>
           {t("해제")} </button>
+        )}
       </span>
       {hasList && listOpen && (
         <div className="goal-progress-list" id={listId}>

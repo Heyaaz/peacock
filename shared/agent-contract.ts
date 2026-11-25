@@ -1223,6 +1223,8 @@ export interface GoalSnapshot {
   tasks?: TodoSnapshotTask[];
   /** Present only when the session advertises `session.progress` and a read succeeded. */
   progress?: SessionProgress;
+  /** The operations the runtime takes; absent means every one (omp's goal has no "complete"). */
+  operations?: GoalOperation[];
 }
 
 /**

@@ -118,7 +118,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     defaultSurface: "terminal",
     capabilities: terminalChat,
     // 채팅 is omp's RPC mode (`omp --mode rpc-ui`): streaming, tool cards, approvals, questions
-    // and model settings as GJC's chat has them. Goals, forks, suggestions and the git panel stay GJC's.
+    // and model settings as GJC's chat has them, and omp's goal mode. Forks, suggestions and the git panel stay GJC's.
     chatRuntime: "omp-rpc",
     chatCapabilities: {
       ...none,
@@ -126,6 +126,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       cancel: true,
       approvals: true,
       questions: true,
+      goal: true,
       compact: true,
       sideQuestion: true,
       modelConfig: true,

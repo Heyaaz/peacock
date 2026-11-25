@@ -277,11 +277,14 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 입력창 위 막대: 사용 %·막대·창 크기(`liveStatus.contextTokens/contextWindow`), 버튼 둘(카테고리별 보기, 지금 압축). 상태 줄의 "컨텍스트 x%"는 막대가 있을 때 숨긴다. Tern 스크린샷의 두 아이콘(점선 사각형, 망치)은 Tern UI가 Rust 바이너리+웹뷰라 코드로 확인하지 못했다. omp 19.1.1에서 망치 글리프(`cmd.hammer`)는 `/force`(다음 턴에 특정 도구 강제), 컨텍스트 아이콘은 `/context`에 쓰인다. 확인되지 않은 동작을 흉내 내지 않고 보기·압축 버튼으로 두었다.
 - 빠진 것: 대화 메시지를 User/Assistant/Thinking/Tool calls/Tool output으로 나눈 값과 도구별 하위 행은 TUI 컨텍스트 뷰어(`buildSessionContextView`, session/context-view.ts)에만 있고 RPC로 나오지 않는다. Custom tools는 System tools에 합쳐져 있다.
 
+**omp 채팅 추가 기능 (19.1.1 RPC 명령)**
+- 목표 모드: `goal {op:get|create|pause|resume|drop, objective}` → `RpcGoalResult{goal, state}`(실측: create/pause/resume/drop 모두 모델 호출 없음, 세션 파일에 mode_change 기록). omp의 `/goal`은 TUI 전용이라 RPC로 보내면 모델에게 그냥 글로 간다 — 컨트롤러가 `/goal [set] <목표>`, `/goal pause|resume|drop|show`를 가로채 `goal` 명령으로 보내고 명령 목록에도 넣는다. GJC의 목표 행(GoalProgressRow)을 그대로 쓰되 `GoalSnapshot.operations`로 "완료"를 숨긴다(omp에는 complete op가 없고 goal 도구가 스스로 끝냄). 토큰 예산은 만들 때만 정할 수 있고(`token_budget`) `/goal budget`은 실행하지 않는다. `goal.continuationModes` 기본값이 `["interactive"]`라 RPC에서는 목표가 스스로 다음 턴을 시작하지 않는다(사용자가 보내는 턴이 목표를 향함). budget-limited 목표는 완료처럼(해제만) 보인다.
+
 **한계 (omp RPC 채팅)**
 - 열린 채팅마다 omp 프로세스가 앱이 끝날 때까지 산다(유휴 종료 없음).
 - 거절 코멘트는 omp에 전달되지 않는다(RPC select는 라벨만 받음). "이 세션 동안 허용"·폴더 grant는 카드에 없다(카드의 선택은 어디서나 같은 뜻: 이번만 허용/거절, 나머지는 명령 규칙).
 - 폼 판독은 흔한 부분집합만: 이미지·SVG·표 안 입력은 질문 텍스트로만 쓰고, 같은 이름 필드가 둘이면 각각 카드가 된다. 18.20식 `ask` 대화상자는 단위 테스트로만 확인(19.1.1 ask 도구는 `form`을 씀).
 - 터미널↔RPC 전환은 없다(v1). 채팅 세션에는 터미널이 없고, 기존 omp 터미널 세션은 기록 채팅으로만 본다.
-- goal·fork·추천 입력·git·세션 정보·변경 파일 패널은 없다. 대화의 assistant 머리말은 다른 에이전트 채팅과 같이 "Gajae"로 나온다.
+- fork·추천 입력·git·세션 정보·변경 파일 패널은 없다. 대화의 assistant 머리말은 다른 에이전트 채팅과 같이 "Gajae"로 나온다.
 - 앱이 턴 도중 끝나면 omp도 끝나고(stdin EOF), 파일에 쓰인 만큼만 다시 읽힌다. 실시간 행의 id는 턴이 끝나야 파일 id로 바뀐다.
 
