@@ -1,4 +1,4 @@
-import type { BrowserWindow } from "electron";
+import { BrowserWindow } from "electron";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
@@ -71,7 +71,7 @@ export function attachHcAgentSmoke(
   const timeout = setTimeout(() => {
     console.error("herdr agent smoke timed out");
     options.exit(1);
-  }, ["4", "5", "6", "7", "8", "9"].includes(options.phase) ? 300_000 : 150_000);
+  }, options.phase === "11" ? 600_000 : ["4", "5", "6", "7", "8", "9"].includes(options.phase) ? 300_000 : 150_000);
   const finish = async (result: Record<string, unknown>, ok: boolean): Promise<void> => {
     clearTimeout(timeout);
     await writeFile(options.resultPath, `${JSON.stringify(result, null, 2)}\n`).catch(() => undefined);
@@ -88,6 +88,7 @@ export function attachHcAgentSmoke(
         else if (options.phase === "4") await phaseChat("omp");
         else if (options.phase === "9") await phaseOmpRpcChat();
         else if (options.phase === "10") await phaseOmpRpcRestart();
+        else if (options.phase === "11") await phaseOmpRpcUsage();
         else if (options.phase === "5") await phaseApproval();
         else if (options.phase === "6") await phaseRemoteApproval();
         else if (options.phase === "7") await phaseOmpApproval();
@@ -745,6 +746,214 @@ export function attachHcAgentSmoke(
       result.echoRan &&
       result.sessionFileExists &&
       result.liveIdsLeft.length === 0;
+    await finish(result, ok);
+  }
+
+  /**
+   * omp's chat used for real (design §10): an approval that waits (a notification), omp's queue
+   * sent now and taken out while a turn runs, a finished turn (a notification), a tiny subagent and
+   * its conversation, slow mode on and off (restored), and the chat on a paired phone.
+   */
+  async function phaseOmpRpcUsage(): Promise<void> {
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-omp-usage-smoke-")));
+    const title = "omp usage smoke";
+    const model = process.env.GAJAE_SMOKE_OMP_MODEL || "opencodex/opengateway/deepseek/deepseek-v4.1-flash-eco";
+    const prelude = `
+      const desktop = window.agentControlDesktop;
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const until = async (check, ms) => { const end = Date.now() + ms; while (Date.now() < end && !(await check())) await wait(200); return Boolean(await check()); };
+      const textarea = () => document.querySelector(".composer:not(.composer--terminal-agent) textarea");
+      const send = async (text) => {
+        const field = textarea();
+        if (!field) return false;
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(field, text);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(300);
+        const button = document.querySelector(".composer:not(.composer--terminal-agent) .composer-submit-actions button[type=submit]");
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      };
+      const row = async (id) => (await desktop.gjc.listSessions()).find((session) => session.id === id);
+      const approveAll = async (id, ms) => {
+        const end = Date.now() + ms;
+        let approved = 0;
+        while (Date.now() < end) {
+          const button = document.querySelector(".tool-card--approval .permission-options .button-primary");
+          if (button) { button.click(); approved += 1; await wait(1500); continue; }
+          const status = (await row(id))?.status;
+          if (status === "idle" && Date.now() > end - ms + 4000) break;
+          await wait(400);
+        }
+        return approved;
+      };`;
+    const js = async <T,>(body: string): Promise<T> => (await window.webContents.executeJavaScript(`(async () => { ${prelude}\n${body} })()`)) as T;
+    const noted = async (sessionId: string, category: string, ms: number): Promise<boolean> => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (options.notifications().some((shown) => shown.sessionId === sessionId && shown.category === category)) return true;
+        await wait(250);
+      }
+      return false;
+    };
+    // 1. a chat whose bash call waits for approval
+    const opened = await js<{ skipped?: string; sessionId?: string; cardShown?: boolean }>(`
+      const omp = (await desktop.terminal.listAgents()).find((agent) => agent.id === "omp");
+      if (!omp?.installed) return { skipped: omp?.reason ?? "omp not installed" };
+      const created = await desktop.gjc.createSession({ runtime: "omp-rpc", title: ${JSON.stringify(title)}, workspace: ${JSON.stringify(workspace)}, isolation: "workspace", agentKind: "omp", launch: { model: ${JSON.stringify(model)} } });
+      const rowNode = () => [...document.querySelectorAll(".session-row")].find((node) => node.textContent?.includes(${JSON.stringify(title)}));
+      await until(rowNode, 10000);
+      rowNode()?.click();
+      await until(() => textarea(), 15000);
+      await wait(2500);
+      const sent = await send("Use the bash tool to run exactly this command and nothing else: sleep 12 . Then reply with exactly the word DONE.");
+      const cardShown = sent ? await until(() => document.querySelector(".tool-card--approval .permission-options .button-primary"), 120000) : false;
+      return { sessionId: created.id, cardShown };
+    `);
+    if (opened.skipped || !opened.sessionId) {
+      await finish({ phase: 11, skipped: opened.skipped ?? "no session" }, false);
+      return;
+    }
+    const sessionId = opened.sessionId;
+    const permissionNotified = opened.cardShown ? await noted(sessionId, "permission", 10_000) : false;
+    // 2. the approved call sleeps: queue two follow-ups, send one now, take the other out
+    const queue = await js<Record<string, unknown>>(`
+      const sessionId = ${JSON.stringify(sessionId)};
+      const queued = [];
+      const off = desktop.gjc.onEvent((event) => {
+        if (event.type === "session.updated" && event.session?.id === sessionId) queued.push((event.session.liveStatus?.queued ?? []).map((entry) => entry.text));
+      });
+      document.querySelector(".tool-card--approval .permission-options .button-primary")?.click();
+      await wait(2500);
+      const first = "Queued one: after the sleep, reply with exactly the word FIRST.";
+      const second = "Queued two: ignore this message.";
+      const deliveries = [
+        await desktop.gjc.queueFollowUp(sessionId, { text: first, images: [], files: [] }),
+        await desktop.gjc.queueFollowUp(sessionId, { text: second, images: [], files: [] }),
+      ];
+      const bothShown = await until(() => queued.some((texts) => texts.length >= 2), 8000);
+      const removed = await desktop.gjc.removeQueuedMessage(sessionId, second, "followUp");
+      const promoted = await desktop.gjc.promoteQueuedMessage(sessionId, first);
+      const emptied = await until(() => queued.length > 0 && queued.at(-1).length === 0, 30000);
+      const idle = await until(async () => (await row(sessionId))?.status === "idle", 180000);
+      off();
+      return { deliveries, bothShown, removed, promoted, emptied, idle, lastQueued: queued.at(-1) ?? null };
+    `);
+    const completedNotified = await noted(sessionId, "completed", 15_000);
+    // 3. a tiny subagent, and what it said
+    const subagent = await js<Record<string, unknown>>(`
+      const sessionId = ${JSON.stringify(sessionId)};
+      await wait(1500);
+      const sent = await send("Use the task tool to run exactly one subagent whose only job is to reply with the word OK. Then reply with exactly the word DONE.");
+      const approvals = sent ? await approveAll(sessionId, 240000) : 0;
+      const list = await desktop.gjc.listSubagents(sessionId);
+      const first = list[0];
+      const messages = first ? await desktop.gjc.getSubagentMessages(sessionId, first.id).catch((error) => String(error)) : [];
+      return { sent, approvals, subagents: list.map((agent) => ({ id: agent.id, status: agent.status, label: agent.label })), messages: Array.isArray(messages) ? messages.map((message) => message.role + ":" + String(message.text).slice(0, 40)) : messages };
+    `);
+    // 4. slow mode on and off, back to where it was
+    const slow = await js<Record<string, unknown>>(`
+      const sessionId = ${JSON.stringify(sessionId)};
+      const modes = () => row(sessionId).then((session) => session?.liveStatus?.modes ?? []);
+      const before = (await modes()).find((mode) => mode.id === "slow");
+      if (!before) {
+        let refused = null;
+        try { await desktop.gjc.setRuntimeMode(sessionId, "slow", true); } catch (error) { refused = String(error).slice(0, 200); }
+        const after = (await modes()).find((mode) => mode.id === "slow") ?? null;
+        return { supported: false, refused, after };
+      }
+      await desktop.gjc.setRuntimeMode(sessionId, "slow", !before.enabled);
+      const flipped = (await modes()).find((mode) => mode.id === "slow");
+      await desktop.gjc.setRuntimeMode(sessionId, "slow", before.enabled);
+      const restored = (await modes()).find((mode) => mode.id === "slow");
+      return { supported: true, before: before.enabled, flipped: flipped?.enabled, restored: restored?.enabled };
+    `);
+    // 5. the chat on a paired phone (the remote server and its PWA)
+    let phone: Record<string, unknown> = {};
+    if (options.remote) {
+      const free = await new Promise<number>((resolve, reject) => {
+        const probe = createServer();
+        probe.once("error", reject);
+        probe.listen(0, "127.0.0.1", () => {
+          const { port } = probe.address() as AddressInfo;
+          probe.close(() => resolve(port));
+        });
+      });
+      const directory = path.join(path.dirname(options.resultPath), "remote-usage-smoke");
+      const service = new RemoteAccessService({
+        userDataDirectory: directory,
+        webRoot: options.remote.webRoot,
+        version: options.remote.version,
+        workspace: () => "",
+        host: options.remote.host,
+        devices: new DeviceStore(path.join(directory, "remote-devices.json")),
+        // never the real Tailscale: this smoke must not touch the owner's Serve config
+        tailscale: new TailscaleClient({ binary: path.join(directory, "missing-tailscale") }),
+        log: () => undefined,
+      });
+      let mobile: BrowserWindow | undefined;
+      try {
+        await service.setPort(free);
+        const enabled = await service.setEnabled(true);
+        const origin = `http://127.0.0.1:${enabled.port}`;
+        const code = (await service.issuePairingCode("control")).pairing?.code;
+        const paired = (await (await fetch(`${origin}/api/pair`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: origin },
+          body: JSON.stringify({ code, deviceName: "Smoke phone" }),
+        })).json()) as { token?: string };
+        const headers = { Authorization: `Bearer ${paired.token}`, Origin: origin };
+        const state = (await (await fetch(`${origin}/api/state`, { headers })).json()) as { sessions?: { id: string; runtime?: string }[] };
+        const page = (await (await fetch(`${origin}/api/sessions/${encodeURIComponent(sessionId)}/transcript-page`, { headers })).json()) as { result?: { items?: unknown[] } };
+        mobile = new BrowserWindow({ width: 390, height: 844, show: false });
+        await mobile.loadURL(origin);
+        await mobile.webContents.executeJavaScript(`localStorage.setItem('gajae.remote.token', ${JSON.stringify(paired.token)})`);
+        await mobile.loadURL(origin);
+        const rendered = (await mobile.webContents.executeJavaScript(`(async () => {
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const find = () => [...document.querySelectorAll(".session-row")].find((node) => node.textContent?.includes(${JSON.stringify(title)}));
+          for (let i = 0; i < 60 && !find(); i++) await wait(250);
+          const listed = Boolean(find());
+          find()?.click();
+          for (let i = 0; i < 60 && document.querySelectorAll(".conversation .message").length === 0; i++) await wait(250);
+          return { listed, messages: document.querySelectorAll(".conversation .message").length, tools: document.querySelectorAll(".conversation .tool-card").length };
+        })()`)) as Record<string, unknown>;
+        phone = {
+          listed: state.sessions?.some((session) => session.id === sessionId) ?? false,
+          runtimeOnWire: state.sessions?.find((session) => session.id === sessionId)?.runtime ?? null,
+          rows: page.result?.items?.length ?? 0,
+          pwa: rendered,
+        };
+      } catch (error) {
+        phone = { error: String(error) };
+      } finally {
+        mobile?.destroy();
+        await service.dispose();
+      }
+    }
+    const result = {
+      phase: 11,
+      sessionId,
+      cardShown: opened.cardShown,
+      permissionNotifiedWhileWaiting: permissionNotified,
+      queue,
+      completedNotifiedRightAfter: completedNotified,
+      subagent,
+      slow,
+      phone,
+      notifications: options.notifications().filter((shown) => shown.sessionId === sessionId).map((shown) => `${shown.category}:${shown.outcome ?? ""}`),
+    };
+    const subagents = (subagent.subagents as unknown[] | undefined) ?? [];
+    // macOS may refuse to display a notification for a dev app: the call is what is checked
+    const notified = (category: string) => options.notifications().some((shown) => shown.sessionId === sessionId && shown.category === category);
+    const ok =
+      opened.cardShown === true &&
+      notified("permission") &&
+      queue.removed === true &&
+      queue.promoted === true &&
+      notified("completed") &&
+      subagents.length > 0 &&
+      (phone.listed === true && (phone.rows as number) > 0);
     await finish(result, ok);
   }
 
