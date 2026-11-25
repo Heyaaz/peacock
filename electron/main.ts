@@ -129,7 +129,7 @@ const mockBackend =
   // the agent smoke reads the real rail, where terminal sessions show their status
   !process.argv.some((argument) => argument.startsWith("--hc-agent-smoke="));
 
-app.setName("Gajae");
+app.setName("Peacock");
 const isolatedUserData = process.env.GAJAE_USER_DATA_DIR?.trim();
 app.setPath(
   "userData",
@@ -141,7 +141,7 @@ app.setPath(
 // isolated GAJAE_USER_DATA_DIR run has its own lock. The UI smokes skip it so a
 // developer's running Gajae cannot make them exit before they start.
 if (!smokeMode && !terminalSmokeMode && !app.requestSingleInstanceLock()) {
-  console.log("Gajae is already running; the launch was handed to it.");
+  console.log("Peacock is already running; the launch was handed to it.");
   app.exit(0);
 }
 const appIconPath = app.isPackaged
@@ -235,7 +235,7 @@ const appUpdates = new AppUpdateMonitor({
   notify: (update) => {
     if (!Notification.isSupported()) return;
     const notification = new Notification({
-      title: `Gajae ${update.latestVersion}`,
+      title: `Peacock ${update.latestVersion}`,
       body: hostText("새 버전이 나왔습니다. 눌러서 릴리스 페이지를 엽니다."),
     });
     notification.on("click", () => void shell.openExternal(update.releaseUrl));
@@ -278,7 +278,7 @@ function broadcastAgentEvent(event: AgentEvent): void {
   if (!Notification.isSupported()) return;
   const delivery = notificationDelivery(preference);
   const notification = new Notification({
-    title: "Gajae",
+    title: "Peacock",
     body: sessionActivityBody(event, settingsStore.get().language),
     silent: delivery.silent,
     ...(delivery.sound ? { sound: delivery.sound } : {}),
@@ -328,7 +328,7 @@ function sessionWindow(): BrowserWindow {
   return appWindows()[0] ?? createWindow();
 }
 
-// gajae:// links wait here until a window has loaded: macOS delivers the link of a
+// peacock:// (and gajae://) links wait here until a window has loaded: macOS delivers the link of a
 // cold launch before the app is ready, and with every window closed it arrives
 // while there is none.
 const pendingDeepLinks: SessionShortcut[] = [];
@@ -821,7 +821,7 @@ function createWindow(): BrowserWindow {
     minHeight: 540,
     backgroundColor: "#09090a",
     show: !smokeMode,
-    title: "Gajae",
+    title: "Peacock",
     icon: appIconPath,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 18, y: 18 },

@@ -14,11 +14,11 @@ interface WindowView {
   selected: string | null;
 }
 
-const link = (pathAndQuery: string) => `gajae://${pathAndQuery}`;
+const link = (pathAndQuery: string) => `peacock://${pathAndQuery}`;
 const query = (values: Record<string, string>) => new URLSearchParams(values).toString();
 
 /**
- * Drives gajae:// links through the main process's real `open-url` and
+ * Drives peacock:// links through the main process's real `open-url` and
  * `second-instance` handlers against the mock backend, and checks what the
  * window shows. The first link is sent before the app is ready, the way macOS
  * delivers the link that launched it.

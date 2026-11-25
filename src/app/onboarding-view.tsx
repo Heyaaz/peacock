@@ -236,9 +236,9 @@ export function OnboardingView({
 
         {stage.stage === "install" && (
           <>
-            <h1 id="onboarding-title">{t("가재를 쓰려면 GJC가 필요합니다")}</h1>
+            <h1 id="onboarding-title">{t("Peacock을 쓰려면 GJC가 필요합니다")}</h1>
             <p className="onboarding-lead">
-              {t("GJC는 가재가 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.")}
+              {t("GJC는 Peacock이 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.")}
             </p>
             {stage.running ? (
               <div className="onboarding-progress" role="status">

@@ -72,7 +72,7 @@ export async function checkLatestRelease(input: {
         headers: {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": `Gajae/${currentVersion}`,
+          "User-Agent": `Peacock/${currentVersion}`,
         },
         signal: AbortSignal.timeout(RELEASE_TIMEOUT_MS),
       },

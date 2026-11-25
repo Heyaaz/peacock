@@ -136,7 +136,7 @@ export class QuickInputWindow {
       // window in front of the app the user was in, and floats over full screen.
       ...(process.platform === "darwin" ? { type: "panel" } : {}),
       backgroundColor: "#151517",
-      title: "Gajae",
+      title: "Peacock",
       webPreferences: {
         preload: this.options.preload,
         contextIsolation: true,

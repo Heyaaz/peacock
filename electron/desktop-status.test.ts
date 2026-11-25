@@ -84,7 +84,7 @@ describe("desktopStatusModel", () => {
       "new-run",
       "old-run",
       "---",
-      "Gajae 열기",
+      "Peacock 열기",
     ]);
     expect(model.badge).toBe("3");
   });
@@ -114,7 +114,7 @@ describe("desktopStatusModel", () => {
   it("shows an empty icon title and clears the badge when nothing is going on", () => {
     const model = desktopStatusModel(stateOf([session("a")]));
     expect(model.tray?.title).toBe("");
-    expect(labels(model.tray)).toEqual(["진행 중인 세션 없음", "---", "Gajae 열기"]);
+    expect(labels(model.tray)).toEqual(["진행 중인 세션 없음", "---", "Peacock 열기"]);
     expect(model.badge).toBe("");
   });
 
@@ -144,7 +144,7 @@ describe("desktopStatusModel", () => {
   it("follows the host language", () => {
     setHostLanguage("en");
     const tray = desktopStatusModel(stateOf([session("a", { status: "failed" })])).tray;
-    expect(labels(tray)).toEqual(["Needs input", "a (failed)", "---", "Open Gajae"]);
+    expect(labels(tray)).toEqual(["Needs input", "a (failed)", "---", "Open Peacock"]);
     expect(tray?.tooltip).toBe("Needs input 1 · Working 0");
   });
 });
@@ -212,8 +212,8 @@ describe("desktopStatusRenderer", () => {
     setHostLanguage("en");
     render(state);
     expect(trays.map((tray) => tray?.menu.at(-1))).toEqual([
-      { kind: "open-app", label: "Gajae 열기" },
-      { kind: "open-app", label: "Open Gajae" },
+      { kind: "open-app", label: "Peacock 열기" },
+      { kind: "open-app", label: "Open Peacock" },
     ]);
   });
 

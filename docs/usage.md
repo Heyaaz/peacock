@@ -1,10 +1,10 @@
-# Using Gajae
+# Using Peacock
 
 The full guide to the desktop app. For a short tour, see the [README](../README.md).
 
 ## GJC setup details
 
-GJC is one of the agents Gajae runs, not a requirement. When GJC is the agent
+GJC is one of the agents Peacock runs, not a requirement. When GJC is the agent
 chosen at first launch, the app installs it if it is missing (see the
 [README](../README.md#install)).
 GJC `0.18.12` or newer is required (the newest verified compatibility target is
@@ -155,28 +155,30 @@ listing, and `@` stays plain text there.
 
 ## Links from other apps
 
-Raycast, Alfred, a shell `open`, or any other app can hand Gajae a link:
+Raycast, Alfred, a shell `open`, or any other app can hand Peacock a link:
 
 | Link | Action |
 | ---- | ------ |
-| `gajae://new?prompt=…&path=…` | Opens the new-session dialog with the folder and first request filled in |
-| `gajae://session/<id>` | Opens that session |
+| `peacock://new?prompt=…&path=…` | Opens the new-session dialog with the folder and first request filled in |
+| `peacock://session/<id>` | Opens that session |
+
+`gajae://`, the scheme from before the rename, still works the same way.
 
 Both parameters of `new` are optional. The dialog creates nothing until it is
 confirmed, and the first request is placed in the new session's message box, never
 sent. `path` must be an absolute path to an existing folder; a relative or missing
 path, a request over 20,000 characters, or a session id the window does not know is
-refused with a notice instead of opening anything. Other `gajae://` links are
-ignored. A link works whether Gajae is running or not: one that starts the app is
+refused with a notice instead of opening anything. Other `peacock://` links are
+ignored. A link works whether Peacock is running or not: one that starts the app is
 held until the window has loaded, and a second launch hands its link to the running
-instance. The packaged app registers the scheme in its `Info.plist`; a development
+instance. The packaged app registers both schemes in its `Info.plist`; a development
 `electron .` run does not register it, and `npm run desktop:deep-link-smoke` drives
 the handlers instead.
 
 ## Session delete
 
 Delete targets saved history, not its host process and not just the sidebar row.
-Gajae requests `session.delete` with the exact session ID, configured location and
+Peacock requests `session.delete` with the exact session ID, configured location and
 transcript path; it never calls `session.close` to make deletion possible. This
 preserves a CLI that may have switched to another conversation with `/new`.
 The CLI picker can delete old history through its owning `SessionManager`, but
@@ -188,10 +190,10 @@ use that CLI's session picker for owner-local history deletion.
 
 When the broker cannot settle the delete (an unknown outcome, or the
 `lifecycle_legacy_history_ambiguous` fence that gjc/0.19.2 raises for every
-delete once the agent dir's lifecycle ledger holds legacy rows), Gajae deletes
+delete once the agent dir's lifecycle ledger holds legacy rows), Peacock deletes
 through GJC's own interactive `/session delete` instead
 (`electron/gjc-cli-session-delete.ts`). `gjc -p` does not run slash commands
-(it sends them to the model), so Gajae opens the transcript with
+(it sends them to the model), so Peacock opens the transcript with
 `gjc --resume <path> --no-mcp --no-lsp` in a hidden terminal, with
 `GJC_AUTOMATION=1` so first-run onboarding does not open over the editor. It
 types the command, chooses Yes only on GJC's own deletion prompt with Yes
@@ -205,7 +207,7 @@ deleted from the app too. The delete confirmation names that GJC (its terminal
 and pid, read from the broker row's `pid` and checked with `ps`) and offers
 `GJC 종료 후 삭제`; the answer is bound to that pid, so if a different process
 holds the session when the delete runs, nothing is stopped and the user is asked
-again. Gajae sends that GJC SIGTERM, waits up to 10 s for it to exit (it is
+again. Peacock sends that GJC SIGTERM, waits up to 10 s for it to exit (it is
 never SIGKILLed), waits for the broker to drop `live`, then deletes as above. A
 row still marked `live` whose process is gone holds nothing and is deleted
 without asking to stop anything. A GJC stopped this way can exit before
@@ -251,7 +253,7 @@ agents could be chosen keeps opening GJC (`새 세션 종류` app) or a shell (C
   Settings > Agents ends them. When herdr-core cannot run, a shell session falls back to an
   in-app shell; an agent session shows the error instead.
 - **Approvals and status.** Claude Code and omp report their turns and tool
-  approvals to Gajae: the sidebar shows running, waiting and idle, notifications
+  approvals to Peacock: the sidebar shows running, waiting and idle, notifications
   follow, and an approval waits on a card in the window or on a paired phone.
 - **Remote access** lists Claude Code, omp and Codex sessions; a shell never
   leaves the desktop.
@@ -299,16 +301,16 @@ never claims it, and no signal or process kill is substituted. A refused release
 The Settings permission field is applied after create or resume with the public
 `permission_mode.set` session control operation. `always-allow` maps to the
 broker-hosted session's `allow` mode. There is no environment variable on a
-desktop-owned agent child because Gajae has no agent child.
+desktop-owned agent child because Peacock has no agent child.
 
 `매번 확인` (prompt) uses GJC's external approval channel, which gjc/0.19.3 and
-later advertise. Gajae turns it on with `permission.channel.set` for each session
+later advertise. Peacock turns it on with `permission.channel.set` for each session
 it hosts, so a tool call that needs approval waits instead of failing:
 
 - The call's card shows the request with GJC's options (allow once, always allow,
   reject, always reject). A rejection can carry a note, which GJC hands the agent
   as the tool's result.
-- While the session runs, Gajae lists waiting requests every 0.75 s over one
+- While the session runs, Peacock lists waiting requests every 0.75 s over one
   `gjc sdk serve --stdio` relay per session, and answers with `permission.respond`.
 - GJC drops a request it waited 60 s on, or one whose turn was stopped. The card
   then stops waiting and the call's own result shows what happened.
@@ -316,7 +318,7 @@ it hosts, so a tool call that needs approval waits instead of failing:
   cannot.
 - Always allow and always reject are GJC's own per-tool choices for that session.
 
-On a GJC without the channel there is still no way to ask, so Gajae fails closed
+On a GJC without the channel there is still no way to ask, so Peacock fails closed
 instead of silently granting tools: the session is placed in deny mode, and denied
 cards point to the setting.
 
@@ -345,7 +347,7 @@ The full session id sits under the title in the inspector and copies on click.
 
 The rail opens on `전체 프로젝트` and can be filtered to one project. A project is a
 Git repository's main working tree, so every linked worktree of the same repository
-— including a Gajae managed worktree — belongs to the same project instead of
+— including a Peacock managed worktree — belongs to the same project instead of
 appearing as a second one. A workspace outside Git is still a project: it keeps its
 sessions and its own root, and the repository screen says it is not a repository
 rather than showing an empty one.
@@ -425,7 +427,7 @@ compare, and an agent that is not installed cannot start. For a terminal agent:
 - Each attempt's preset is the agent's model, or `default` for the agent's own
   default; `launch` sets the other options (permission mode, effort) for every
   attempt.
-- Gajae makes each attempt's worktree and branch itself, in the same place GJC
+- Peacock makes each attempt's worktree and branch itself, in the same place GJC
   does (`<repo>.gajae-worktrees/`), and opens the agent there. No window has to
   show it: the terminal starts in herdr-core, and the request is typed in once
   the agent is at its prompt. Claude Code asks whether to trust a folder it has

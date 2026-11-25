@@ -138,7 +138,7 @@ function InspectorView({
   return (
     <aside className="inspector">
       <header>
-        <strong>{t("Gajae 세션 정보")}</strong>
+        <strong>{t("Peacock 세션 정보")}</strong>
         <button className="icon-button" type="button" onClick={onClose}>
           <X size={17} />
         </button>
@@ -803,7 +803,7 @@ export function DiffPanel({
         </section>
       ) : (
         <p className="diff-empty">
-          {t("Git 변경 작업은 Gajae managed worktree 세션에서만 사용할 수 있습니다.")} </p>
+          {t("Git 변경 작업은 Peacock managed worktree 세션에서만 사용할 수 있습니다.")} </p>
       )}
       {comments.length > 0 && (
         <section className="diff-review" aria-label={t("리뷰 코멘트")}>

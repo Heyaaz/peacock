@@ -84,7 +84,7 @@ export function RemoteGate({
         <p className="remote-gate__detail">
           {revoked
             ? t("이 기기의 원격 접근을 호스트에서 해제했습니다. 다시 사용하려면 데스크톱에서 연결 코드를 새로 만들고 입력해 주세요.")
-            : t("Gajae 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.")}
+            : t("Peacock 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.")}
         </p>
         <p className="remote-gate__origin">{window.location.origin}</p>
         <form

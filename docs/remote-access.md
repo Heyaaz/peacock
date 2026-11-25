@@ -36,7 +36,7 @@ the host: a view-only device that calls the control endpoints directly gets
 `403`.
 
 The host confirmation is drawn in the app's style but owned by the main
-process (`electron/confirm-overlay.ts`): a separate window over Gajae with
+process (`electron/confirm-overlay.ts`): a separate window over Peacock with
 JavaScript off, whose two buttons submit to a URL that never loads; the main
 process reads the answer from the navigation it cancels. The renderer can ask
 for it but cannot answer it. Sidebar delete and hide ask first through

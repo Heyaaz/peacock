@@ -20,7 +20,7 @@ import { electronStatusSurface, menuBarIcon } from '../dist-electron/electron/de
 const appPath = path.resolve(import.meta.dirname, '..')
 const iconPath = path.join(appPath, 'src/assets/peacock-menubar-Template.png')
 
-app.setName('Gajae Menu Bar Smoke')
+app.setName('Peacock Menu Bar Smoke')
 
 // Tray has no getter for its menu, so the smoke reads the one the adapter set.
 let liveTray
@@ -109,11 +109,11 @@ app.whenReady().then(() => {
     integration.observe({ type: 'session.updated', session: session('fix-login', { status: 'waiting' }) })
     view = snapshot('waiting')
     assert.equal(view.tray, '\u26A0\uFE0E1', 'needs-input count in the menu bar')
-    assert.deepEqual(view.menu, ['확인 필요', 'fix-login', '---', 'Gajae 열기'])
+    assert.deepEqual(view.menu, ['확인 필요', 'fix-login', '---', 'Peacock 열기'])
     assert.equal(view.badge, '1', 'waiting session badges the Dock')
 
     liveMenu.items.find((item) => item.label === 'fix-login').click()
-    liveMenu.items.find((item) => item.label === 'Gajae 열기').click()
+    liveMenu.items.find((item) => item.label === 'Peacock 열기').click()
     assert.deepEqual(opened, ['fix-login', '(app)'], 'menu items open their session and the app')
 
     integration.observe({ type: 'session.updated', session: session('fix-login', { status: 'idle', unread: true }) })
@@ -151,8 +151,8 @@ app.whenReady().then(() => {
       openSession: () => undefined,
       openApp: () => undefined,
     })
-    imageless.setTray({ title: '', tooltip: '', menu: [{ kind: 'open-app', label: 'Gajae 열기' }] })
-    assert.equal(liveTray.getTitle(), 'Gajae', 'an imageless item still has something to click')
+    imageless.setTray({ title: '', tooltip: '', menu: [{ kind: 'open-app', label: 'Peacock 열기' }] })
+    assert.equal(liveTray.getTitle(), 'Peacock', 'an imageless item still has something to click')
     imageless.setTray(null)
     console.log('Menu bar smoke passed')
     clearTimeout(timeout)

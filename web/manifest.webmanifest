@@ -1,7 +1,7 @@
 {
-  "name": "Gajae 원격",
-  "short_name": "Gajae",
-  "description": "Gajae 데스크톱 호스트의 GJC 세션을 원격에서 조회하고 조작합니다.",
+  "name": "Peacock 원격",
+  "short_name": "Peacock",
+  "description": "Peacock 데스크톱 호스트의 에이전트 세션을 원격에서 조회하고 조작합니다.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -300,7 +300,7 @@ async function resyncAfterReplayGap(): Promise<void> {
       connection = {
         state: "error",
         backend: "gjc",
-        label: "Gajae Code",
+        label: "GJC",
         detail: "Unable to resynchronize desktop events",
         workspace: "",
       };

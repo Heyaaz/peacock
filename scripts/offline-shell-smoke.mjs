@@ -21,7 +21,7 @@ import { SETTINGS_IPC } from '../dist-electron/shared/settings-ipc.js'
 const appPath = path.resolve(import.meta.dirname, '..')
 const FAILURE_DETAIL = 'spawn /nonexistent/gjc ENOENT'
 
-app.setName('Gajae Offline Smoke')
+app.setName('Peacock Offline Smoke')
 
 const connectionFailure = {
   state: 'error',

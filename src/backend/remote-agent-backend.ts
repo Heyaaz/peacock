@@ -43,7 +43,7 @@ import { t } from "../i18n";
  */
 
 function desktopOnlyError(): string {
-  return t("이 작업은 Gajae 데스크톱 앱에서만 할 수 있습니다.");
+  return t("이 작업은 Peacock 데스크톱 앱에서만 할 수 있습니다.");
 }
 
 export class RemoteAgentBackend implements AgentBackend {

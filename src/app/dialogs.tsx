@@ -279,7 +279,7 @@ export function NewSessionDialog({
             <p>
               {terminal
                 ? t`${agentKind === "shell" ? t("셸") : agentEntry.name}을(를) 실행할 폴더를 선택하세요.`
-                : t("Gajae가 확인하고 수정할 프로젝트를 선택하세요.")}
+                : t("Peacock이 확인하고 수정할 프로젝트를 선택하세요.")}
             </p>
           </div>
           <button className="icon-button" type="button" onClick={cancel}>
@@ -691,7 +691,7 @@ export function GlobalSearchDialog({
           {!query.trim() && (
             <div className="global-search-empty">
               <FileSearch size={24} />
-              <strong>{t("모든 Gajae 대화를 검색합니다")}</strong>
+              <strong>{t("모든 Peacock 대화를 검색합니다")}</strong>
               <small>
                 {t("메시지, 계획, 도구 출력과 첨부 파일 내용을 찾을 수 있습니다.")} </small>
             </div>

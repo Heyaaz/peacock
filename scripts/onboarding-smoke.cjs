@@ -335,7 +335,7 @@ function drive() {
       assert(await pick('GJC'), 'choose GJC')
       assert(await click('이 에이전트로 시작'), 'start with GJC')
       await until(
-        async () => (await text()).includes('가재를 쓰려면 GJC가 필요합니다'),
+        async () => (await text()).includes('Peacock을 쓰려면 GJC가 필요합니다'),
         'install step after choosing GJC',
       )
       step('install step shown', await text())

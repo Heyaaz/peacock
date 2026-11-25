@@ -1,4 +1,4 @@
-# Gajae feature map
+# Peacock feature map
 
 **Map status: partially proven (2026-10-29).** The seven core journeys below were driven
 against the built app and real GJC 0.19.0 by `scripts/live-journeys.cjs`. Every other journey
@@ -22,7 +22,7 @@ file records the observed state and its cross-check.
 | Best-of-N | verified | `j6.json`: two attempts, each with its own worktree and branch, session models `kimi-k3` and `deepseek-v4-flash` for presets `opencodego` and `open-weights-deepseek`; adopting attempt 1 removed nothing; cleanup answered Cancel changed nothing and Continue removed only attempt 2's worktree and branch. The confirmation dialog was a stub that recorded the exact text shown. |
 | Quick input capture | verified for downscaling; Space overlay unproven | `j7.json`: a 5120x2880 PNG of 30,330,516 bytes became an 8,016,679 byte attachment at 2509x1411 through the app's own nativeImage path. Showing over another Space or a fullscreen app was not observed. |
 
-Gajae is a macOS Electron desktop client for GJC sessions. The primary surface mapped
+Peacock is a macOS Electron desktop client for GJC sessions. The primary surface mapped
 here is the desktop app. Secondary surfaces are the paired remote web/PWA client (same
 shell over HTTPS, with `보기 전용` or `조작 가능` permission) and the GJC CLI, which shares
 session files but never the live TUI connection. There is no public HTTP API in scope.
@@ -87,7 +87,7 @@ npm run dev:desktop
 ### Permission setup for tool-using journeys
 
 The default `도구 승인` value is `매번 확인`. GJC 0.18.12 has no reverse
-permission-request channel to the desktop, so Gajae fail-closes an interactive prompt
+permission-request channel to the desktop, so Peacock fail-closes an interactive prompt
 into deny mode. Journeys that need a tool must set `설정 → GJC → 도구 승인 →
 항상 허용` and save **before creating the session**. The setting is applied after create
 or resume; changing it does not retroactively unlock an existing hosted session.

@@ -6,7 +6,7 @@ execution, fork it, rename it, remove it from the rail, or delete its saved hist
 rail lists live sessions; the history picker reads saved sessions from the same directory
 the GJC CLI uses, so a session that has no live broker row is still reachable.
 
-Terminal GJC `/new` retires the old live row even when it is selected in Gajae.
+Terminal GJC `/new` retires the old live row even when it is selected in Peacock.
 Discovery removes it only on explicit broker evidence (`live:false` or `deleted:true`);
 a temporary list omission, failed scan or route probe does not evict the selected
 conversation. Each observed live-to-retired transition removes the row only once,
@@ -65,7 +65,7 @@ it does not drive the app's context-menu or native confirmation entry points.
   working.
 - Fork, rename, delete, hide: right-click a rail row to open its context menu, then
   choose `현재 상태에서 포크`, `이름 변경`, `삭제`, or `목록에서 숨기기`.
-- Delete and hide confirmation: Gajae's host confirmation, drawn over the window in the
+- Delete and hide confirmation: Peacock's host confirmation, drawn over the window in the
   app's style (a separate window, not part of the page). Delete asks `세션을 삭제할까요?`
   with `취소` and `삭제`; hide asks `이 세션을 목록에서 숨길까요? …` with `취소` and
   `숨기기`. The row leaves the rail only after the user agrees.
@@ -80,7 +80,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-CREATE — create from the rail.**
   Action: click `+`, fill the dialog, submit.
   ```bash
-  cu "In Gajae, click the sidebar button titled '새 Gajae 세션'. In the dialog labeled '새 GJC 세션', set 세션 이름 to MAP-SESSION-CREATE, keep '현재 workspace에서 작업', leave 프로젝트 위치 at $MAP_ROOT/workspace, and click '세션 만들기'. Save $MAP_ROOT/evidence/SESSION-CREATE-01.png and report the new row title, selected row, header title, and whether the transcript is empty."
+  cu "In Peacock, click the sidebar button titled '새 Peacock 세션'. In the dialog labeled '새 GJC 세션', set 세션 이름 to MAP-SESSION-CREATE, keep '현재 workspace에서 작업', leave 프로젝트 위치 at $MAP_ROOT/workspace, and click '세션 만들기'. Save $MAP_ROOT/evidence/SESSION-CREATE-01.png and report the new row title, selected row, header title, and whether the transcript is empty."
   ```
   Observable: a temporary `starting` row appears immediately, then is replaced by the
   real session row; it stays selected, the header shows `MAP-SESSION-CREATE`, and the
@@ -98,8 +98,8 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-CREATE — immediate entry points.**
   Action: use `⌘T` and `/new` separately; neither opens the dialog.
   ```bash
-  cu "In Gajae with MAP-SESSION selected, press Command+T. Save $MAP_ROOT/evidence/SESSION-CREATE-03.png and report whether a new empty session was created immediately, its workspace, and whether the dialog appeared."
-  cu "In the Gajae composer of MAP-SESSION, type exactly '/new' and press Enter. Save $MAP_ROOT/evidence/SESSION-CREATE-04.png and report the new row, its workspace, and whether the dialog appeared."
+  cu "In Peacock with MAP-SESSION selected, press Command+T. Save $MAP_ROOT/evidence/SESSION-CREATE-03.png and report whether a new empty session was created immediately, its workspace, and whether the dialog appeared."
+  cu "In the Peacock composer of MAP-SESSION, type exactly '/new' and press Enter. Save $MAP_ROOT/evidence/SESSION-CREATE-04.png and report the new row, its workspace, and whether the dialog appeared."
   ```
   Observable: `⌘T` creates and selects a new session in the selected session's workspace
   (or the connection workspace); `/new` creates and selects one in the current session's
@@ -109,7 +109,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-CREATE — worktree isolation.**
   Action: repeat the dialog with `별도 worktree 생성` and a synthetic branch.
   ```bash
-  cu "In Gajae, click '새 Gajae 세션'. Set 세션 이름 to MAP-WORKTREE. Choose '별도 worktree 생성' and type map-worktree into '안전한 브랜치 (선택)'. Click '세션 만들기'. Save $MAP_ROOT/evidence/SESSION-CREATE-02.png and report the selected session and any visible worktree path."
+  cu "In Peacock, click '새 Peacock 세션'. Set 세션 이름 to MAP-WORKTREE. Choose '별도 worktree 생성' and type map-worktree into '안전한 브랜치 (선택)'. Click '세션 만들기'. Save $MAP_ROOT/evidence/SESSION-CREATE-02.png and report the selected session and any visible worktree path."
   ```
   Observable: a new selected session appears; its workspace is a managed worktree, not
   `$MAP_ROOT/workspace` itself. Cross-check:
@@ -123,7 +123,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-SELECT — rail click.**
   Action: with `MAP-SESSION` and `MAP-SESSION-CREATE` both listed, click the older row.
   ```bash
-  cu "In Gajae, click the sidebar row titled MAP-SESSION. Save $MAP_ROOT/evidence/SESSION-SELECT-01.png and report the header title, the highlighted row, and any unread dot that disappeared."
+  cu "In Peacock, click the sidebar row titled MAP-SESSION. Save $MAP_ROOT/evidence/SESSION-SELECT-01.png and report the header title, the highlighted row, and any unread dot that disappeared."
   ```
   Observable: the conversation switches to `MAP-SESSION`; that row is highlighted and its
   `새 활동` dot is gone. Cross-check: `agent-control-sessions.json` no longer marks that
@@ -132,7 +132,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-SELECT — `⌘2`.**
   Action: press `⌘2` from the conversation.
   ```bash
-  cu "In Gajae, press Command+2. Save $MAP_ROOT/evidence/SESSION-SELECT-02.png and report which row title is now selected and which shortcut badge it shows."
+  cu "In Peacock, press Command+2. Save $MAP_ROOT/evidence/SESSION-SELECT-02.png and report which row title is now selected and which shortcut badge it shows."
   ```
   Observable: the second row in the filtered rail order opens and shows its `⌘2` badge.
   This is a separate entry point; the click run does not prove it. Reordering the rail
@@ -141,7 +141,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-SEARCH — global transcript search.**
   Action: press `⌘K`, search for the token from the first turn, open a result.
   ```bash
-  cu "In Gajae, press Command+K. In the dialog labeled '전체 대화 검색', type MAP-TURN-1 and wait for results. Save $MAP_ROOT/evidence/SESSION-SEARCH-01.png, then click the first result and save $MAP_ROOT/evidence/SESSION-SEARCH-02.png. Report the result count, selected session, and whether the matching message was revealed."
+  cu "In Peacock, press Command+K. In the dialog labeled '전체 대화 검색', type MAP-TURN-1 and wait for results. Save $MAP_ROOT/evidence/SESSION-SEARCH-01.png, then click the first result and save $MAP_ROOT/evidence/SESSION-SEARCH-02.png. Report the result count, selected session, and whether the matching message was revealed."
   ```
   Observable: results show a session title, workspace, snippet, and kind; clicking one
   closes the dialog, selects that session, and reveals the matching message. Cross-check:
@@ -152,7 +152,7 @@ at least one completed turn for the history/search journeys; no modal is open;
   Action: complete a turn, quit, relaunch with the same isolated roots, then open the
   picker. Quit and relaunch are separate commands from the dialog action.
   ```bash
-  cu "Quit Gajae with Command+Q. Report that the window closed."
+  cu "Quit Peacock with Command+Q. Report that the window closed."
   # Use the same launch path as baseline. With Vite still running in terminal A:
   GAJAE_USER_DATA_DIR="$MAP_ROOT/user-data" \
   GJC_CODING_AGENT_DIR="$MAP_ROOT/agent" \
@@ -162,7 +162,7 @@ at least one completed turn for the history/search journeys; no modal is open;
   # Or, if the baseline used the built app:
   # GAJAE_USER_DATA_DIR="$MAP_ROOT/user-data" GJC_CODING_AGENT_DIR="$MAP_ROOT/agent" \
   # AGENT_CONTROL_WORKSPACE="$MAP_ROOT/workspace" GJC_BIN="$(command -v gjc)" npm run desktop
-  cu "In the relaunched Gajae window, click the sidebar footer button titled '지난 세션 이어서 진행'. In the dialog, type MAP-SESSION into the search field, save $MAP_ROOT/evidence/SESSION-HISTORY-01.png, and report the matching rows, 12-character IDs, and badges. Click the MAP-SESSION row and save $MAP_ROOT/evidence/SESSION-HISTORY-02.png. Report the sidebar row, header title, transcript, and any read-only notice."
+  cu "In the relaunched Peacock window, click the sidebar footer button titled '지난 세션 이어서 진행'. In the dialog, type MAP-SESSION into the search field, save $MAP_ROOT/evidence/SESSION-HISTORY-01.png, and report the matching rows, 12-character IDs, and badges. Click the MAP-SESSION row and save $MAP_ROOT/evidence/SESSION-HISTORY-02.png. Report the sidebar row, header title, transcript, and any read-only notice."
   ```
   Observable: the dialog lists the saved session from disk even when discovery no longer
   shows it in the rail; the row shows its 12-character ID, time, and conversation count,
@@ -184,7 +184,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-FORK — fork the current state.**
   Action: right-click `MAP-SESSION`, choose `현재 상태에서 포크`.
   ```bash
-  cu "In Gajae, right-click the sidebar row MAP-SESSION and choose '현재 상태에서 포크'. Save $MAP_ROOT/evidence/SESSION-FORK-01.png and report the new row title, whether it is selected, and the transcript state."
+  cu "In Peacock, right-click the sidebar row MAP-SESSION and choose '현재 상태에서 포크'. Save $MAP_ROOT/evidence/SESSION-FORK-01.png and report the new row title, whether it is selected, and the transcript state."
   ```
   Observable: a new selected row titled `MAP-SESSION (포크)` appears. Cross-check: a new
   session file exists under `$MAP_ROOT/agent/sessions`; the source row remains.
@@ -192,7 +192,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-RENAME — inline rename.**
   Action: right-click the fork row, choose `이름 변경`, type, press Enter.
   ```bash
-  cu "In Gajae, right-click the row titled MAP-SESSION (포크) and choose '이름 변경'. Type MAP-RENAMED and press Enter. Save $MAP_ROOT/evidence/SESSION-RENAME-01.png and report the row title."
+  cu "In Peacock, right-click the row titled MAP-SESSION (포크) and choose '이름 변경'. Type MAP-RENAMED and press Enter. Save $MAP_ROOT/evidence/SESSION-RENAME-01.png and report the row title."
   ```
   Observable: the row title becomes `MAP-RENAMED`; pressing Escape instead leaves the old
   title. Cross-check:
@@ -204,7 +204,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-HIDE — hide without deleting.**
   Action: right-click `MAP-RENAMED`, choose `목록에서 숨기기`.
   ```bash
-  cu "In Gajae, right-click the sidebar row MAP-RENAMED and choose '목록에서 숨기기'. Save $MAP_ROOT/evidence/SESSION-HIDE-01.png and report whether the row disappeared, whether a dialog appeared, and whether the transcript opened elsewhere."
+  cu "In Peacock, right-click the sidebar row MAP-RENAMED and choose '목록에서 숨기기'. Save $MAP_ROOT/evidence/SESSION-HIDE-01.png and report whether the row disappeared, whether a dialog appeared, and whether the transcript opened elsewhere."
   ```
   Observable: a confirmation asks before hiding; after `숨기기` the row disappears; the session's
   saved transcript remains on disk and the app shows no deletion claim. Relaunching the
@@ -218,7 +218,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-DELETE — delete a fresh session.**
   Action: create `MAP-DELETE` with no turns, right-click it, choose `삭제`, confirm.
   ```bash
-  cu "In Gajae, create a new empty session named MAP-DELETE in $MAP_ROOT/workspace. Right-click its row, choose '삭제', and confirm in the dialog titled '세션을 삭제할까요?' by clicking '삭제'. Save $MAP_ROOT/evidence/SESSION-DELETE-01.png immediately and $MAP_ROOT/evidence/SESSION-DELETE-02.png after five seconds. Report the row state and any error text."
+  cu "In Peacock, create a new empty session named MAP-DELETE in $MAP_ROOT/workspace. Right-click its row, choose '삭제', and confirm in the dialog titled '세션을 삭제할까요?' by clicking '삭제'. Save $MAP_ROOT/evidence/SESSION-DELETE-01.png immediately and $MAP_ROOT/evidence/SESSION-DELETE-02.png after five seconds. Report the row state and any error text."
   ```
   Observable on success: the row disappears and stays gone; no confirmation dialog
   reopens. On GJC refusal: the row is restored, an error explains that deletion was not
@@ -229,7 +229,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - **SESSION-DELETE — refused case with tool history.**
   Action: run a tool-using turn in a disposable session, then delete it.
   ```bash
-  cu "In Gajae, use a session that has executed a tool, right-click it, choose '삭제', confirm '삭제', and save $MAP_ROOT/evidence/SESSION-DELETE-03.png. Report the exact error and whether the row was restored."
+  cu "In Peacock, use a session that has executed a tool, right-click it, choose '삭제', confirm '삭제', and save $MAP_ROOT/evidence/SESSION-DELETE-03.png. Report the exact error and whether the row was restored."
   ```
   Observable: on GJC 0.18.12 and 0.19.0 a session with tool execution commonly
   answers the delete with an unknown outcome. The app preserves the transcript and
@@ -269,7 +269,7 @@ at least one completed turn for the history/search journeys; no modal is open;
 - Every host confirmation (delete, hide, commit, settings save, and the rest) uses the same
   app-styled dialog, never a native macOS alert. It is its own scriptless window, so the
   page's DOM does not contain it; read it from a screenshot.
-- Relaunch with the explicit environment, never `open -a Gajae`. The macOS app launcher
+- Relaunch with the explicit environment, never `open -a Peacock`. The macOS app launcher
   does not carry `GAJAE_USER_DATA_DIR`, `GJC_CODING_AGENT_DIR`, or `GJC_BIN`, so the
   relaunched app silently uses the real profile and the history journey becomes invalid.
 - `SESSION-HISTORY` must use the same launch path as the baseline. Do not quit a Vite

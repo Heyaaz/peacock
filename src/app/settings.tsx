@@ -300,7 +300,7 @@ export function SettingsDialog({
     notifications:
       t("완료·승인/질문 대기·실패를 이벤트별로 알리고 소리를 고릅니다."),
     desktop: t("창 밖에서 동작하는 기능을 설정합니다."),
-    environment: t("Gajae가 쓰는 도구가 이 Mac에 준비됐는지 확인합니다."),
+    environment: t("Peacock이 쓰는 도구가 이 Mac에 준비됐는지 확인합니다."),
     automations: t("앱이 닫혀 있어도 GJC 작업을 정해진 시간에 실행합니다."),
   }[tab];
 
@@ -814,7 +814,7 @@ export function SettingsDialog({
                     },
                     {
                       key: "checkAppUpdates",
-                      label: t("Gajae 업데이트 확인"),
+                      label: t("Peacock 업데이트 확인"),
                       detail: t("배포된 앱은 시작할 때와 하루에 한 번 GitHub 릴리스를 확인하고, 새 버전마다 한 번만 알립니다. 앱을 내려받거나 바꾸지는 않습니다."),
                     },
                   ] as const

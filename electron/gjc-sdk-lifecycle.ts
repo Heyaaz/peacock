@@ -325,7 +325,7 @@ export async function createSession(host: LifecycleHost, input: CreateSessionInp
   const createdSessionId = response.sessionId;
   const session: AgentSession = {
     id: createdSessionId,
-    title: input.title?.trim() || "New Gajae session",
+    title: input.title?.trim() || "New session",
     subtitle: path.basename(sessionWorkspace) || sessionWorkspace,
     workspace: sessionWorkspace,
     runtime: "gjc",

@@ -2,7 +2,7 @@
   <img src="src/assets/peacock-icon.png" alt="Peacock" width="128">
 </p>
 
-<h1 align="center">Gajae</h1>
+<h1 align="center">Peacock</h1>
 
 <p align="center">
   A desktop home for coding-agent sessions: Claude Code, omp, Codex and <a href="https://github.com/Yeachan-Heo/gajae-code">GJC</a>.<br>
@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/gajae-promo.gif" alt="Gajae in thirty seconds" width="860">
+  <img src="docs/media/gajae-promo.gif" alt="Peacock in thirty seconds" width="860">
 </p>
 
-Gajae is an Electron app for running coding agents without living in a terminal.
+Peacock is an Electron app for running coding agents without living in a terminal.
 Pick the agent per session: Claude Code, omp (Oh My Pi), Codex, GJC, or a plain
-shell. Gajae never embeds an agent. Claude Code, omp and Codex run as their own
+shell. Peacock never embeds an agent. Claude Code, omp and Codex run as their own
 CLI in a terminal that herdr-core keeps alive across app restarts. For Claude
-Code and omp, Gajae also offers a chat view built from the agent's own session
+Code and omp, Peacock also offers a chat view built from the agent's own session
 file and answers their tool approvals from a card. GJC sessions go through GJC's public
 `gjc sdk session` CLI and the session files GJC already writes, so a request
 started in the app can be checked from the terminal and the other way round.
@@ -155,7 +155,7 @@ Each clip is the real app on its built-in sample data.
 
 ## Install
 
-Gajae needs an Apple-silicon Mac. The [`gh` CLI](https://cli.github.com), signed
+Peacock needs an Apple-silicon Mac. The [`gh` CLI](https://cli.github.com), signed
 in with `gh auth login`, is optional and powers the repository screen.
 
 Run the installer in Terminal:
@@ -165,24 +165,24 @@ curl -fsSL https://raw.githubusercontent.com/Heyaaz/gajae-bot/main/install.sh | 
 ```
 
 The installer downloads the latest release, checks its SHA-256, puts
-`Gajae.app` in `/Applications` (or `~/Applications` if that is not writable)
+`Peacock.app` in `/Applications` (or `~/Applications` if that is not writable)
 and opens it. Run it again to update.
 
 The app is not notarized yet. macOS blocks a copy downloaded in a browser, so
 use the installer rather than the ZIP on the releases page.
 
-On first launch, Gajae lists the agents it found (Claude Code, omp, Codex, GJC
+On first launch, Peacock lists the agents it found (Claude Code, omp, Codex, GJC
 and a shell) and asks which one new sessions open. An agent that is already
 installed is ready at once: the first session dialog opens on it. GJC is not
 required. Choosing GJC on a Mac without it walks you through setup:
 
-1. Gajae installs the GJC CLI from the public
+1. Peacock installs the GJC CLI from the public
    [`Yeachan-Heo/gajae-code`](https://github.com/Yeachan-Heo/gajae-code)
    releases, checked against their SHA-256, into `~/.local/bin/gjc`. That is
    where GJC's own installer puts it, so `gjc update` keeps working.
 2. You sign in to one provider through GJC's own login. GJC stores the
-   credential; Gajae does not.
-3. Gajae applies GJC's recommended model profile and opens the first
+   credential; Peacock does not.
+3. Peacock applies GJC's recommended model profile and opens the first
    conversation.
 
 A Mac that already runs GJC skips the install. GJC `0.18.12` or newer is
@@ -214,10 +214,10 @@ keeps opening GJC.
 
 ## Documentation
 
-- [Using Gajae](docs/usage.md): the full guide, from running turns and slash
+- [Using Peacock](docs/usage.md): the full guide, from running turns and slash
   commands to deleting sessions and parallel runs.
 - [Remote access](docs/remote-access.md): pairing a phone or a second machine.
-- [Developing Gajae](docs/development.md): running from source, packaging,
+- [Developing Peacock](docs/development.md): running from source, packaging,
   and GJC compatibility notes.
 - [Feature map](docs/features/README.md): scripted checks for each feature.
 
@@ -232,11 +232,11 @@ npm run dev:desktop    # Electron + Vite
 npm run package:mac    # local, ad-hoc signed app in release/
 ```
 
-See [Developing Gajae](docs/development.md) for public release signing and
+See [Developing Peacock](docs/development.md) for public release signing and
 the project layout.
 
 ## License
 
-Gajae source code is available under the [MIT License](LICENSE). A public binary
+Peacock source code is available under the [MIT License](LICENSE). A public binary
 release is produced only after the maintainer separately confirms redistribution
 rights for the bundled artwork.

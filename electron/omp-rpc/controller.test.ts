@@ -1105,6 +1105,6 @@ describe("OmpRpcController folder git panel", () => {
     expect(status).toMatchObject({ branch: "main", files: expect.arrayContaining([expect.objectContaining({ path: expect.stringMatching(/note\.txt$/u) })]) });
     const diff = await context.controller.getDiff(session.id);
     expect(diff.files.map((file) => file.path)).toContain("note.txt");
-    await expect(context.controller.stageFiles(session.id, ["note.txt"])).rejects.toThrow("managed Gajae worktree");
+    await expect(context.controller.stageFiles(session.id, ["note.txt"])).rejects.toThrow("managed Peacock worktree");
   });
 });

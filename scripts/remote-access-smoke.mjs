@@ -27,7 +27,7 @@ import { registerRemoteIpcHandlers } from '../dist-electron/electron/remote-ipc-
 const appPath = path.resolve(import.meta.dirname, '..')
 const userData = mkdtempSync(path.join(tmpdir(), 'gajae-remote-smoke-'))
 
-app.setName('Gajae Remote Smoke')
+app.setName('Peacock Remote Smoke')
 app.setPath('userData', userData)
 
 const connection = {
@@ -208,8 +208,8 @@ async function main() {
   const shell = await request(`${origin}/`)
   require_(shell.status === 200, `Web client was not served (${shell.status})`)
   require_(
-    String(shell.body).includes('gajae'),
-    'Served web client is not the Gajae remote client',
+    String(shell.body).includes('Peacock'),
+    'Served web client is not the Peacock remote client',
   )
   const unauthenticated = await request(`${origin}/api/state`)
   require_(unauthenticated.status === 401, 'Session data was served without a device token')

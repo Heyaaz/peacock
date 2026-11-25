@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const [version] = process.argv.slice(2);
 if (version === "-h" || version === "--help") {
-  console.log("Usage: npx gajae [version]\nInstalls or updates Gajae to the latest release, or to the given version.");
+  console.log("Usage: npx gajae [version]\nInstalls or updates Peacock (formerly Gajae) to the latest release, or to the given version.");
   process.exit(0);
 }
 const script = fileURLToPath(new URL("../install.sh", import.meta.url));

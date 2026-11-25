@@ -161,7 +161,7 @@ export function QuickInput({ bridge }: { bridge: QuickInputDesktopBridge }) {
       {notice.kind === "permission" && (
         <p className="quick-input-notice" role="alert">
           <span>
-            {t("화면을 캡처하려면 시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 Gajae를 켜 주세요. 켠 뒤에는 Gajae를 다시 열어야 할 수 있습니다.")}
+            {t("화면을 캡처하려면 시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 Peacock을 켜 주세요. 켠 뒤에는 Peacock을 다시 열어야 할 수 있습니다.")}
           </span>
           <button
             type="button"

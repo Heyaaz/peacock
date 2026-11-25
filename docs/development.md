@@ -1,4 +1,4 @@
-# Developing Gajae
+# Developing Peacock
 
 ## Run
 
@@ -51,15 +51,15 @@ Never put these credentials in the repository or the packaged application. A
 successful public release produces the portable pair:
 
 ```text
-release/Gajae-0.1.0-darwin-arm64/Gajae-0.1.0-darwin-arm64.zip
-release/Gajae-0.1.0-darwin-arm64/Gajae-0.1.0-darwin-arm64.zip.sha256
+release/Peacock-0.1.0-darwin-arm64/Peacock-0.1.0-darwin-arm64.zip
+release/Peacock-0.1.0-darwin-arm64/Peacock-0.1.0-darwin-arm64.zip.sha256
 ```
 
 Published version artifacts are immutable. Bump `package.json` before creating a
 different build; the release script refuses to overwrite a same-version ZIP.
 
 The local ad-hoc development package remains at
-`release/Gajae-darwin-arm64/Gajae.app` and is not a public distribution artifact.
+`release/Peacock-darwin-arm64/Peacock.app` and is not a public distribution artifact.
 
 ### Releasing without a Developer ID
 
@@ -71,12 +71,12 @@ points only at the installers.
 
 ```bash
 GAJAE_ASSET_RIGHTS_CONFIRMED=1 npm run package:mac -- --public-release --adhoc
-gh release create v0.1.0 release/Gajae-0.1.0-darwin-arm64/Gajae-0.1.0-darwin-arm64.zip*
+gh release create v0.1.0 release/Peacock-0.1.0-darwin-arm64/Peacock-0.1.0-darwin-arm64.zip*
 (cd packages/npm && npm publish)
 ```
 
 The release tag is `v` plus the `package.json` version. The installers resolve
-`releases/latest` and fetch `Gajae-<version>-darwin-arm64.zip` with its
+`releases/latest` and fetch `Peacock-<version>-darwin-arm64.zip` with its
 `.sha256`, so both assets must be attached. The npm package only wraps
 `install.sh`, so publish a new version of it only when the script changes.
 The repository has to be public for either installer to reach the release.
@@ -147,7 +147,7 @@ validate a credential with the provider's server.
 <!-- gjc-matrix:start -->
 <!-- gjc-matrix:end -->
 
-Gajae targets installed `gajae-code` version `0.18.12` or newer. The live
+Peacock targets installed `gajae-code` version `0.18.12` or newer. The live
 checks below distinguish confirmed behavior from remaining runtime limitations;
 the versions marked **verified on 0.19.0** were re-run against the installed
 `gjc/0.19.0` release. It uses only the credential-free public surface:
@@ -205,7 +205,7 @@ turn.abort {
 --idempotency-key "gajae-abort-<uuid>"
 ```
 
-Gajae requires the following behavior, shipped by the supported runtime:
+Peacock requires the following behavior, shipped by the supported runtime:
 
 1. Forward the CLI idempotency key on control-request envelopes
 2. `turn.abort` `operator: true` — an external controller can stop owned work. Requires `--confirm`
@@ -221,7 +221,7 @@ stopped; the transcript stayed the source of truth for whether work continued.
 Upstream https://github.com/Yeachan-Heo/gajae-code/pull/6776 (reported as
 https://github.com/Yeachan-Heo/gajae-code/issues/6772) scoped the active-submission
 lookup to the broker-authorized `operator` flag. On 0.18.12 the route does confirm
-`turn:"stopped"` once the host has registered the active submission, and Gajae
+`turn:"stopped"` once the host has registered the active submission, and Peacock
 re-asks briefly because a local `running` event precedes that registration. The
 0.18.12 e2e still reproduced `no_active_turn` while a 30-second bash turn was
 verifiably running; that path remains unconfirmed and is never reported as
@@ -242,7 +242,7 @@ sessionPath and its configured cwd."). 0.18.11 rendered that refusal as
 `outcomeCertainty: unknown`, retryability `unknown`, guidance "do not blindly
 retry"), so a refused delete was indistinguishable from a delete that may have
 half-applied. Upstream https://github.com/Yeachan-Heo/gajae-code/pull/6777 adds the
-`lifecycle_input_refused` diagnostic for that admission refusal. Gajae still passes
+`lifecycle_input_refused` diagnostic for that admission refusal. Peacock still passes
 the path it located; an unknown outcome preserves the transcript, metadata, and
 worktree and marks the session as recovering rather than reporting a deletion it
 cannot prove. Close-then-delete succeeds for a session that only replied, but a
@@ -272,7 +272,7 @@ The app never edits, truncates, or deletes the ledger, and a live host this
 window created, forked, or resumed is closed first; a terminal's host is never
 signalled.
 
-Gajae now preserves the public envelope's diagnostics and outcome certainty.
+Peacock now preserves the public envelope's diagnostics and outcome certainty.
 `lifecycle_input_refused` produces an actionable input-refusal error, but it is not
 proof that deletion was unapplied: unless broker reconciliation proves deletion,
 the session remains recovering and all local evidence is retained. There is no
@@ -284,7 +284,7 @@ to clear the admission fence, and v0.19.0 includes it. That diagnostic was absen
 from the 0.19.0 delete attempts above because admission passed: the failure came
 from the post-persistence read-back described above, not from the legacy
 `accepted` row. The isolation experiment removed rows only from a copy of the
-ledger; the live ledger was never edited. Gajae surfaces the diagnostic
+ledger; the live ledger was never edited. Peacock surfaces the diagnostic
 distinctly when a broker does return it and retains the session and evidence: the
 current request was not dispatched, but earlier effects remain unresolved.
 Preserve the original operation, request key, target, and ledger; do not edit the
@@ -315,7 +315,7 @@ the base provider stream is interrupted (not naturally completed), the follow-up
 reaches the provider and transcript exactly once, and acceptance precedes queue
 removal. The fixture stream spans the 15-second discovery interval so session
 startup is not confused with Enter handling. This does not verify an installed
-Gajae bundle or ordinary CLI ask support.
+Peacock bundle or ordinary CLI ask support.
 
 ## Lifecycle receipts
 

@@ -45,8 +45,8 @@ describe("SDK session CLI architecture", () => {
     const manifest = JSON.parse(await source("package.json"));
     const main = await source("electron/main.ts");
     const ipc = await source("shared/gjc-ipc.ts");
-    expect(manifest.productName).toBe("Gajae");
-    expect(main).toContain('app.setName("Gajae")');
+    expect(manifest.productName).toBe("Peacock");
+    expect(main).toContain('app.setName("Peacock")');
     expect(main).toContain('path.join(app.getPath("appData"), "Agent Control")');
     expect(ipc).toContain('"agent-control:gjc:');
   });

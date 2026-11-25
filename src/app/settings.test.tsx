@@ -407,7 +407,7 @@ describe("settings desktop tab", () => {
         dockBadge: false,
       });
       expect(toggle("메뉴바 상태 표시")?.checked).toBe(false);
-      await act(async () => toggle("Gajae 업데이트 확인")?.click());
+      await act(async () => toggle("Peacock 업데이트 확인")?.click());
       expect(setDesktopIntegration).toHaveBeenLastCalledWith({
         ...DEFAULT_DESKTOP_INTEGRATION,
         menuBarStatus: false,

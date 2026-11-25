@@ -1,7 +1,7 @@
 {
   "name": "gajae",
   "version": "0.1.0",
-  "description": "Installs or updates Gajae, the macOS desktop app for GJC coding-agent sessions.",
+  "description": "Installs or updates Peacock (formerly Gajae), the macOS desktop app for coding-agent sessions.",
   "license": "MIT",
   "repository": {
     "type": "git",

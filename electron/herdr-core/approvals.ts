@@ -106,7 +106,7 @@ export function approvalAnswer(decision: "allow" | "deny", comment?: string): st
         decision === "allow"
           ? { behavior: "allow" }
           : // with words for the agent it goes on with them; without, it stops as at the terminal's No
-            { behavior: "deny", message: comment || "The user declined this tool call in Gajae.", interrupt: !comment },
+            { behavior: "deny", message: comment || "The user declined this tool call in Peacock.", interrupt: !comment },
     },
   });
 }

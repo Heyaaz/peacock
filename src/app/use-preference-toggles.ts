@@ -21,7 +21,7 @@ export function usePreferenceToggles(
     const next = !current;
     if (!settingsBridge) {
       // A browser is the remote client of a host, and the preference belongs to the host.
-      setAppError(t("설정은 Gajae 데스크톱 앱에서 열 수 있습니다."));
+      setAppError(t("설정은 Peacock 데스크톱 앱에서 열 수 있습니다."));
       return;
     }
     setPreferences((latest) => ({ ...latest, thoughtsExpanded: next }));

@@ -1,9 +1,9 @@
 {
   "name": "agent-control",
-  "productName": "Gajae",
+  "productName": "Peacock",
   "private": true,
   "version": "0.1.3",
-  "description": "A native macOS desktop client for GJC coding-agent sessions.",
+  "description": "Peacock: a native macOS desktop app for coding-agent sessions (Claude Code, omp, Codex, GJC).",
   "license": "MIT",
   "repository": {
     "type": "git",

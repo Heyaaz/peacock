@@ -59,7 +59,7 @@ export function AppUpdateRow({
   return (
     <div className="gjc-update-row">
       <span>
-        <strong>{t("Gajae 버전")}</strong>
+        <strong>{t("Peacock 버전")}</strong>
         <small>{status ? appUpdateSummary(status) : t("업데이트 정보를 확인합니다")}</small>
       </span>
       <span className="gjc-update-actions">

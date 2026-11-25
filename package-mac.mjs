@@ -91,9 +91,12 @@ const [outputDirectory] = await packager({
     unpackDir: 'node_modules/node-pty/**/*',
   },
   prune: true,
-  appBundleId: 'com.gajae.desktop',
-  // Info.plist CFBundleURLTypes: macOS routes gajae:// links to this bundle.
-  protocols: [{ name: 'Gajae', schemes: ['gajae'] }],
+  // A new id since the rename (was com.gajae.desktop): macOS treats Peacock as another app, so
+  // notifications, screen recording and login items are granted again (design §11).
+  appBundleId: 'dev.peacock.app',
+  // Info.plist CFBundleURLTypes: macOS routes peacock:// links, and gajae:// from before the
+  // rename, to this bundle.
+  protocols: [{ name: 'Peacock', schemes: ['peacock', 'gajae'] }],
   appVersion: packageJson.version,
   icon: path.join(root, 'src/assets/peacock-icon'),
   // The menu bar image is derived from this at runtime; see menuBarIconPath.

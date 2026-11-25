@@ -54,17 +54,17 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Choose the folder GJC may inspect and edit.",
   "GJC에 실행할 작업을 구체적으로 작성하세요":
     "Describe the task for GJC in detail",
-  "Gajae 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.":
-    "Turn on Remote access in the Gajae desktop app and enter the connection code shown. Scanning the QR code fills it in automatically.",
-  "Gajae 세션 정보": "Gajae session info",
-  "Gajae가 확인하고 수정할 프로젝트를 선택하세요.":
-    "Choose the project Gajae may inspect and edit.",
+  "Peacock 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.":
+    "Turn on Remote access in the Peacock desktop app and enter the connection code shown. Scanning the QR code fills it in automatically.",
+  "Peacock 세션 정보": "Peacock session info",
+  "Peacock이 확인하고 수정할 프로젝트를 선택하세요.":
+    "Choose the project Peacock may inspect and edit.",
   "Git 레포": "Git repo",
   "Git 레포 아님": "Not a Git repo",
   "Git 레포가 아니라 레포 화면이 없습니다":
     "This is not a Git repo, so there is no repository view.",
-  "Git 변경 작업은 Gajae managed worktree 세션에서만 사용할 수 있습니다.":
-    "Git changes are only available in a Gajae managed-worktree session.",
+  "Git 변경 작업은 Peacock managed worktree 세션에서만 사용할 수 있습니다.":
+    "Git changes are only available in a Peacock managed-worktree session.",
   "Git 저장소가 아닙니다.": "This is not a Git repository.",
   "GitHub remote가 없습니다": "No GitHub remote",
   "GitHub remote가 없어서 열 수 있는 페이지가 없습니다.":
@@ -203,7 +203,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "모델별 사용량": "Usage by model",
   "모델별 토큰, 캐시율, 비용을 확인합니다.":
     "Inspect tokens, cache rate, and cost by model.",
-  "모든 Gajae 대화를 검색합니다": "Search all Gajae conversations",
+  "모든 Peacock 대화를 검색합니다": "Search all Peacock conversations",
   모양: "Appearance",
   "목록에서 숨기기": "Hide from list",
   목록으로: "Back to list",
@@ -287,8 +287,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "설명 없음": "No description",
   설정: "Settings",
   "설정 열기": "Open settings",
-  "설정은 Gajae 데스크톱 앱에서 열 수 있습니다.":
-    "Settings are available in the Gajae desktop app.",
+  "설정은 Peacock 데스크톱 앱에서 열 수 있습니다.":
+    "Settings are available in the Peacock desktop app.",
   "설정을 불러오지 못했습니다:": "Could not load settings:",
   "설정을 불러온 뒤 저장할 수 있습니다.":
     "Settings can be saved after they load.",
@@ -548,8 +548,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Access to this device was revoked. Reconnect from the desktop.",
   "이 대화에서 찾기": "Find in this conversation",
   "이 대화의 셸 실행 기록입니다.": "Shell activity for this conversation.",
-  "이 작업은 Gajae 데스크톱 앱에서만 할 수 있습니다.":
-    "This can only be done in the Gajae desktop app.",
+  "이 작업은 Peacock 데스크톱 앱에서만 할 수 있습니다.":
+    "This can only be done in the Peacock desktop app.",
   "이 프로젝트에 세션이 없습니다": "No sessions in this project",
   "이름 변경": "Rename",
   "이미 처리됐을 수 있습니다. 대화 기록을 확인한 뒤 입력창으로 꺼내세요.":
@@ -965,17 +965,17 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "Dock 배지": "Dock badge",
   "승인·질문 대기, 실패, 안 읽은 완료 세션 수를 Dock 아이콘에 표시합니다.":
     "Shows the number of sessions waiting for approval or an answer, failed, or finished and unread on the Dock icon.",
-  "Gajae 업데이트 확인": "Check for Gajae updates",
+  "Peacock 업데이트 확인": "Check for Peacock updates",
   "배포된 앱은 시작할 때와 하루에 한 번 GitHub 릴리스를 확인하고, 새 버전마다 한 번만 알립니다. 앱을 내려받거나 바꾸지는 않습니다.":
     "A released app checks GitHub releases at launch and once a day, and announces each new version once. It never downloads or replaces the app.",
-  "Gajae 버전": "Gajae version",
+  "Peacock 버전": "Peacock version",
   "{0} · 아직 확인하지 않았습니다": "{0} · Not checked yet",
   "{0} · 확인할 수 없음": "{0} · Cannot check",
   "지금 확인": "Check now",
   "릴리스 페이지": "Release page",
   "환경 점검": "Environment check",
-  "Gajae가 쓰는 도구가 이 Mac에 준비됐는지 확인합니다.":
-    "Check that the tools Gajae runs on are ready on this Mac.",
+  "Peacock이 쓰는 도구가 이 Mac에 준비됐는지 확인합니다.":
+    "Check that the tools Peacock runs on are ready on this Mac.",
   "기본 모델 프로필": "Default model profile",
   "GitHub CLI 로그인": "GitHub CLI sign-in",
   "설치되어 있지 않거나 PATH에서 찾지 못했습니다":
@@ -1052,10 +1052,10 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Too many files; searching only part of the workspace",
   "빠른 입력": "Quick input",
   "무엇을 할까요? Enter를 누르면 새 세션 창이 열립니다.":
-    "What should Gajae do? Enter opens it as a new session.",
+    "What should Peacock do? Enter opens it as a new session.",
   "캡처 빼기": "Remove capture",
-  "화면을 캡처하려면 시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 Gajae를 켜 주세요. 켠 뒤에는 Gajae를 다시 열어야 할 수 있습니다.":
-    "To capture the screen, turn on Gajae in System Settings > Privacy & Security > Screen Recording. You may need to reopen Gajae afterwards.",
+  "화면을 캡처하려면 시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 Peacock을 켜 주세요. 켠 뒤에는 Peacock을 다시 열어야 할 수 있습니다.":
+    "To capture the screen, turn on Peacock in System Settings > Privacy & Security > Screen Recording. You may need to reopen Peacock afterwards.",
   프로젝트: "Project",
   "프로젝트 없음": "No project",
   "화면 캡처 첨부": "Attach a screen capture",
@@ -1100,9 +1100,9 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "대화 열기": "Open conversation",
   "diff 보기": "Show diff",
   "이 시도 채택": "Adopt this attempt",
-  "가재를 쓰려면 GJC가 필요합니다": "Gajae needs GJC",
-  "GJC는 가재가 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.":
-    "GJC is the engine Gajae uses to work with AI. Gajae downloads the official release (about 140 MB) and installs it on this Mac.",
+  "Peacock을 쓰려면 GJC가 필요합니다": "Peacock needs GJC",
+  "GJC는 Peacock이 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.":
+    "GJC is the engine Peacock uses to work with AI. Peacock downloads the official release (about 140 MB) and installs it on this Mac.",
   "GJC 받는 중": "Downloading GJC",
   "설치를 확인하는 중…": "Checking the installation…",
   "받는 중 {0}MB / {1}MB": "Downloading {0} MB of {1} MB",
@@ -1130,13 +1130,13 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "다른 AI 고르기": "Choose a different AI",
   준비됐습니다: "You're all set",
   "{0} 추천 모델로 설정했습니다. 작업할 폴더를 고르고 첫 대화를 시작하세요.":
-    "Gajae now uses the recommended model for {0}. Choose a folder to work in and start your first conversation.",
+    "Peacock now uses the recommended model for {0}. Choose a folder to work in and start your first conversation.",
   "첫 대화 시작": "Start your first conversation",
   "나중에 직접 설정할게요": "I'll set it up myself later",
   "{0}에 로그인했습니다. 모델 선택에서 이 제공자의 모델을 고를 수 있습니다.":
     "Signed in to {0}. You can pick this provider's models in the model picker.",
   "{0} 추천 모델로 설정했습니다.":
-    "Gajae now uses the recommended model for {0}.",
+    "Peacock now uses the recommended model for {0}.",
   "AI 로그인": "Sign in to AI",
   "AI 로그인 / 제공자 추가": "AI sign-in / add a provider",
   "ChatGPT·Claude 같은 구독 계정이나 API 키로 로그인합니다. 다른 AI를 더하거나 로그인이 만료됐을 때도 여기서 하세요.":

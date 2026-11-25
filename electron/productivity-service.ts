@@ -165,7 +165,7 @@ function metadata(html: string, url: URL): LinkPreview {
 async function defaultTransport(url: URL, address: string, signal: AbortSignal): Promise<LinkResponse> {
   const fn = url.protocol === 'https:' ? httpsRequest : httpRequest
   return new Promise((resolve, reject) => {
-    const req = fn(url, { signal, headers: { 'user-agent': 'Gajae/1.0', host: url.host }, lookup: (_host, _opts, cb) => cb(null, address, isIP(address)) }, res => {
+    const req = fn(url, { signal, headers: { 'user-agent': 'Peacock/1.0', host: url.host }, lookup: (_host, _opts, cb) => cb(null, address, isIP(address)) }, res => {
       resolve({ statusCode: res.statusCode || 0, headers: res.headers, body: res })
     })
     req.once('error', reject)

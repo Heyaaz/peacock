@@ -92,7 +92,7 @@ async function mutateGit(
     !worktree?.managed ||
     path.resolve(session.workspace) !== path.resolve(worktree.path)
   )
-    throw new Error("Git mutation requires a managed Gajae worktree");
+    throw new Error("Git mutation requires a managed Peacock worktree");
   const root = (
     await execFile("git", [
       "-C",

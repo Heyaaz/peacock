@@ -136,7 +136,7 @@ export default function App() {
   const [connection, setConnection] = useState<BackendConnection>({
     state: "connecting",
     backend: "mock",
-    label: "Gajae runtime",
+    label: "GJC runtime",
     detail: "Connecting",
     workspace: "",
   });
@@ -1057,7 +1057,7 @@ export default function App() {
     // Remote clients do not edit host preferences; the panel that does lives in
     // the desktop app, where the runtime and workspace it changes also live.
     if (backend.remoteAccess) {
-      setAppError(t("설정은 Gajae 데스크톱 앱에서 열 수 있습니다."));
+      setAppError(t("설정은 Peacock 데스크톱 앱에서 열 수 있습니다."));
       return;
     }
     setSettingsOpen(true);

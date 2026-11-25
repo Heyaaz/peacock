@@ -47,7 +47,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
   Action: open the summary button, screenshot the profile list, select a different
   profile.
   ```bash
-  cu "In Gajae, click the composer button whose tooltip is 'Model: /model · Effort: ⇧⇥'. Save $MAP_ROOT/evidence/MODEL-PICK-01.png and report the '모델 프로필' header, the available count, and every visible profile name. Click a profile different from the current one. Save $MAP_ROOT/evidence/MODEL-PICK-02.png and report the summary text and any error."
+  cu "In Peacock, click the composer button whose tooltip is 'Model: /model · Effort: ⇧⇥'. Save $MAP_ROOT/evidence/MODEL-PICK-01.png and report the '모델 프로필' header, the available count, and every visible profile name. Click a profile different from the current one. Save $MAP_ROOT/evidence/MODEL-PICK-02.png and report the summary text and any error."
   ```
   Observable: the menu lists profiles grouped by source; selecting one closes the menu,
   the composer summary's model name changes, and no user bubble is added. If the runtime
@@ -60,7 +60,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **MODEL-SLASH — open the picker.**
   Action: send `/model` with no argument.
   ```bash
-  cu "In the Gajae composer, type exactly '/model' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-01.png and report whether the profile menu opened, whether the composer cleared, and whether any user bubble appeared."
+  cu "In the Peacock composer, type exactly '/model' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-01.png and report whether the profile menu opened, whether the composer cleared, and whether any user bubble appeared."
   ```
   Observable: the profile menu opens; the composer clears; no prompt is sent to GJC and
   no user bubble appears.
@@ -68,7 +68,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **MODEL-SLASH — switch immediately.**
   Action: send `/model codex-medium` (or another exact visible value).
   ```bash
-  cu "In the Gajae composer, type exactly '/model codex-medium' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-02.png and report the composer summary model name, any error, and whether a user bubble appeared."
+  cu "In the Peacock composer, type exactly '/model codex-medium' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-02.png and report the composer summary model name, any error, and whether a user bubble appeared."
   ```
   Observable: the summary updates to the selected profile; no user bubble is added. The
   matcher accepts an exact value or name, is case-insensitive, strips a leading
@@ -78,7 +78,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **MODEL-SLASH — reject an unknown or ambiguous name.**
   Action: send a deliberately unknown name.
   ```bash
-  cu "In the Gajae composer, type exactly '/model map-not-a-profile' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-03.png and report the composer error text, the composer value, and whether the model summary changed."
+  cu "In the Peacock composer, type exactly '/model map-not-a-profile' and press Enter. Save $MAP_ROOT/evidence/MODEL-SLASH-03.png and report the composer error text, the composer value, and whether the model summary changed."
   ```
   Observable: the composer shows `알 수 없는 모델 프리셋: map-not-a-profile`; the text stays
   in the composer and the summary does not change. An ambiguous prefix produces the same
@@ -87,7 +87,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **MODEL-DEFAULT — change the default for new sessions.**
   Action: open Settings, edit the GJC model profile, save, then create a session.
   ```bash
-  cu "In Gajae, click the sidebar button titled '설정'. Open the GJC tab. Save $MAP_ROOT/evidence/MODEL-DEFAULT-01.png and report the current '모델 프로필' value. Change it to codex-eco and click '저장'; confirm the runtime settings confirmation and save $MAP_ROOT/evidence/MODEL-DEFAULT-02.png. Then create a new session in $MAP_ROOT/workspace and report which model profile its composer starts with."
+  cu "In Peacock, click the sidebar button titled '설정'. Open the GJC tab. Save $MAP_ROOT/evidence/MODEL-DEFAULT-01.png and report the current '모델 프로필' value. Change it to codex-eco and click '저장'; confirm the runtime settings confirmation and save $MAP_ROOT/evidence/MODEL-DEFAULT-02.png. Then create a new session in $MAP_ROOT/workspace and report which model profile its composer starts with."
   ```
   Observable: the settings field saves a non-empty profile ID; saving reconnects the GJC
   runtime and opens the host confirmation `런타임 설정을 적용할까요? …` with
@@ -103,7 +103,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **EFFORT-CYCLE — Shift+Tab.**
   Action: focus the composer, note the effort label, press `Shift+Tab`.
   ```bash
-  cu "In Gajae, click the MAP-SESSION composer and report the effort text shown in the 'Model: /model · Effort: ⇧⇥' button. Press Shift+Tab once. Save $MAP_ROOT/evidence/EFFORT-CYCLE-01.png and report the new effort text and any error."
+  cu "In Peacock, click the MAP-SESSION composer and report the effort text shown in the 'Model: /model · Effort: ⇧⇥' button. Press Shift+Tab once. Save $MAP_ROOT/evidence/EFFORT-CYCLE-01.png and report the new effort text and any error."
   ```
   Observable: the effort text changes to the next level the runtime offers; no user bubble
   is added. If the model does not support effort switching, the app error
@@ -113,7 +113,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **EFFORT-MENU — open from the composer or `/effort`.**
   Action: open the effort menu and select a level.
   ```bash
-  cu "In the Gajae composer, type exactly '/effort' and press Enter. Save $MAP_ROOT/evidence/EFFORT-MENU-01.png and report the '추론 Effort' header, the levels, and the checked level. Click a different level. Save $MAP_ROOT/evidence/EFFORT-MENU-02.png and report the composer effort text."
+  cu "In the Peacock composer, type exactly '/effort' and press Enter. Save $MAP_ROOT/evidence/EFFORT-MENU-01.png and report the '추론 Effort' header, the levels, and the checked level. Click a different level. Save $MAP_ROOT/evidence/EFFORT-MENU-02.png and report the composer effort text."
   ```
   Observable: `/effort` opens the `추론 Effort` menu with the current level checked;
   selecting another level updates the composer summary and adds no user bubble. The
@@ -122,7 +122,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **FAST-TIER — toggle from the model menu.**
   Action: open the model menu, click `Fast on`, observe the badge, then `Fast off`.
   ```bash
-  cu "In Gajae, open the model menu from the 'Model: /model · Effort: ⇧⇥' button. If a group labeled 'Fast 모드' is present, save $MAP_ROOT/evidence/FAST-TIER-01.png and click 'Fast on'. Save $MAP_ROOT/evidence/FAST-TIER-02.png and report the button aria-pressed state, the composer Fast badge, and any error. Then click 'Fast off' and save $MAP_ROOT/evidence/FAST-TIER-03.png."
+  cu "In Peacock, open the model menu from the 'Model: /model · Effort: ⇧⇥' button. If a group labeled 'Fast 모드' is present, save $MAP_ROOT/evidence/FAST-TIER-01.png and click 'Fast on'. Save $MAP_ROOT/evidence/FAST-TIER-02.png and report the button aria-pressed state, the composer Fast badge, and any error. Then click 'Fast off' and save $MAP_ROOT/evidence/FAST-TIER-03.png."
   ```
   Observable: when the runtime advertises Fast, `Fast on` becomes pressed, the summary
   shows a `Fast` badge with tooltip `Fast 모드 켜짐`, and `Fast off` clears both. The badge
@@ -133,7 +133,7 @@ before choosing values, because profiles depend on the disposable GJC profile.
 - **FAST-TIER — slash entry points.**
   Action: send `/fast on`, observe, then `/fast off`.
   ```bash
-  cu "In the Gajae composer, type exactly '/fast on' and press Enter. Save $MAP_ROOT/evidence/FAST-TIER-04.png and report the Fast badge, any runtime output, and any error. Then type exactly '/fast status' and report the visible output."
+  cu "In the Peacock composer, type exactly '/fast on' and press Enter. Save $MAP_ROOT/evidence/FAST-TIER-04.png and report the Fast badge, any runtime output, and any error. Then type exactly '/fast status' and report the visible output."
   ```
   Observable: `/fast on` and `/fast off` are runtime controls; they add no prompt bubble.
   `/fast status` reports the configured intent. The badge is still the authoritative

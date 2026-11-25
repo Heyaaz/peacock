@@ -93,7 +93,7 @@ function statusTray(state: DesktopIntegrationState): StatusTray {
   if (menu.length === 0)
     menu.push({ kind: "heading", label: hostText("진행 중인 세션 없음") });
   menu.push({ kind: "separator" });
-  menu.push({ kind: "open-app", label: hostText("Gajae 열기") });
+  menu.push({ kind: "open-app", label: hostText("Peacock 열기") });
   return { title, tooltip, menu };
 }
 

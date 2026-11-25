@@ -30,7 +30,7 @@ export function electronStatusSurface(
       icon ??= menuBarIcon(options.iconPath);
       tray ??= new Tray(icon);
       // Without an image an empty title would leave an invisible, unclickable item.
-      tray.setTitle(model.title || (icon.isEmpty() ? "Gajae" : ""));
+      tray.setTitle(model.title || (icon.isEmpty() ? "Peacock" : ""));
       tray.setToolTip(model.tooltip);
       tray.setContextMenu(
         Menu.buildFromTemplate(model.menu.map((entry) => menuItem(entry, options))),

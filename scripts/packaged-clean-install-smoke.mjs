@@ -8,8 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 const root = path.resolve(import.meta.dirname, '..')
-const appBinary = path.join(root, 'release/Gajae-darwin-arm64/Gajae.app/Contents/MacOS/Gajae')
-const packagedAsar = path.join(root, 'release/Gajae-darwin-arm64/Gajae.app/Contents/Resources/app.asar')
+const appBinary = path.join(root, 'release/Peacock-darwin-arm64/Peacock.app/Contents/MacOS/Peacock')
+const packagedAsar = path.join(root, 'release/Peacock-darwin-arm64/Peacock.app/Contents/Resources/app.asar')
 const timeoutMs = 60_000
 
 function freePort() {

@@ -1,17 +1,20 @@
 import path from "node:path";
 import type { SessionShortcut } from "../shared/settings-ipc.js";
 
-export const DEEP_LINK_PROTOCOL = "gajae:";
+export const DEEP_LINK_PROTOCOL = "peacock:";
+/** The scheme before the rename, still honoured: links saved in notes, shortcuts and scripts keep working. */
+export const LEGACY_DEEP_LINK_PROTOCOL = "gajae:";
+const DEEP_LINK_PROTOCOLS: readonly string[] = [DEEP_LINK_PROTOCOL, LEGACY_DEEP_LINK_PROTOCOL];
 export const DEEP_LINK_PROMPT_LIMIT = 20_000;
 const SESSION_ID_LIMIT = 256;
 
 /**
- * What one gajae:// URL asks a window to do. Anything that is not a Gajae link is
- * `undefined` and ignored. A link Gajae recognizes but cannot honour becomes
- * `invalidLink`, so the user who clicked it is told why nothing opened.
+ * What one peacock:// URL (or gajae://, its name before the rename) asks a window to do.
+ * Anything that is not such a link is `undefined` and ignored. A link the app recognizes
+ * but cannot honour becomes `invalidLink`, so the user who clicked it is told why nothing opened.
  *
- * - `gajae://new?prompt=…&path=…` opens the new-session dialog, never a session.
- * - `gajae://session/<id>` opens a session the window knows.
+ * - `peacock://new?prompt=…&path=…` opens the new-session dialog, never a session.
+ * - `peacock://session/<id>` opens a session the window knows.
  */
 export function sessionShortcutForDeepLink(
   url: string,
@@ -23,7 +26,7 @@ export function sessionShortcutForDeepLink(
   } catch {
     return undefined;
   }
-  if (parsed.protocol !== DEEP_LINK_PROTOCOL) return undefined;
+  if (!DEEP_LINK_PROTOCOLS.includes(parsed.protocol)) return undefined;
   if (parsed.hostname === "new" && (parsed.pathname === "" || parsed.pathname === "/"))
     return newSessionLink(parsed.searchParams, isDirectory);
   if (parsed.hostname === "session") return openSessionLink(parsed.pathname);
@@ -31,7 +34,7 @@ export function sessionShortcutForDeepLink(
 }
 
 export function deepLinksInArgv(argv: readonly string[]): string[] {
-  return argv.filter((argument) => argument.startsWith(`${DEEP_LINK_PROTOCOL}//`));
+  return argv.filter((argument) => DEEP_LINK_PROTOCOLS.some((protocol) => argument.startsWith(`${protocol}//`)));
 }
 
 function newSessionLink(

@@ -51,7 +51,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-SEND — send a prompt.**
   Action: click the composer for `MAP-SESSION`, type the literal prompt, press Enter.
   ```bash
-  cu "In the Gajae window, select the session MAP-SESSION. Click the composer whose accessible label ends with '에게 메시지 보내기', type exactly 'MAP-TURN-1 reply with exactly MAP-OK and do not edit files', and press Enter. Save $MAP_ROOT/evidence/TURN-SEND-01.png. Report the visible user bubble, header status, submit-slot tooltip, and final assistant text."
+  cu "In the Peacock window, select the session MAP-SESSION. Click the composer whose accessible label ends with '에게 메시지 보내기', type exactly 'MAP-TURN-1 reply with exactly MAP-OK and do not edit files', and press Enter. Save $MAP_ROOT/evidence/TURN-SEND-01.png. Report the visible user bubble, header status, submit-slot tooltip, and final assistant text."
   ```
   Observable: the composer clears and the exact user bubble appears immediately; header
   status becomes `Working`; with an empty draft the submit slot shows
@@ -67,7 +67,7 @@ open; `MAP_ROOT` is exported.
   Action: type `MAP-TURN-2 reply with exactly MAP-ARROW-OK`, then click the send arrow
   instead of pressing Enter.
   ```bash
-  cu "In the Gajae composer, type exactly 'MAP-TURN-2 reply with exactly MAP-ARROW-OK' and click the send button whose tooltip is '메시지 보내기'. Save $MAP_ROOT/evidence/TURN-SEND-02.png and report whether the bubble appeared and the composer cleared."
+  cu "In the Peacock composer, type exactly 'MAP-TURN-2 reply with exactly MAP-ARROW-OK' and click the send button whose tooltip is '메시지 보내기'. Save $MAP_ROOT/evidence/TURN-SEND-02.png and report whether the bubble appeared and the composer cleared."
   ```
   Observable: same state transition as keyboard submit. This is a separate entry point;
   do not count it as proven by the Enter step.
@@ -75,7 +75,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-QUEUE — hold follow-up work.**
   Action: start a slow base turn, then send a plain follow-up while status is `Working`.
   ```bash
-  cu "In the Gajae window, send this prompt to MAP-SESSION: 'MAP-TURN-QUEUE-BASE use the bash tool to run sleep 25, then reply exactly MAP-BASE-DONE. Do not edit any file.' While the header still says Working, type exactly 'MAP-TURN-3 reply with exactly MAP-QUEUE-OK' and press Enter. Save $MAP_ROOT/evidence/TURN-QUEUE-01.png. Report the queue chip text and whether a user bubble for MAP-TURN-3 is visible yet."
+  cu "In the Peacock window, send this prompt to MAP-SESSION: 'MAP-TURN-QUEUE-BASE use the bash tool to run sleep 25, then reply exactly MAP-BASE-DONE. Do not edit any file.' While the header still says Working, type exactly 'MAP-TURN-3 reply with exactly MAP-QUEUE-OK' and press Enter. Save $MAP_ROOT/evidence/TURN-QUEUE-01.png. Report the queue chip text and whether a user bubble for MAP-TURN-3 is visible yet."
   ```
   Observable: the second submission is not sent; the composer clears and a chip reading
   `1개 대기 중` appears, with `대기` on the entry. No `MAP-TURN-3` user bubble is visible
@@ -88,7 +88,7 @@ open; `MAP_ROOT` is exported.
   Action: click the queue chip to pull it back into the composer, then send it again and
   click the `대기 항목 버리기` button.
   ```bash
-  cu "While a Gajae turn is running and a queue chip is visible, click the queue entry to pull it back into the composer. Report the textarea and chip state. Then submit it again with Enter, and click the button labelled '대기 항목 버리기'. Save $MAP_ROOT/evidence/TURN-QUEUE-02.png and report whether the chip disappeared and whether any MAP-TURN-3 bubble exists."
+  cu "While a Peacock turn is running and a queue chip is visible, click the queue entry to pull it back into the composer. Report the textarea and chip state. Then submit it again with Enter, and click the button labelled '대기 항목 버리기'. Save $MAP_ROOT/evidence/TURN-QUEUE-02.png and report whether the chip disappeared and whether any MAP-TURN-3 bubble exists."
   ```
   Observable: pulling back restores the exact text into the composer and removes the
   chip; discarding removes the chip without sending. Cross-check: no `MAP-TURN-3` user
@@ -97,7 +97,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-QUEUE — empty Enter releases held work.**
   Action: with a chip still held, click the empty composer and press Enter.
   ```bash
-  cu "In Gajae, with a queue chip visibly held, click the empty composer and press Enter once. Save $MAP_ROOT/evidence/TURN-QUEUE-03.png. Report whether the chip disappeared, whether the current turn was interrupted, and whether the held text appeared as a user bubble."
+  cu "In Peacock, with a queue chip visibly held, click the empty composer and press Enter once. Save $MAP_ROOT/evidence/TURN-QUEUE-03.png. Report whether the chip disappeared, whether the current turn was interrupted, and whether the held text appeared as a user bubble."
   ```
   Observable: the app requests an owned stop, releases the held request in order,
   and removes the chip only after acceptance. Depending on whether the host confirmed
@@ -110,7 +110,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-STEER — steer an open turn.**
   Action: while a slow base turn runs, submit `/steer` text.
   ```bash
-  cu "In Gajae, start this prompt in MAP-SESSION: 'MAP-TURN-STEER-BASE use the bash tool to run sleep 30, then reply exactly MAP-BASE-DONE. Do not edit any file.' While the header still says Working, type exactly '/steer MAP-TURN-4 reply with exactly MAP-STEER-OK after the current step' and press Enter. Save $MAP_ROOT/evidence/TURN-STEER-01.png and report whether a user bubble appeared immediately and whether any queue chip exists."
+  cu "In Peacock, start this prompt in MAP-SESSION: 'MAP-TURN-STEER-BASE use the bash tool to run sleep 30, then reply exactly MAP-BASE-DONE. Do not edit any file.' While the header still says Working, type exactly '/steer MAP-TURN-4 reply with exactly MAP-STEER-OK after the current step' and press Enter. Save $MAP_ROOT/evidence/TURN-STEER-01.png and report whether a user bubble appeared immediately and whether any queue chip exists."
   ```
   Observable: the instruction text after `/steer ` appears as a user bubble immediately
   while the turn is still `Working`; no queue chip is created. The reply contains
@@ -120,7 +120,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-STOP — stop from the Stop slot.**
   Action: start a long turn, then click the Stop slot with an empty draft.
   ```bash
-  cu "In Gajae, send 'MAP-TURN-STOP-BASE use the bash tool to run sleep 60, then reply MAP-BASE-DONE. Do not edit any file.' to MAP-SESSION. Once the header says Working and the draft is empty, click the button whose tooltip is '작업 중단 (Esc)'. Save $MAP_ROOT/evidence/TURN-STOP-01.png and report the header status, the transcript notice, and the submit-slot state."
+  cu "In Peacock, send 'MAP-TURN-STOP-BASE use the bash tool to run sleep 60, then reply MAP-BASE-DONE. Do not edit any file.' to MAP-SESSION. Once the header says Working and the draft is empty, click the button whose tooltip is '작업 중단 (Esc)'. Save $MAP_ROOT/evidence/TURN-STOP-01.png and report the header status, the transcript notice, and the submit-slot state."
   ```
   Observable: the `작업 취소됨` notice appears in the transcript, header status returns to
   `Idle`, and the Stop slot becomes the send arrow. The session stays open.
@@ -129,7 +129,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-STOP — Escape.**
   Action: repeat the long turn, then press Escape with focus outside a dialog.
   ```bash
-  cu "In Gajae, start the sleep-60 prompt again, then click the transcript area and press Escape once. Save $MAP_ROOT/evidence/TURN-STOP-02.png and report the same visible states as the Stop-slot run."
+  cu "In Peacock, start the sleep-60 prompt again, then click the transcript area and press Escape once. Save $MAP_ROOT/evidence/TURN-STOP-02.png and report the same visible states as the Stop-slot run."
   ```
   Observable: same cancellation notice and idle transition. This is a separate entry
   point; do not count it from the button run.
@@ -137,7 +137,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-ATTACH — image and file.**
   Action: attach the synthetic PNG and a text file, then send.
   ```bash
-  cu "In the Gajae composer for MAP-SESSION, click the button titled '이미지 첨부', choose $MAP_ROOT/workspace/map-pixel.png in the native picker, then click '파일 첨부' and choose $MAP_ROOT/workspace/README.md. Type 'MAP-TURN-ATTACH describe the attachments briefly' and press Enter. Save $MAP_ROOT/evidence/TURN-ATTACH-01.png and report both chip labels and the sent bubble."
+  cu "In the Peacock composer for MAP-SESSION, click the button titled '이미지 첨부', choose $MAP_ROOT/workspace/map-pixel.png in the native picker, then click '파일 첨부' and choose $MAP_ROOT/workspace/README.md. Type 'MAP-TURN-ATTACH describe the attachments briefly' and press Enter. Save $MAP_ROOT/evidence/TURN-ATTACH-01.png and report both chip labels and the sent bubble."
   ```
   Observable: chips for `map-pixel.png` and `README.md` appear with
   `Remove <name>` buttons; sending clears the chips and appends a user bubble carrying
@@ -150,7 +150,7 @@ open; `MAP_ROOT` is exported.
 - **TURN-COMMAND — open and apply the palette.**
   Action: type `/`, select an entry, then clear the composer.
   ```bash
-  cu "In the Gajae composer, type '/' and report the palette and its help text. Press ArrowDown once and Enter, then report the composer value. Clear the composer with Command+A and Backspace. Save $MAP_ROOT/evidence/TURN-COMMAND-01.png."
+  cu "In the Peacock composer, type '/' and report the palette and its help text. Press ArrowDown once and Enter, then report the composer value. Clear the composer with Command+A and Backspace. Save $MAP_ROOT/evidence/TURN-COMMAND-01.png."
   ```
   Observable: the palette opens with `↑↓ 선택 · Enter 적용`; rows are labelled
   `/<command> — <description>`; a command with input leaves `/<name> ` in the composer,

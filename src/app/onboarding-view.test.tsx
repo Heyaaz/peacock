@@ -117,7 +117,7 @@ describe("OnboardingView", () => {
     await click(container, "GJC");
     await click(container, "이 에이전트로 시작");
     expect(fake.bridge.chooseAgent).toHaveBeenCalledExactlyOnceWith("gjc");
-    expect(container.textContent).toContain("가재를 쓰려면 GJC가 필요합니다");
+    expect(container.textContent).toContain("Peacock을 쓰려면 GJC가 필요합니다");
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -133,7 +133,7 @@ describe("OnboardingView", () => {
   it("takes a Mac without GJC from install through an API-key sign-in to the first conversation", async () => {
     const fake = fakeBridge();
     const { container, onClose, onStartConversation } = await render(fake.bridge, "install");
-    expect(container.textContent).toContain("가재를 쓰려면 GJC가 필요합니다");
+    expect(container.textContent).toContain("Peacock을 쓰려면 GJC가 필요합니다");
 
     await click(container, "GJC 설치");
     fake.emit({ type: "install-progress", receivedBytes: 70_000_000, totalBytes: 140_000_000 });
