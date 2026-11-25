@@ -31,8 +31,9 @@ export function terminalAgentSession(
     ownership: "gajae",
     attachment: "attached",
     agentKind,
-    // Claude Code and omp also have a chat screen: their transcript, read as it grows (design §5.5)
-    surfaces: [...agent.surfaces],
+    // A terminal session is its terminal in the window. omp's chat is a session of its own
+    // (omp-rpc); the transcript still feeds search and the phone, which reaches no terminal.
+    surfaces: agent.chatRuntime ? ["terminal"] : [...agent.surfaces],
     ...(live.capabilities ? { capabilities: live.capabilities } : {}),
   };
 }

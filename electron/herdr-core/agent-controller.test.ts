@@ -151,7 +151,8 @@ describe("HerdrAgentController sessions", () => {
     const omp = await controller.createTerminalSession({ title: "o", workspace: directory, agentKind: "omp" });
     const shell = await controller.createTerminalSession({ title: "s", workspace: directory, agentKind: "shell" });
     expect(claude.surfaces).toEqual(["terminal"]);
-    expect(omp.surfaces).toEqual(expect.arrayContaining(["chat", "terminal"]));
+    // omp's chat is its RPC session, so its terminal session shows only the terminal
+    expect(omp.surfaces).toEqual(["terminal"]);
     expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: false });
     expect(shell.surfaces).toEqual(["terminal"]);
     expect(await controller.getTranscriptPage(shell.id)).toMatchObject({ items: [] });
