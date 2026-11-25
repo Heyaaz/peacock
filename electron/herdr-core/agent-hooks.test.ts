@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -83,6 +83,23 @@ describe("AgentHooks", () => {
       session: "terminal-1",
       payload: { session_id: "abc", transcript_path: "/x/y.jsonl" },
     });
+  });
+
+  it("points a relay left in the folder before the rename at this socket, so its agents still reach the app", async () => {
+    const { hooks, received, directory } = await startHooks();
+    const legacy = path.join(directory, "old", "relay.sh");
+    mkdirSync(path.dirname(legacy), { recursive: true });
+    writeFileSync(legacy, "#!/bin/sh\n# the old app's socket\n", { mode: 0o700 });
+    expect(hooks.redirectRelay(legacy)).toBe(true);
+    expect(statSync(legacy).mode & 0o777).toBe(0o700);
+    const child = execFile("/bin/sh", [legacy, "Stop"], { env: { PATH: "/usr/bin:/bin", GAJAE_SESSION_ID: "terminal-old" } });
+    child.stdin!.end("{}");
+    await new Promise((resolve) => child.on("exit", resolve));
+    await expect.poll(() => received.length).toBe(1);
+    expect(received[0]).toMatchObject({ event: "Stop", session: "terminal-old" });
+    // nothing is created where there was no relay
+    expect(hooks.redirectRelay(path.join(directory, "none", "relay.sh"))).toBe(false);
+    expect(existsSync(path.join(directory, "none"))).toBe(false);
   });
 
   it("drops a session id that could break the line, and an empty payload becomes {}", async () => {
