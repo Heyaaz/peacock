@@ -427,6 +427,14 @@ export function registerGjcIpcHandlers(
     if (!controller.removeQueuedMessage) throw new AgentUnsupportedError("removeQueuedMessage", id);
     return controller.removeQueuedMessage(id, text, mode);
   });
+  handle(GJC_IPC.setRuntimeMode, (_event, sessionId: unknown, mode: unknown, enabled: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (mode !== "fast" && mode !== "slow" && mode !== "autoCompaction" && mode !== "autoRetry")
+      throw new Error("Unknown runtime mode");
+    if (typeof enabled !== "boolean") throw new Error("Runtime mode needs on or off");
+    if (!controller.setRuntimeMode) throw new AgentUnsupportedError("setRuntimeMode", id);
+    return controller.setRuntimeMode(id, mode, enabled);
+  });
   handle(GJC_IPC.getSubagentMessages, (_event, sessionId: unknown, subagentId: unknown) => {
     const id = requiredId(sessionId, "Session ID");
     if (!controller.getSubagentMessages) throw new AgentUnsupportedError("getSubagentMessages", id);

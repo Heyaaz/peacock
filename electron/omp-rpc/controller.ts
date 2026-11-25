@@ -17,6 +17,8 @@ import type {
   NoticeActivity,
   QueuedMessage,
   QuestionActivity,
+  RuntimeModeId,
+  RuntimeModeState,
   SessionLiveStatus,
   SubagentMessage,
   SubagentSnapshot,
@@ -180,6 +182,8 @@ interface ChatRuntime {
   readingOutput: number;
   /** omp's goal as last read. */
   goal?: GoalSnapshot;
+  /** Auto-retry as last set here: `get_state` does not report it. */
+  autoRetry?: boolean;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -447,6 +451,16 @@ export class OmpRpcController implements AgentRuntimeController {
     if (!client) return false;
     const data = record(await client.call({ type: "remove_queued_message", message: text, queue: mode === "steer" ? "steering" : "followUp" }));
     return data.removed === true;
+  }
+
+  // ---- switches (19.1.1 `set_fast_mode`, `set_slow_mode`, `set_auto_compaction`, `set_auto_retry`)
+
+  async setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void> {
+    const client = await this.ensureProcess(sessionId);
+    const type = { fast: "set_fast_mode", slow: "set_slow_mode", autoCompaction: "set_auto_compaction", autoRetry: "set_auto_retry" }[mode];
+    await client.call({ type, enabled });
+    if (mode === "autoRetry") this.chat(sessionId).autoRetry = enabled;
+    await this.refreshState(sessionId, client);
   }
 
   // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)
@@ -1562,6 +1576,7 @@ export class OmpRpcController implements AgentRuntimeController {
       ...(typeof usage.tokens === "number" && Number.isFinite(usage.tokens) ? { contextTokens: usage.tokens } : {}),
       ...(typeof usage.contextWindow === "number" && usage.contextWindow > 0 ? { contextWindow: usage.contextWindow } : {}),
       ...(queued.length > 0 ? { queued } : {}),
+      modes: runtimeModes(state, chat?.autoRetry),
     };
     return {
       ...live,
@@ -1638,6 +1653,17 @@ function todoPhases(value: unknown): TodoSnapshotPhase[] {
     const name = string(phase.name, phase.phase, phase.title);
     return tasks.length > 0 ? [{ ...(name ? { name } : {}), tasks }] : [];
   });
+}
+
+/** omp's switches as `get_state` reports them; auto-retry is not in it (omp's default is on). */
+function runtimeModes(state: Record<string, unknown>, autoRetry: boolean | undefined): RuntimeModeState[] {
+  const fast = state.fastModeEnabled === true;
+  return [
+    { id: "fast", enabled: fast, ...(fast && state.fastModeActive === false ? { inactive: true } : {}) },
+    ...(state.slowModeSupported === true ? [{ id: "slow" as const, enabled: state.slowModeEnabled === true }] : []),
+    { id: "autoCompaction", enabled: state.autoCompactionEnabled !== false },
+    { id: "autoRetry", enabled: autoRetry ?? true, ...(autoRetry === undefined ? { assumed: true } : {}) },
+  ];
 }
 
 /** omp's queue (`queue_update`) as the window lists it: steering first, then follow-ups. */

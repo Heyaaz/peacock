@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
-import { ChartPie, Shrink, X } from "lucide-react";
-import type { ContextBreakdown, ContextCategoryId, SessionLiveStatus } from "../../shared/agent-contract";
+import { useEffect, useRef, useState } from "react";
+import { ChartPie, Shrink, SlidersHorizontal, X } from "lucide-react";
+import type {
+  ContextBreakdown,
+  ContextCategoryId,
+  RuntimeModeId,
+  RuntimeModeState,
+  SessionLiveStatus,
+} from "../../shared/agent-contract";
 import { t } from "../i18n";
 
 /** 14.4K, 142K, 950K, 1.2M: a decimal only while it still says something. */
@@ -39,18 +45,78 @@ function level(percent: number): "normal" | "warning" | "danger" {
   return percent >= 90 ? "danger" : percent >= 70 ? "warning" : "normal";
 }
 
+const MODE_COPY: Record<RuntimeModeId, { label: string; detail: string }> = {
+  fast: { label: "빠른 모드", detail: "지원하는 모델에서 우선 처리 등급으로 보냅니다" },
+  slow: { label: "느린 모드", detail: "flex·낮은 우선순위 등급으로 싸게 보냅니다" },
+  autoCompaction: { label: "자동 압축", detail: "컨텍스트가 차면 대화를 요약합니다" },
+  autoRetry: { label: "자동 재시도", detail: "모델 호출이 실패하면 다시 시도합니다" },
+};
+
+/** omp's switches in a popover off the context bar. */
+function RuntimeModes({ modes, onSetMode }: { modes: readonly RuntimeModeState[]; onSetMode: (id: RuntimeModeId, enabled: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const on = modes.filter((mode) => mode.enabled && (mode.id === "fast" || mode.id === "slow"));
+  return (
+    <span className="runtime-modes" ref={box}>
+      <button
+        type="button"
+        className={`icon-button${on.length > 0 ? " is-active" : ""}`}
+        title={t("실행 모드")}
+        aria-label={t("실행 모드")}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SlidersHorizontal size={12} />
+      </button>
+      {open && (
+        <span className="runtime-modes-menu" role="dialog" aria-label={t("실행 모드")}>
+          {modes.map((mode) => (
+            <label key={mode.id} className="runtime-mode">
+              <input type="checkbox" checked={mode.enabled} onChange={(event) => onSetMode(mode.id, event.target.checked)} />
+              <span className="runtime-mode-copy">
+                <strong>{t(MODE_COPY[mode.id].label)}</strong>
+                <small>{t(MODE_COPY[mode.id].detail)}</small>
+                {mode.inactive && <small className="runtime-mode-note">{t("이 모델에는 적용되지 않습니다")}</small>}
+                {mode.assumed && <small className="runtime-mode-note">{t("omp가 상태를 알려주지 않아 기본값으로 보입니다")}</small>}
+              </span>
+            </label>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /**
  * The thin line above the composer: how full the context window is, a way into the
- * breakdown, compaction now, and the window's size (omp's chat).
+ * breakdown, compaction now, the runtime's switches, and the window's size (omp's chat).
  */
 export function ContextBar({
   status,
   onOpen,
   onCompact,
+  onSetMode,
 }: {
   status: SessionLiveStatus;
   onOpen: () => void;
   onCompact?: () => void;
+  onSetMode?: (id: RuntimeModeId, enabled: boolean) => void;
 }) {
   const percent = status.contextPercent;
   if (percent === undefined) return null;
@@ -93,6 +159,7 @@ export function ContextBar({
             <Shrink size={12} />
           </button>
         )}
+        {onSetMode && status.modes && status.modes.length > 0 && <RuntimeModes modes={status.modes} onSetMode={onSetMode} />}
         {status.contextWindow !== undefined && (
           <span className="context-bar-window" title={t("모델의 컨텍스트 창 크기")}>
             {tokenLabel(status.contextWindow)}

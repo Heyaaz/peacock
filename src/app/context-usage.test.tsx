@@ -113,3 +113,32 @@ describe("TurnStatusLine with the context bar", () => {
     expect(node.querySelector(".turn-status-line")).toBeNull();
   });
 });
+
+describe("ContextBar switches", () => {
+  it("lists omp's switches in a popover and flips one", async () => {
+    const onSetMode = vi.fn();
+    const node = await mount(
+      createElement(ContextBar, {
+        status: {
+          contextPercent: 10,
+          modes: [
+            { id: "fast", enabled: true, inactive: true },
+            { id: "autoCompaction", enabled: true },
+            { id: "autoRetry", enabled: true, assumed: true },
+          ],
+        },
+        onOpen: () => undefined,
+        onSetMode,
+      }),
+    );
+    const button = node.querySelector<HTMLButtonElement>('[aria-label="실행 모드"]')!;
+    expect(button.className).toContain("is-active");
+    await act(async () => button.click());
+    const rows = [...node.querySelectorAll(".runtime-mode")];
+    expect(rows.map((row) => row.querySelector("strong")?.textContent)).toEqual(["빠른 모드", "자동 압축", "자동 재시도"]);
+    expect(rows[0]!.querySelector(".runtime-mode-note")?.textContent).toBe("이 모델에는 적용되지 않습니다");
+    expect(rows[2]!.querySelector(".runtime-mode-note")).not.toBeNull();
+    await act(async () => rows[1]!.querySelector<HTMLInputElement>("input")!.click());
+    expect(onSetMode).toHaveBeenCalledWith("autoCompaction", false);
+  });
+});

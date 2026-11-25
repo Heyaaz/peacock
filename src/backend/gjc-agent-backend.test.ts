@@ -173,6 +173,8 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async removeQueuedMessage(_sessionId: string, _text: string, _mode: "steer" | "followUp"): Promise<boolean> {
     return false;
   }
+
+  async setRuntimeMode(_sessionId: string, _mode: string, _enabled: boolean): Promise<void> {}
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

@@ -57,6 +57,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
   const processes: { child: FakeRpcProcess; command: string; args: readonly string[]; env: Record<string, string> }[] = [];
   let prompts = 0;
   let goal: Record<string, unknown> | null = null;
+  const modes = { fast: false, autoCompaction: true };
   const spawn = vi.fn((command: string, args: readonly string[], spawnOptions: { cwd: string; env: Record<string, string> }) => {
     const child = new FakeRpcProcess();
     processes.push({ child, command, args, env: spawnOptions.env });
@@ -73,8 +74,19 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
           configuredThinkingLevel: "low",
           thinkingLevels: ["off", "auto", "low", "high"],
           contextUsage: { percent: 1.5, tokens: 14350, contextWindow: 950000 },
-          autoCompactionEnabled: true,
+          autoCompactionEnabled: modes.autoCompaction,
+          fastModeEnabled: modes.fast,
+          fastModeActive: false,
+          slowModeSupported: false,
+          slowModeEnabled: false,
         });
+      else if (frame.type === "set_fast_mode") {
+        modes.fast = frame.enabled === true;
+        answer({ enabled: modes.fast, active: false });
+      } else if (frame.type === "set_auto_compaction") {
+        modes.autoCompaction = frame.enabled === true;
+        answer();
+      }
       else if (frame.type === "prompt" && frame.message === "/context")
         // omp answers the slash command itself: its report, then the response, and no prompt_result
         queueMicrotask(() =>
@@ -805,5 +817,32 @@ describe("OmpRpcController queue editing", () => {
     await expect(context.controller.removeQueuedMessage(session.id, "now", "steer")).resolves.toBe(true);
     expect(child.sent("remove_queued_message")[0]).toMatchObject({ message: "now", queue: "steering" });
     await expect(context.controller.removeQueuedMessage(session.id, "later", "followUp")).resolves.toBe(false);
+  });
+});
+
+describe("OmpRpcController switches", () => {
+  it("shows omp's switches from its state and flips them", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    await settle();
+    let row = (await context.controller.listSessions())[0]!;
+    expect(row.liveStatus?.modes).toEqual([
+      { id: "fast", enabled: false },
+      { id: "autoCompaction", enabled: true },
+      { id: "autoRetry", enabled: true, assumed: true },
+    ]);
+    await context.controller.setRuntimeMode(session.id, "fast", true);
+    await context.controller.setRuntimeMode(session.id, "autoCompaction", false);
+    await context.controller.setRuntimeMode(session.id, "autoRetry", false);
+    const child = context.processes[0]!.child;
+    expect(child.sent("set_fast_mode")[0]).toMatchObject({ enabled: true });
+    expect(child.sent("set_auto_retry")[0]).toMatchObject({ enabled: false });
+    row = (await context.controller.listSessions())[0]!;
+    expect(row.liveStatus?.modes).toEqual([
+      { id: "fast", enabled: true, inactive: true },
+      { id: "autoCompaction", enabled: false },
+      { id: "autoRetry", enabled: false },
+    ]);
   });
 });

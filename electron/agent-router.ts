@@ -16,6 +16,7 @@ import type {
   QuestionActivity,
   QuestionSubmission,
   RuntimeKind,
+  RuntimeModeId,
   SubagentMessage,
   SubagentSnapshot,
   ToolDecision,
@@ -429,6 +430,10 @@ export class AgentRouter implements RoutingAgentHost {
 
   removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean> {
     return this.facet(sessionId, "removeQueuedMessage")(sessionId, text, mode);
+  }
+
+  setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void> {
+    return this.facet(sessionId, "setRuntimeMode")(sessionId, mode, enabled);
   }
 
   openHistorySession(sessionId: string): Promise<AgentSession> {

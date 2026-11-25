@@ -1545,6 +1545,15 @@ export default function App() {
                     status={selectedSession.liveStatus}
                     onOpen={() => setContextDialogFor(selectedSession.id)}
                     onCompact={selectedCapabilities.compact && !remoteViewOnly ? onComposerCompact : undefined}
+                    onSetMode={
+                      selectedCapabilities.runtimeModes && !remoteViewOnly && backend.setRuntimeMode
+                        ? (mode, enabled) => {
+                            void backend.setRuntimeMode!(selectedSession.id, mode, enabled).catch((error: unknown) =>
+                              setAppError(humanErrorMessage(error)),
+                            );
+                          }
+                        : undefined
+                    }
                   />
                 )}
                 {contextDialogFor === selectedSession.id && (

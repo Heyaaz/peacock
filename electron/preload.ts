@@ -23,6 +23,7 @@ import type {
   AgentKindId,
   AgentPreferences,
   NewSessionChoice,
+  RuntimeModeId,
 } from "../shared/agent-contract.js";
 import type { ProductivityDesktopBridge } from "../shared/productivity-ipc.js";
 import type { DesktopIntegrationPreferences } from "../shared/desktop-integration.js";
@@ -381,6 +382,8 @@ const gjc: GjcDesktopBridge = Object.freeze({
     ipcRenderer.invoke(GJC_IPC.promoteQueuedMessage, sessionId, text),
   removeQueuedMessage: (sessionId: string, text: string, mode: "steer" | "followUp") =>
     ipcRenderer.invoke(GJC_IPC.removeQueuedMessage, sessionId, text, mode),
+  setRuntimeMode: (sessionId: string, mode: RuntimeModeId, enabled: boolean) =>
+    ipcRenderer.invoke(GJC_IPC.setRuntimeMode, sessionId, mode, enabled),
   queueFollowUp: (sessionId: string, input: MessageInput) =>
     ipcRenderer.invoke(GJC_IPC.queueFollowUp, sessionId, input),
   listQueuedMessages: (sessionId: string) =>

@@ -41,6 +41,7 @@ export const GJC_IPC = {
   getSubagentMessages: "agent-control:gjc:get-subagent-messages",
   promoteQueuedMessage: "agent-control:gjc:promote-queued-message",
   removeQueuedMessage: "agent-control:gjc:remove-queued-message",
+  setRuntimeMode: "agent-control:gjc:set-runtime-mode",
   queueFollowUp: "agent-control:gjc:queue-follow-up",
   listQueuedMessages: "agent-control:gjc:list-queued-messages",
   flushQueuedNow: "agent-control:gjc:flush-queued-now",

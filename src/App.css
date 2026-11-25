@@ -10276,3 +10276,60 @@ button.diff-line-number:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* omp's switches off the context bar */
+.runtime-modes {
+  position: relative;
+  display: inline-flex;
+}
+.runtime-modes > .icon-button.is-active {
+  color: var(--accent);
+}
+.runtime-modes-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 15;
+  display: grid;
+  width: 260px;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg-menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.runtime-mode {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 6px 7px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.runtime-mode:hover {
+  background: var(--bg-hover);
+}
+.runtime-mode input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.runtime-mode-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.runtime-mode-copy strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 550;
+}
+.runtime-mode-copy small {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+.runtime-mode-copy .runtime-mode-note {
+  color: var(--warning);
+}

@@ -74,6 +74,7 @@ const EXTRA_CALLS = new Set([
   "getSubagentMessages",
   "promoteQueuedMessage",
   "removeQueuedMessage",
+  "setRuntimeMode",
 ]);
 
 /** Router members that place calls rather than forward them. */

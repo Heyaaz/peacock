@@ -95,6 +95,8 @@ export interface SessionCapabilities {
   subagentControl: boolean;
   /** Sending a message the runtime holds in its queue now, or taking it out. */
   queueEdit: boolean;
+  /** Runtime switches: fast and slow modes, auto-compaction, auto-retry. */
+  runtimeModes: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -116,6 +118,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     contextBreakdown: value,
     subagentControl: value,
     queueEdit: value,
+    runtimeModes: value,
   };
 }
 
@@ -137,6 +140,7 @@ const LATER_CAPABILITIES = {
   contextBreakdown: false,
   subagentControl: false,
   queueEdit: false,
+  runtimeModes: false,
 } satisfies Partial<SessionCapabilities>;
 
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
@@ -512,6 +516,20 @@ export interface SessionLiveStatus {
   contextWindow?: number;
   /** Messages the runtime holds for the running turn: steering first, then follow-ups. */
   queued?: QueuedMessage[];
+  /** The runtime's switches and where each stands. */
+  modes?: RuntimeModeState[];
+}
+
+/** omp's switches: fast (priority) and slow (flex/low-priority) service, auto-compaction, auto-retry. */
+export type RuntimeModeId = "fast" | "slow" | "autoCompaction" | "autoRetry";
+
+export interface RuntimeModeState {
+  id: RuntimeModeId;
+  enabled: boolean;
+  /** On but not in effect, as fast mode on a model that has none. */
+  inactive?: boolean;
+  /** The runtime does not report it; this is its default or the window's last choice. */
+  assumed?: boolean;
 }
 
 /** One message of a subagent's conversation, as the subagents panel lists it. */
@@ -1396,6 +1414,8 @@ export interface GjcDesktopBridge {
   promoteQueuedMessage(sessionId: string, text: string): Promise<boolean>;
   /** Takes a message out of the runtime's queue. Only omp's chat answers. */
   removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
+  /** Flips one of the runtime's switches. Only omp's chat answers. */
+  setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

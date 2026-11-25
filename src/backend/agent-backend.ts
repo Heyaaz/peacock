@@ -24,7 +24,7 @@ import type {
   QuestionSubmission,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
-import type { ContextBreakdown, ForkSessionInput, SubagentMessage } from "../../shared/agent-contract";
+import type { ContextBreakdown, ForkSessionInput, RuntimeModeId, SubagentMessage } from "../../shared/agent-contract";
 import type { RemoteAccessBridge } from "../../shared/remote-protocol";
 
 export interface AgentBackend {
@@ -100,6 +100,8 @@ export interface AgentBackend {
   /** The runtime's own queue, where the session's `queueEdit` capability is on (omp's chat). */
   promoteQueuedMessage?(sessionId: string, text: string): Promise<boolean>;
   removeQueuedMessage?(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
+  /** Runtime switches, where the session's `runtimeModes` capability is on (omp's chat). */
+  setRuntimeMode?(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;
