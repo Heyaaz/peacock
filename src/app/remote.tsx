@@ -84,7 +84,7 @@ export function RemoteGate({
         <p className="remote-gate__detail">
           {revoked
             ? t("이 기기의 원격 접근을 호스트에서 해제했습니다. 다시 사용하려면 데스크톱에서 연결 코드를 새로 만들고 입력해 주세요.")
-            : t("Peacock 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.")}
+            : t("Mac의 Peacock에서 설정 › 원격·폰을 열고, 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.")}
         </p>
         <p className="remote-gate__origin">{window.location.origin}</p>
         <form
@@ -138,7 +138,7 @@ export function RemoteStrip({
       <span className="remote-strip__detail">
         {offline
           ? status.detail ?? t("호스트에 다시 연결하는 중입니다.")
-          : t("조회만 가능합니다. 메시지 전송과 승인은 데스크톱에서 하거나 기기 권한을 조작 가능으로 올려주세요.")}
+          : t("보기만 할 수 있습니다. 메시지와 승인은 Mac에서 하거나, Mac의 설정에서 이 기기를 ‘조작 가능’으로 바꾸세요.")}
       </span>
       {offline && (
         <button className="icon-button" type="button" title={t("다시 연결")} onClick={onReconnect}>

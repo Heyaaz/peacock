@@ -356,7 +356,7 @@ export function NewSessionDialog({
               value={permissionMode}
               options={[
                 // omp's chat asks before each tool unless told otherwise: its cards are how it asks (design §10)
-                { value: "", label: agentEntry.chatRuntime && surface === "chat" ? t("기본: 매번 묻기") : t("에이전트 설정 따름") },
+                { value: "", label: agentEntry.chatRuntime && surface === "chat" ? t("매번 묻기 (기본)") : t("에이전트 기본값") },
                 ...modes.map((mode) => ({ value: mode, label: mode })),
               ]}
               onChange={setPermissionMode}
@@ -384,7 +384,7 @@ export function NewSessionDialog({
               {t("별도 복사본에서 작업")} </label>
             {isolation === "worktree" && (
               <input
-                placeholder={t("안전한 브랜치 (선택)")}
+                placeholder={t("브랜치 이름 (선택)")}
                 value={worktreeBranch}
                 onChange={(e) => setWorktreeBranch(e.target.value)}
               />
@@ -399,11 +399,11 @@ export function NewSessionDialog({
           </fieldset>
         )}
         <label>
-          <span>{t("프로젝트 위치")}</span>
+          <span>{t("폴더")}</span>
           <div className="project-location-field">
             <FolderOpen size={17} />
             <code title={workspace}>
-              {workspace || t("프로젝트 폴더를 선택하세요")}
+              {workspace || t("폴더를 고르세요")}
             </code>
             <button
               type="button"
@@ -461,7 +461,7 @@ export function NewSessionDialog({
               className="button-primary"
               disabled={!workspace || submitting}
             >
-              <Plus size={15} /> {t("세션 만들기")}{" "}
+              <Plus size={15} /> {t("세션 시작")}{" "}
             </button>
           )}
         </footer>

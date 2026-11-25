@@ -1,11 +1,6 @@
 /** English copy for every translated source string. */
 export const MESSAGES: Readonly<Record<string, string>> = {
   데스크톱: "Desktop",
-  "창 밖에서 동작하는 기능을 설정합니다.":
-    "Configure what the app does outside its window.",
-  "실행 중 잠자기 방지": "Prevent sleep while running",
-  "세션이 작업 중일 때만 Mac이 잠들지 않게 합니다. 모든 작업이 끝나면 해제합니다.":
-    "Keeps the Mac awake only while a session is working, and releases it when all work ends.",
   "상태 확인 필요": "Needs verification",
   "상태 확인 불가": "Status unknown",
   "백그라운드 작업 상태를 확인할 수 없습니다":
@@ -22,43 +17,25 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "전달 결과를 알 수 없습니다. 아직 대기 중일 수 있습니다.":
     "The outcome is unknown. It may still be queued.",
   "결과 알 수 없음 · 다시 시도": "Outcome unknown · Retry",
-  "다시 보내는 중…": "Resending…",
   "이전 대화 불러오는 중…": "Loading earlier messages…",
   "이전 대화 다시 불러오기": "Retry loading earlier messages",
   "이전 대화 불러오기": "Load earlier messages",
   "지금 보내기": "Send now",
   "대기 메시지 수정": "Edit queued message",
-  "현재 작업 후 자동 전송 · 지금 보내기는 작업을 중지하지 않고 전달합니다":
-    "Sent after the current task · Send now steers without stopping it",
   " · 예약 {0}": " · Queued {0}",
   " · 최근 {0}": " · Recent {0}",
   "(미완료)": "(incomplete)",
   "(패치 없음)": "(no patch)",
-  "Enter 한 번 더 = 바로 실행 · ⌥↑/⌥↓ = 꺼내기 · 항목 클릭 = 꺼내기":
-    "Enter again = run now · ⌥↑/⌥↓ = restore · Click item = restore",
   "Fast 모드": "Fast mode",
   "Fast 모드 끄기 (/fast off)": "Turn Fast mode off (/fast off)",
   "Fast 모드 켜기 (/fast on)": "Turn Fast mode on (/fast on)",
   "Fast 모드 켜짐": "Fast mode on",
-  "GJC runtime에 연결되지 않았습니다": "Not connected to the GJC runtime",
-  "GJC {0} 업데이트": "GJC {0} update",
   "GJC 스마트 정책": "GJC smart policy",
   "GJC 실행 파일": "GJC executable",
-  "GJC 실행 파일과 새 세션이 시작될 모델 프로필·도구 승인 방식을 설정합니다.":
-    "Set the GJC executable, model profile, and tool approval mode for new sessions.",
   "GJC 업데이트": "GJC update",
-  "GJC 재연결 중…": "Reconnecting GJC…",
-  "GJC가 자동으로 로드할 MCP 서버를 관리합니다.":
-    "Manage the MCP servers GJC loads automatically.",
-  "GJC가 확인하고 수정할 폴더를 선택합니다.":
-    "Choose the folder GJC may inspect and edit.",
   "GJC에 실행할 작업을 구체적으로 작성하세요":
     "Describe the task for GJC in detail",
-  "Peacock 데스크톱에서 ‘원격 접속’을 켜고 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.":
-    "Turn on Remote access in the Peacock desktop app and enter the connection code shown. Scanning the QR code fills it in automatically.",
-  "Peacock 세션 정보": "Peacock session info",
-  "Peacock이 확인하고 수정할 프로젝트를 선택하세요.":
-    "Choose the project Peacock may inspect and edit.",
+  "Mac의 Peacock에서 설정 › 원격·폰을 열고, 표시된 연결 코드를 입력하세요. QR을 스캔하면 코드가 자동으로 채워집니다.": "On your Mac, open Peacock › Settings › Remote & phone and enter the code shown. Scanning the QR code fills it in for you.",
   "Git 레포": "Git repo",
   "Git 레포 아님": "Not a Git repo",
   "Git 레포가 아니라 레포 화면이 없습니다":
@@ -79,10 +56,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "Tailscale에 연결되어 있지 않습니다": "Not connected to Tailscale",
   "Tailscale이 설치되어 있지 않습니다": "Tailscale is not installed",
   "Tab으로 받기 · Esc로 닫기": "Tab to accept · Esc to dismiss",
-  "작업 공간 범위": "Workspace scope",
   "작업 공간": "Workspace",
   사용량: "Usage",
-  "작업 공간 이름 바꾸기": "Rename workspace",
   "[요청]": "[request]",
   "[지시]": "[instruction]",
   "loopback 포트 {0}": "loopback port {0}",
@@ -93,12 +68,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "{0} 알림": "{0} notifications",
   "{0} 알림 소리": "{0} notification sound",
   "{0} 접근 해제": "Revoke access for {0}",
-  "{0}개 대기 중": "{0} queued",
   "{0}만": "{0} only",
   "{0}분 남음": "{0} min left",
   "{0}에게 메시지 보내기": "Send a message to {0}",
   "{0}에서 포크": "Fork at {0}",
-  "{0}의 현재 Git 브랜치": "Current Git branch of {0}",
+  "{0}의 현재 Git 브랜치": "Git branch in {0}",
   "{0}천": "{0}k",
   "{0}초 남음": "{0}s left",
   "· 세션": "· Session",
@@ -106,7 +80,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "같은 Tailscale 계정": "Same Tailscale account",
   개: "",
   "개 대화": " conversations",
-  "개 사용 가능": " available",
   "개 프로젝트": " projects",
   "내 작업 공간": "My workspace",
   거절: "Deny",
@@ -124,8 +97,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "기기 연결": "Device connection",
   "기기 연결 QR 코드": "Device connection QR code",
   기본: "Default",
-  "기본 preset 또는 models.yml의 custom ID":
-    "Default preset or custom ID from models.yml",
   "기본 브랜치": "Default branch",
   꺼짐: "Off",
   "다른 계정·기기": "Other accounts and devices",
@@ -135,7 +106,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "다시 연결": "Reconnect",
   "다시 확인": "Check again",
   "다음 결과": "Next result",
-  "다음 경계에서 바로 반영 (Steer)": "Apply at the next boundary (Steer)",
   "다음 대기 (": "Next queued (",
   "다음 실행 {0}": "Next run {0}",
   닫기: "Close",
@@ -159,11 +129,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "This can only be changed in the desktop app.",
   "데스크톱에서 페어링 코드를 발급해 연결해 주세요.":
     "Create a pairing code on the desktop to connect.",
-  "데이터가 없습니다.": "No data.",
   "도구 {0}개 실행": "{0} tools run",
   "도구 승인": "Tool approval",
-  "도구 승인이나 사용자의 답변을 기다릴 때":
-    "When waiting for tool approval or your answer",
   "도구 요약": "Tool summary",
   "도구 카드": "Tool cards",
   "도구가 읽은 이미지": "Image read by tool",
@@ -177,10 +144,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "마지막 사용 {0}": "Last used {0}",
   만료됨: "Expired",
   "명령 실행만 확인": "Ask before commands",
-  "명령 실행은 매번 묻습니다. 파일 수정은 묻지 않고 바로 적용합니다.":
-    "Asks before every command. File edits apply without asking.",
-  "명령 실행과 파일 수정을 묻지 않고 바로 진행합니다.":
-    "Runs commands and applies file edits without asking.",
   매일: "Daily",
   매주: "Weekly",
   "메시지 보내기": "Send message",
@@ -189,9 +152,9 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "메시지, 파일, 도구 실행 검색": "Search messages, files, and tool runs",
   "명령 {0}개 실행": "{0} commands run",
   "이 프로젝트가 뭘 하는지 설명해 줘": "Explain what this project does",
-  "README를 읽기 쉽게 다듬어 줘": "Polish the README so it reads more easily",
+  "README를 읽기 쉽게 다듬어 줘": "Make the README easier to read",
   "테스트를 실행하고 실패한 걸 알려 줘": "Run the tests and tell me what fails",
-  "이렇게 시작해 보세요": "Try one of these to get started",
+  "이렇게 시작해 보세요": "Try one of these",
   "줄 {0}": "lines {0}",
   "{0}줄": "{0} lines",
   "명령 실행 중…": "Running commands…",
@@ -201,16 +164,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "모델 프로필": "Model profile",
   "모델 확인 중…": "Checking model…",
   "모델별 사용량": "Usage by model",
-  "모델별 토큰, 캐시율, 비용을 확인합니다.":
-    "Inspect tokens, cache rate, and cost by model.",
   "모든 Peacock 대화를 검색합니다": "Search all Peacock conversations",
   모양: "Appearance",
   "목록에서 숨기기": "Hide from list",
   목록으로: "Back to list",
   목요일: "Thursday",
   "무엇이든 요청하세요": "Ask anything",
-  "발견된 스킬과 설치된 플러그인을 확인합니다.":
-    "Inspect discovered skills and installed plugins.",
   "발견된 스킬이 없습니다.": "No skills found.",
   "변경 {0}": "{0} changes",
   "변경 요청": "Change request",
@@ -233,7 +192,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "보기 전용 기기입니다. 조작은 데스크톱에서 해주세요.":
     "This is a view-only device. Use the desktop app to make changes.",
   "보기 전용 코드": "View-only code",
-  "보류 후 턴 종료 시 전송 (Queue)": "Queue until the turn ends",
   "복구 필요 · 읽기 전용": "Recovery needed · Read only",
   복사: "Copy",
   복사됨: "Copied",
@@ -249,11 +207,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "불러오는 중…": "Loading…",
   브랜치: "Branches",
   "브랜치가 없습니다.": "No branches.",
-  블랙: "Dark",
   "비공개 저장소": "Private repository",
   비용: "Cost",
-  "비워 두면 로컬 설치를 자동으로 찾습니다":
-    "Leave blank to find the local installation automatically",
   비활성화: "Disable",
   삭제: "Delete",
   "삭제·재연결 결과를 확인하지 못해 기록을 보존했습니다. 이 세션은 다시 이어서 진행해야 보낼 수 있습니다.":
@@ -267,8 +222,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "입력 원문을 불러오지 못했습니다: {0}": "Could not load full input: {0}",
   "상태 다시 확인": "Check status again",
   "새 세션": "New session",
-  "새 GJC 세션은 이 폴더에서 시작하며 파일 작업과 저장소 탐색의 기준으로 사용합니다.":
-    "New GJC sessions start in this folder and use it as the base for file work and repository browsing.",
   "새 응답": "New response",
   "새 활동": "New activity",
   "새로 고침": "Refresh",
@@ -293,21 +246,20 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "설정을 불러온 뒤 저장할 수 있습니다.":
     "Settings can be saved after they load.",
   "설정을 저장하지 못했습니다:": "Could not save settings:",
-  "설정이 최신 상태입니다.": "Settings are up to date.",
   "설치된 플러그인이 없습니다.": "No plugins installed.",
   "세션 ID 복사": "Copy session ID",
   "세션 ID, 제목, 폴더로 찾기": "Search by session ID, title, or folder",
   "세션 context 압축 중": "Compacting session context",
   "세션 검색": "Search sessions",
   "세션 기록을 읽는 중…": "Reading session history…",
-  "세션 만들기": "Create session",
+  "세션 시작": "Start session",
   "세션 모델 프로필 선택": "Choose a session model profile",
   "세션 목록": "Sessions",
   "세션 이름": "Session name",
   "세션 이어서 진행": "Continue session",
   "세션 정보": "Session info",
   "세션 정보에서 보기": "View in session info",
-  "세션/메시지 전체 검색": "Search all sessions and messages",
+  "모든 세션과 메시지 검색": "Search every session and message",
   "세션에 전달된 스킬 원문": "Skill source delivered to the session",
   "세션을 시작할 workspace": "Workspace for the new session",
   "세션이 없습니다": "No sessions",
@@ -315,17 +267,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "셸이 종료되었습니다": "The shell exited",
   앱: "App",
   CLI: "CLI",
-  "새 세션: {0}":
-    "New sessions: {0}",
-  "새 세션: 설치된 첫 에이전트":
-    "New sessions: first installed agent",
   "에이전트":
     "Agents",
-  "처음 열 화면":
-    "Starting screen",
+  "처음 열 화면": "Opens in",
   "권한 모드":
     "Permission mode",
-  "기본: 매번 묻기": "Default: always ask",
+  "매번 묻기 (기본)": "Ask every time (default)",
   "대화에 남기지 않고 묻는 사이드 질문": "Side question kept out of the conversation",
   "<질문>": "<question>",
   "지능 점수": "Intelligence score",
@@ -354,54 +301,23 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "도구 {0}": "{0} tools",
   "토큰 {0}": "{0} tokens",
   "서브에이전트 기록 파일": "Subagent transcript file",
-  "에이전트 설정 따름":
-    "Follow the agent's own setting",
-  "{0}을(를) 실행할 폴더를 선택하세요.":
-    "Choose the folder to run {0} in.",
-  "이 Mac에서 찾은 에이전트와 새 세션이 시작될 에이전트·실행 옵션을 설정합니다.":
-    "The agents found on this Mac, and the agent and options new sessions start with.",
-  "새 세션 기본값":
-    "New session default",
-  "새 세션을 처음 열 에이전트와 화면입니다. 새 세션 창에서 고르면 그 선택이 다음 기본값이 됩니다.":
-    "The agent and screen a new session opens on. A choice made in the new session dialog becomes the next default.",
+  "에이전트 기본값": "Agent default",
   "자동 (설치된 첫 에이전트)":
     "Automatic (first installed agent)",
   "설치됨":
     "Installed",
-  "설정한 실행 파일: {0}":
-    "Executable from Settings: {0}",
-  "찾은 위치: {0}":
-    "Found at: {0}",
-  "GJC의 실행 파일, 모델 프로필, 도구 승인, 업데이트와 AI 로그인은 GJC 탭에 있습니다.":
-    "GJC's executable, model profile, tool approval, update and AI sign-in are in the GJC tab.",
-  "GJC 설정 열기":
-    "Open GJC settings",
   "실행 파일":
     "Executable",
-  "비워 두면 PATH와 설치 위치에서 찾습니다":
-    "Leave blank to find it on PATH and where its installer puts it",
-  "자동으로 찾기":
-    "Find automatically",
   "기본 모델":
     "Default model",
   "기본 effort":
     "Default effort",
   "{0} 기본 effort":
     "{0} default effort",
-  "{0} 기본 권한 모드":
-    "{0} default permission mode",
-  "기본 권한 모드":
-    "Default permission mode",
-  "로그인 셸(SHELL)을 엽니다. 따로 설정할 것이 없습니다.":
-    "Opens your login shell (SHELL). Nothing to set.",
   "어떤 에이전트로 시작할까요?":
     "Which agent do you want to start with?",
-  "이 Mac에서 찾은 에이전트입니다. 고른 에이전트로 새 세션이 열리고, 설정에서 언제든 바꿀 수 있습니다.":
-    "These are the agents found on this Mac. New sessions open with the one you choose; you can change it in Settings at any time.",
   "에이전트를 찾는 중…":
     "Looking for agents…",
-  "설치되어 있지 않습니다 · 고르면 설치합니다":
-    "Not installed · choosing it installs it",
   "이 에이전트로 시작":
     "Start with this agent",
   "승인 카드에서 답하거나 터미널에서 답하세요.":
@@ -421,11 +337,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "작업 중단":
     "Stop",
   "터미널 세션": "Terminal session",
-  "새 터미널 세션": "New terminal session",
-  "새 세션 종류": "New session type",
-  "새 세션을 앱 화면의 GJC 채팅으로 열지, 그 폴더의 터미널(CLI)로 열지 고릅니다.":
-    "Whether a new session opens as a GJC chat in the app or as a terminal (CLI) in its folder.",
-  "터미널을 열 폴더를 선택하세요.": "Choose the folder the terminal opens in.",
   수동: "Manual",
   수요일: "Wednesday",
   스킬: "Skills",
@@ -442,8 +353,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "승인이 필요합니다": "Approval required",
   "승인이 필요해요": "Approval needed",
   시스템: "System",
-  "시스템은 macOS의 화면 모드를 따르며, 변경 즉시 앱 전체에 적용됩니다.":
-    "System follows the macOS appearance and applies immediately across the app.",
   실패: "Failed",
   "실패 {0}개": "{0} failed",
   "실행 요일": "Run days",
@@ -451,8 +360,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "실행 중": "Running",
   "실행 중 Enter": "Enter while running",
   "실행 중 Enter 동작": "Enter behavior while running",
-  "실행 중인 턴이 정상적으로 끝났을 때":
-    "When the running turn finishes successfully",
   "실행된 서브 에이전트가 없습니다.": "No subagents have run.",
   "아래 연결 코드를 입력하거나 QR을 스캔하세요.":
     "Enter the connection code below or scan the QR code.",
@@ -462,20 +369,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "아직 실행 전입니다. ‘지금 실행’으로 권한과 도구 설정을 먼저 확인하세요.":
     "This has not run yet. Check permissions and tool settings with Run now first.",
   "아직 접속 주소가 없습니다": "No access address yet",
-  "안전한 브랜치 (선택)": "Safe branch (optional)",
+  "브랜치 이름 (선택)": "Branch name (optional)",
   "알 수 없는 모델 프리셋: {0}": "Unknown model preset: {0}",
   알림: "Notifications",
   앞부분: "Beginning",
-  "앱 재실행 없이 바로 적용됩니다.":
-    "Applied immediately without restarting the app.",
-  "앱 전체의 밝기 모드를 선택합니다.": "Choose the app's brightness mode.",
-  "앱의 테마와 표시 언어를 설정합니다.":
-    "Set the app's theme and display language.",
-  "앱이 닫혀 있어도 GJC 작업을 정해진 시간에 실행합니다.":
-    "Run GJC tasks on schedule even when the app is closed.",
   언어: "Language",
-  "언어를 바꾸면 현재 창에 즉시 적용됩니다.":
-    "Changing the language applies to this window immediately.",
   업데이트: "Update",
   "업데이트 정보를 확인합니다": "Check for updates",
   "업데이트 중…": "Updating…",
@@ -488,8 +386,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "연결 코드 복사": "Copy connection code",
   "연결 코드 취소": "Cancel connection code",
   "연결 코드를 입력해 주세요.": "Enter the connection code.",
-  "연결되지 않은 동안에는 세션 목록과 대화 내용을 표시할 수 없습니다.":
-    "The session list and conversation cannot be shown while disconnected.",
   "연결된 기기가 없습니다": "No connected devices",
   연결됨: "Connected",
   "열린 PR": "Open PRs",
@@ -497,7 +393,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "열린 이슈가 없습니다.": "No open issues.",
   "열린 풀 리퀘스트가 없습니다.": "No open pull requests.",
   열림: "Open",
-  영어: "English",
   "예약 작업 만들기": "Create scheduled task",
   "예약 작업이 현재 작업 폴더를 직접 건드리지 않게 격리합니다.":
     "Isolates scheduled tasks so they do not modify the current working folder directly.",
@@ -505,8 +400,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   오류: "Error",
   "오류가 났어요": "An error occurred",
   완료: "Complete",
-  "완료·승인/질문 대기·실패를 이벤트별로 알리고 소리를 고릅니다.":
-    "Choose which events notify you and their sounds: completion, approval or question, and failure.",
   요약: "Summary",
   "요약 접기": "Collapse summary",
   "요약 펼치기": "Expand summary",
@@ -607,12 +500,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "질문을 찾지 못했습니다.": "The question could not be found.",
   "질문 유형이 일치하지 않습니다.": "The question type does not match.",
   "유효한 답변을 선택해 주세요.": "Choose a valid answer.",
-  "자동 전송 중지": "Stop auto-send",
   "자동화 이름": "Automation name",
   "자동화 주기": "Automation schedule",
   "자동화 추가": "Add automation",
   "자동화 추론 effort": "Automation reasoning effort",
-  "작업 방식": "How to work",
+  "작업 방식": "Where to work",
   "작업 완료": "Task complete",
   "작업 중": "Working",
   "대화 정리 중": "Compacting",
@@ -632,13 +524,10 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Missed runs while asleep are caught up only for the most recent run within 7 days; older runs are recorded with the reason they were skipped.",
   재개: "Resume",
   재연결: "Reconnect",
-  "재연결 중": "Reconnecting",
   저장: "Save",
   "저장 중…": "Saving…",
   "저장소 화면은 데스크톱 앱에서만 사용할 수 있습니다. 브라우저나 원격 기기에서는 세션 목록으로 돌아가세요.":
     "The repository view is only available in the desktop app. Return to the session list in a browser or on a remote device.",
-  "저장하면 GJC runtime만 다시 연결됩니다.":
-    "Saving only reconnects the GJC runtime.",
   적용: "Apply",
   "전송 결과를 확인할 수 없습니다. 대화 기록을 확인한 뒤 다시 전송하세요.":
     "Could not confirm the send result. Check the conversation and send again.",
@@ -660,16 +549,13 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "제어 연결 없음 · 기록 동기화 중": "No control connection · Syncing history",
   "조작 가능": "Can control",
   "조작 가능 코드": "Control-enabled code",
-  "조회만 가능합니다. 메시지 전송과 승인은 데스크톱에서 하거나 기기 권한을 조작 가능으로 올려주세요.":
-    "This device is view-only. Send messages and approve from the desktop, or raise its permission to Can control.",
+  "보기만 할 수 있습니다. 메시지와 승인은 Mac에서 하거나, Mac의 설정에서 이 기기를 ‘조작 가능’으로 바꾸세요.": "View only. Send messages and approve on the Mac, or give this device control in the Mac's settings.",
   "주소 복사": "Copy address",
   "주소 열기": "Open address",
   "줄 생략": "Lines omitted",
   "중단할 실행 작업이 없습니다": "No running work to stop",
   중지: "Stop",
   즉시: "Immediately",
-  "지금 보고 있는 세션의 완료·실패·승인 알림은 생략합니다. 창이 앞에 있어도 다른 세션의 결과는 알립니다. 원격 PWA에는 같은 이벤트의 읽지 않은 세션 수가 앱 배지로 표시됩니다.":
-    "Notifications for the session you are viewing are skipped for completion, failure, and approval. Other sessions still notify you even when the window is in front. The remote PWA shows the number of unread sessions for these events as an app badge.",
   "지금 실행": "Run now",
   "지난 세션 이어서 진행": "Continue a previous session",
   "진행 중": "In progress",
@@ -681,15 +567,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   체크아웃됨: "Checked out",
   초안: "Draft",
   "최근 요청": "Recent requests",
-  "최신 내용으로": "Use latest content",
+  "최신 내용으로": "Jump to latest",
   "최신 버전 {0}": "Latest version {0}",
   추가: "Add",
   추론: "Reasoning",
   "추론 Effort": "Reasoning effort",
   "추론 effort 변경 (단축키: ⇧⇥)": "Change reasoning effort (shortcut: ⇧⇥)",
-  "추론 카드 펼치기": "Expand reasoning cards",
-  "추론(thinking) 기록을 모든 세션에서 펼친 상태로 둡니다":
-    "Keep reasoning cards expanded in all sessions",
   "추론까지 펼침": "Expand reasoning too",
   출력: "Output",
   "출력 원문": "Full output",
@@ -723,12 +606,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "터미널 다시 시작": "Restart terminal",
   "터미널은 데스크톱 앱에서만 사용할 수 있습니다":
     "The terminal is only available in the desktop app.",
-  "터미널을 여는 중": "Opening the terminal",
   "터미널을 열지 못했습니다": "Could not open the terminal",
-  "턴 밖의 보조 메시지와 연결 복구":
-    "Out-of-turn messages and connection recovery",
-  "턴이 실행 중일 때 Enter로 제출하면 보류(Queue)할지 다음 경계에서 반영(Steer)할지 고릅니다. /queue·/steer는 항상 이 설정보다 우선합니다.":
-    "While a turn is running, choose whether Enter queues the message or steers it at the next boundary. /queue and /steer always override this setting.",
   "턴이 오류로 끝났을 때": "When a turn ends with an error",
   테마: "Theme",
   토요일: "Saturday",
@@ -742,14 +620,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   포크: "Fork",
   "포크: {0}": "Fork: {0}",
   포트: "Port",
-  "폴더 범위": "Folder scope",
   "폴더 정보 없음": "No folder information",
-  "폴더를 선택하지 못했습니다:": "Could not choose folder:",
-  "표시 언어": "Display language",
   "프로젝트 목록": "Projects",
   "프로젝트 선택": "Choose project",
-  "프로젝트 위치": "Project location",
-  "프로젝트 폴더를 선택하세요": "Choose a project folder",
+  "폴더": "Folder",
+  "폴더를 고르세요": "Choose a folder",
   "프로젝트가 없습니다. 세션을 만들면 그 작업 폴더가 프로젝트가 됩니다.":
     "No projects yet. When you create a session, its working folder becomes a project.",
   프리셋: "Preset",
@@ -786,7 +661,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "호스트의 응답을 읽을 수 없습니다.": "Could not read the host response.",
   "화면을 불러오지 못했습니다.": "Could not load this screen.",
   화요일: "Tuesday",
-  화이트: "Light",
   "확인 중": "Checking",
   "확인 중…": "Checking…",
   "확인 필요": "Needs review",
@@ -795,8 +669,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   활성: "Active",
   활성화: "Enable",
   "회 · $": " runs · $",
-  "휴대폰과 다른 개인 기기에서 이 컴퓨터의 세션을 조회·조작합니다.":
-    "View and control this computer's sessions from your phone and other personal devices.",
   건너뜀: "Skipped",
   예약: "Scheduled",
   보충: "Catch-up",
@@ -838,10 +710,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "GJC created a session but failed to validate the lifecycle receipt. Automatic recovery of preserved sessions also failed. GJC lifecycle ledger reconciliation is required.",
   "GJC가 세션을 포크했지만 lifecycle 영수증을 검증하지 못했습니다. 보존된 포크 자동 복구에도 실패했습니다. GJC lifecycle ledger reconciliation이 필요합니다.":
     "GJC forked the session but failed to validate the lifecycle receipt. Automatic recovery of preserved forks also failed. GJC lifecycle ledger reconciliation is required.",
-  "GJC가 작업 중지를 확정하지 못했습니다. 이 창이 쓰는 연결에서는 중지할 작업을 찾지 못했고, 세션은 아직 작업 중으로 보입니다. 다른 곳에서 진행 중인 작업의 중지 여부는 확인되지 않았습니다.":
-    "GJC could not confirm that the work stopped. It found nothing to stop on the connection this window uses, and the session still looks busy. It is not confirmed whether work running elsewhere has stopped.",
-  "GJC가 작업 중지를 확정하지 못했습니다. 중지 요청은 보냈지만 응답이 오지 않았고, 세션은 아직 작업 중으로 보입니다. 잠시 뒤 다시 시도해 주세요.":
-    "GJC could not confirm that the work stopped. The stop request was sent but no answer came back, and the session still looks busy. Try again in a moment.",
   "GJC가 작업 중지를 확정하지 못했습니다. 예상하지 못한 응답을 받았습니다.":
     "GJC could not confirm that the work stopped. It sent an unexpected answer.",
   "GitHub CLI(gh)를 찾을 수 없습니다.": "GitHub CLI(gh) not found.",
@@ -927,8 +795,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "GJC CLI exited before deleting the session. The history is unchanged. Try deleting again.",
   "GJC CLI가 예상하지 못한 확인 창을 띄워 삭제를 멈췄습니다. 기록은 그대로 남아 있습니다. 다시 삭제해 보세요.":
     "GJC CLI showed an unexpected dialog, so deletion stopped. The history is unchanged. Try deleting again.",
-  "앱 전체에 표시할 언어를 선택합니다.":
-    "Choose the language used across the app.",
   "Inbox (⌥⌘U)": "Inbox (⌥⌘U)",
   "새로 완료": "Newly finished",
   자동화: "Automation",
@@ -959,23 +825,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "스토리 {0}/{1}": "Stories {0}/{1}",
   "검증 기록": "Verified",
   "스토리 {0}개 더 있음": "{0} more stories",
-  "메뉴바 상태 표시": "Menu bar status",
-  "실행 중인 세션과 확인이 필요한 세션 수를 메뉴바에 표시합니다. 눌러서 세션으로 바로 이동할 수 있습니다.":
-    "Shows how many sessions are working or need you in the menu bar. Click it to jump to a session.",
   "Dock 배지": "Dock badge",
-  "승인·질문 대기, 실패, 안 읽은 완료 세션 수를 Dock 아이콘에 표시합니다.":
-    "Shows the number of sessions waiting for approval or an answer, failed, or finished and unread on the Dock icon.",
-  "Peacock 업데이트 확인": "Check for Peacock updates",
-  "배포된 앱은 시작할 때와 하루에 한 번 GitHub 릴리스를 확인하고, 새 버전마다 한 번만 알립니다. 앱을 내려받거나 바꾸지는 않습니다.":
-    "A released app checks GitHub releases at launch and once a day, and announces each new version once. It never downloads or replaces the app.",
   "Peacock 버전": "Peacock version",
   "{0} · 아직 확인하지 않았습니다": "{0} · Not checked yet",
   "{0} · 확인할 수 없음": "{0} · Cannot check",
   "지금 확인": "Check now",
   "릴리스 페이지": "Release page",
-  "환경 점검": "Environment check",
-  "Peacock이 쓰는 도구가 이 Mac에 준비됐는지 확인합니다.":
-    "Check that the tools Peacock runs on are ready on this Mac.",
   "기본 모델 프로필": "Default model profile",
   "GitHub CLI 로그인": "GitHub CLI sign-in",
   "설치되어 있지 않거나 PATH에서 찾지 못했습니다":
@@ -988,13 +843,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "로그인되어 있지 않습니다": "Not signed in",
   "설치되어 있지만 연결되어 있지 않습니다": "Installed but not connected",
   선택: "Optional",
-  "필수 항목이 모두 준비됐습니다": "Every required item is ready",
-  "필수 항목 중 준비되지 않은 것이 있습니다":
-    "Some required items are not ready",
-  "점검 중…": "Checking…",
   "다시 점검": "Check again",
-  "필요한 명령을 복사해 터미널에서 실행한 뒤 다시 점검하세요.":
-    "Copy the command you need, run it in Terminal, then check again.",
   "{0} (변경 전)": "{0} (before the change)",
   "다음 코드 리뷰 코멘트를 반영해 주세요.":
     "Please address the following code review comments.",
@@ -1051,8 +900,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "파일이 많아 일부만 검색합니다":
     "Too many files; searching only part of the workspace",
   "빠른 입력": "Quick input",
-  "무엇을 할까요? Enter를 누르면 새 세션 창이 열립니다.":
-    "What should Peacock do? Enter opens it as a new session.",
+  "무엇을 할까요? Enter를 누르면 새 세션 창이 열립니다.": "What do you need? Press Enter to open it as a new session.",
   "캡처 빼기": "Remove capture",
   "화면을 캡처하려면 시스템 설정 > 개인정보 보호 및 보안 > 화면 기록에서 Peacock을 켜 주세요. 켠 뒤에는 Peacock을 다시 열어야 할 수 있습니다.":
     "To capture the screen, turn on Peacock in System Settings > Privacy & Security > Screen Recording. You may need to reopen Peacock afterwards.",
@@ -1100,18 +948,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "대화 열기": "Open conversation",
   "diff 보기": "Show diff",
   "이 시도 채택": "Adopt this attempt",
-  "Peacock을 쓰려면 GJC가 필요합니다": "Peacock needs GJC",
-  "GJC는 Peacock이 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.":
-    "GJC is the engine Peacock uses to work with AI. Peacock downloads the official release (about 140 MB) and installs it on this Mac.",
   "GJC 받는 중": "Downloading GJC",
   "설치를 확인하는 중…": "Checking the installation…",
   "받는 중 {0}MB / {1}MB": "Downloading {0} MB of {1} MB",
   "받는 중…": "Downloading…",
   "설치하지 못했습니다. {0}": "Couldn't install GJC. {0}",
   "GJC 설치": "Install GJC",
-  "어떤 AI를 쓰시나요?": "Which AI do you use?",
-  "이미 쓰고 있는 구독 계정이나 API 키로 로그인하세요.":
-    "Sign in with a subscription or an API key you already have.",
   "브라우저에서 로그인": "Sign in with your browser",
   "API 키 붙여넣기": "Paste an API key",
   "{0}에 로그인": "Sign in to {0}",
@@ -1139,10 +981,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
     "Peacock now uses the recommended model for {0}.",
   "AI 로그인": "Sign in to AI",
   "AI 로그인 / 제공자 추가": "AI sign-in / add a provider",
-  "ChatGPT·Claude 같은 구독 계정이나 API 키로 로그인합니다. 다른 AI를 더하거나 로그인이 만료됐을 때도 여기서 하세요.":
-    "Sign in with a subscription such as ChatGPT or Claude, or with an API key. Use this to add another AI or when a sign-in has expired.",
-  "로그인 필요": "Sign-in needed",
-  "AI에 로그인합니다": "Sign in to an AI",
   "AI 모델 가용성": "AI model availability",
   "사용 가능한 AI 모델이 없습니다. AI에 로그인하거나 프록시 연결을 설정하세요":
     "No AI models are available. Sign in to an AI provider or configure a proxy",
@@ -1164,8 +1002,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "로그인 주소를 받으면 여기에 코드를 붙여 넣는 칸이 나타납니다.":
     "Once the sign-in address arrives, a field to paste the code appears here.",
   "계정이 없나요? {0} 가입하기": "No account? Sign up for {0}",
-  "GJC가 세션에서 쓰는 켜고 끄는 설정과 숫자 설정을 바꿉니다.":
-    "Change the on/off and number settings GJC uses in sessions.",
   "GJC 설정": "GJC settings",
   "불러오거나 저장하지 못했습니다: {0}": "Could not load or save: {0}",
   "켜고 끄는 설정과 숫자 설정 {0}개": "{0} on/off and number settings",
@@ -1218,8 +1054,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   되돌리기: "Revert",
   "적용 중…": "Applying…",
   "사용 중·즐겨찾기": "In use · Favorites",
-  "검색 결과 {0}개 중 {1}개": "{1} of {0} results",
-  "검색 결과 {0}개": "{0} results",
   '프로젝트 규칙 "{0}"로 자동 허용됨':
     'Allowed automatically by project rule "{0}"',
   '프로젝트 규칙 "{0}"로 자동 거절됨':
@@ -1228,18 +1062,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "앞부분 항상 허용": "Always allow this prefix",
   "앞부분 항상 거부": "Always reject this prefix",
   "명령 규칙": "Command rules",
-  "승인 카드에서 저장한, 프로젝트별로 묻지 않고 허용하거나 거절할 bash 명령의 앞부분입니다.":
-    "Bash command prefixes saved from approval cards that are allowed or rejected without asking, per project.",
-  "저장된 명령 규칙이 없습니다. 승인 카드의 앞부분 항상 허용·거부로 추가할 수 있습니다.":
-    "No command rules saved. Add one with Always allow or Always reject on an approval card.",
   "{0} 규칙 삭제": "Delete rule {0}",
-  "모델 이름이나 provider로 찾기": "Search by model or provider",
   "모델 찾기": "Search models",
   "{0} 즐겨찾기": "Favorite {0}",
   "즐겨찾기에서 빼기": "Remove from favorites",
   "즐겨찾기에 추가": "Add to favorites",
-  "모델 {0}개 중에서 이름이나 provider로 찾으세요.":
-    "Search {0} models by name or provider.",
   "터미널 연결이 끊겼습니다": "Lost the connection to the terminal",
   "백그라운드 터미널": "Background terminals",
   "터미널 세션의 셸은 앱을 닫아도 계속 실행됩니다. 여기서 모두 종료할 수 있습니다.":
@@ -1249,9 +1076,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "터미널 {0}개를 종료했습니다": "Ended {0} terminals",
   "실행 중인 백그라운드 터미널이 없습니다": "No background terminals are running",
   "터미널을 종료하지 못했습니다": "Could not end the terminals",
-  "세션 종류": "Session kind",
-  "GJC 채팅": "GJC chat",
-  "실행할 에이전트": "Agent to run",
   셸: "Shell",
   "사용할 수 없음": "Unavailable",
   "컨텍스트 자세히 보기": "Show context details",
@@ -1336,7 +1160,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "대화 트리": "Conversation tree",
   "omp에 대화 트리를 묻는 중…": "Asking omp for the conversation tree…",
   "지금 여기": "You are here",
-  "이 메시지 앞에서 새 갈래로 옮기고 내용을 입력창에 넣습니다": "Moves to a new branch before this message and puts it in the composer",
   "여기서 다시 쓰기": "Rewrite from here",
   "이 메시지까지를 새 채팅으로 복사합니다": "Copies the conversation up to this message into a new chat",
   "여기까지 포크": "Fork up to here",
@@ -1358,12 +1181,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "대화를 이 지점으로 옮깁니다 (같은 세션 파일 안에서)": "Moves the conversation to this point (within the same session file)",
   "여기로 이동": "Move here",
   "지난 GJC 세션 이어서 진행": "Continue a past GJC session",
-  "어디를 칠까요?": "Where do we strike?",
-  "{0}에게 무엇을 맡길까요?": "What should {0} take on?",
-  "무엇을 맡길까요?": "What should it take on?",
-  "선택된 세션이 없습니다. 에이전트를 골라 새 세션을 시작하세요.": "No session selected. Pick an agent to start a new session.",
+  "무엇부터 할까요?": "What's first?",
+  "{0}에게 맡길 일을 적으세요.": "Tell {0} what you need.",
+  "맡길 일을 적으세요.": "Tell it what you need.",
+  "에이전트를 고르면 새 세션 창이 열립니다.": "Pick an agent to open a new session.",
   "에이전트로 새 세션 시작": "Start a new session with an agent",
-  "명령어 (예: {0})": "Commands (e.g. {0})",
+  "명령어 (예: {0})": "Commands, e.g. {0}",
   "터미널 세션이 도는 곳입니다. 앱을 닫아도 셸과 에이전트는 여기서 계속 실행됩니다.": "Where terminal sessions run. Shells and agents keep running here after you quit the app.",
   "확인하는 중…": "Checking…",
   "이 Mac에서는 쓰지 않습니다": "Not used on this Mac",

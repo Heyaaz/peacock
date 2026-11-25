@@ -52,7 +52,7 @@ export function ApprovalSettingsPanel({
   const shown = (id: (typeof SETTINGS_AGENTS)[number]): string => {
     if (id === "gjc") return gjcApprovalLabel(permissionHandling);
     if (id === "codex") return t("Codex 설정을 따릅니다");
-    return agents[id]?.launch?.permissionMode ?? t("에이전트 설정 따름");
+    return agents[id]?.launch?.permissionMode ?? t("에이전트 기본값");
   };
   const controllers = remote?.devices.filter((device) => device.permission === "control") ?? [];
 

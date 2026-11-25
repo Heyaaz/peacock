@@ -147,7 +147,7 @@ describe("NewSessionDialog prefill", () => {
     );
     const branch = findElement(
       tree,
-      (element) => element.type === "input" && element.props?.placeholder === "안전한 브랜치 (선택)",
+      (element) => element.type === "input" && element.props?.placeholder === "브랜치 이름 (선택)",
     );
     expect(branch.props.value).toBe("issue-172-deep-links");
     expect(findElement(tree, (element) => element.type === "textarea")).toBeUndefined();
@@ -179,7 +179,7 @@ describe("NewSessionDialog prefill", () => {
     tree = renderNewSessionDialog({ prefill: ciPrefill, onCreate });
     findElement(
       tree,
-      (element) => element.type === "input" && element.props?.placeholder === "안전한 브랜치 (선택)",
+      (element) => element.type === "input" && element.props?.placeholder === "브랜치 이름 (선택)",
     ).props.onChange({ target: { value: "feat/my-own" } });
     tree = renderNewSessionDialog({ prefill: ciPrefill, onCreate });
     findElement(tree, (element) => element.type === "form").props.onSubmit(submitEvent);
@@ -227,7 +227,7 @@ describe("NewSessionDialog prefill", () => {
     tree = renderNewSessionDialog({ prefill: forkPrefill, onCreate });
     findElement(
       tree,
-      (element) => element.type === "input" && element.props?.placeholder === "안전한 브랜치 (선택)",
+      (element) => element.type === "input" && element.props?.placeholder === "브랜치 이름 (선택)",
     ).props.onChange({ target: { value: "my-own" } });
     tree = renderNewSessionDialog({ prefill: forkPrefill, onCreate });
     findElement(tree, (element) => element.type === "form").props.onSubmit(submitEvent);

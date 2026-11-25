@@ -1184,9 +1184,9 @@ export function Transcript({
         <span className="empty-conversation__mark">
           <PeacockMark />
         </span>
-        <h2>{t("어디를 칠까요?")}</h2>
+        <h2>{t("무엇부터 할까요?")}</h2>
         <p className="empty-conversation__agent">
-          {assistantName ? t`${assistantName}에게 무엇을 맡길까요?` : t("무엇을 맡길까요?")}
+          {assistantName ? t`${assistantName}에게 맡길 일을 적으세요.` : t("맡길 일을 적으세요.")}
         </p>
         {loadingPage && <p role="status">{t("최근 대화 불러오는 중…")}</p>}
         {pageLoadError && (
@@ -1250,7 +1250,7 @@ export function Transcript({
             <ul className="empty-conversation__hints">
               <li>
                 <kbd>⌘K</kbd>
-                <span>{t("세션/메시지 전체 검색")}</span>
+                <span>{t("모든 세션과 메시지 검색")}</span>
               </li>
               <li>
                 <kbd>⌘F</kbd>

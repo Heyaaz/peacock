@@ -58,7 +58,7 @@ describe("a broad project folder", () => {
     expect(node.querySelector(".broad-workspace-warning")?.textContent).toContain("모든 파일을 읽고 바꿀 수 있습니다");
     expect(button(node, "폴더 선택…")?.className).toContain("button-primary");
     expect(button(node, "이 폴더에서 그대로 시작")?.className).toContain("button-secondary");
-    expect(button(node, "세션 만들기")).toBeUndefined();
+    expect(button(node, "세션 시작")).toBeUndefined();
 
     await submit(node);
     expect(onCreate).not.toHaveBeenCalled();

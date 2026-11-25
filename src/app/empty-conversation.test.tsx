@@ -14,8 +14,8 @@ describe("empty conversation state", () => {
         onResolveTool: noop,
       }),
     );
-    expect(markup).toContain("어디를 칠까요?");
-    expect(markup).toContain("무엇을 맡길까요?");
+    expect(markup).toContain("무엇부터 할까요?");
+    expect(markup).toContain("맡길 일을 적으세요.");
     expect(markup).not.toContain("Gajae");
     expect(markup).not.toContain("empty-conversation__meta");
   });
@@ -31,7 +31,7 @@ describe("empty conversation state", () => {
         emptyStateMeta: { workspace: "/Users/dev/gajae-bot", recentWorkspaces: ["/Users/dev/gajae-bot"] },
       }),
     );
-    expect(markup).toContain("Claude Code에게 무엇을 맡길까요?");
+    expect(markup).toContain("Claude Code에게 맡길 일을 적으세요.");
     expect(markup).not.toContain("확인 중…");
     expect(markup).not.toContain("/resume");
   });

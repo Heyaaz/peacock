@@ -138,7 +138,7 @@ function InspectorView({
   return (
     <aside className="inspector">
       <header>
-        <strong>{t("Peacock 세션 정보")}</strong>
+        <strong>{t("세션 정보")}</strong>
         <button className="icon-button" type="button" onClick={onClose}>
           <X size={17} />
         </button>

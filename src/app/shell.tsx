@@ -1730,8 +1730,8 @@ export default function App() {
             <PeacockMark />
           </span>
           <PeacockWordmark className="workspace-empty__wordmark" />
-          <h1>{t("어디를 칠까요?")}</h1>
-          <p className="workspace-empty__lede">{t("선택된 세션이 없습니다. 에이전트를 골라 새 세션을 시작하세요.")}</p>
+          <h1>{t("무엇부터 할까요?")}</h1>
+          <p className="workspace-empty__lede">{t("에이전트를 고르면 새 세션 창이 열립니다.")}</p>
           {backend.terminalSessions === true && (
             <EmptyWorkspaceAgents
               onPick={(agentKind) => {

@@ -1567,7 +1567,7 @@ function createWindow(): BrowserWindow {
             await wait(100);
             assert(document.querySelector('.new-session-dialog'), 'New session project dialog did not render');
             assert(document.querySelector('.project-location-field'), 'Project location control did not render');
-            (buttonWithText('세션 만들기') ?? buttonWithText('이 폴더에서 그대로 시작'))?.click();
+            (buttonWithText('세션 시작') ?? buttonWithText('이 폴더에서 그대로 시작'))?.click();
             await wait(150);
             assert(document.querySelectorAll('.session-row').length === initialSessions + 1, 'New session did not render');
             assert(document.querySelector('.empty-conversation'), 'New session did not select its empty transcript');

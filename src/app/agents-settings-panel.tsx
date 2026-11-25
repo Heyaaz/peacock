@@ -166,7 +166,7 @@ export function AgentsSettingsPanel({
     }
   }
 
-  const follow = t("에이전트 설정 따름");
+  const follow = t("에이전트 기본값");
   return (
     <div className="agents-settings">
       {SETTINGS_AGENTS.map((id) => {

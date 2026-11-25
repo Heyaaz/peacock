@@ -139,7 +139,7 @@ describe("new session dialog", () => {
     await act(async () => undefined);
     Reflect.deleteProperty(window, "agentControlDesktop");
     expect(node.querySelector('[aria-pressed="true"]')?.textContent).toBe("채팅");
-    expect(modeLabel(node)).toBe("기본: 매번 묻기");
+    expect(modeLabel(node)).toBe("매번 묻기 (기본)");
     await submit(node);
     expect(onCreate).toHaveBeenCalledExactlyOnceWith({
       title: "repo",
@@ -152,7 +152,7 @@ describe("new session dialog", () => {
     // the terminal screen keeps omp's own setting
     const terminalButton = [...node.querySelectorAll("button")].find((button) => button.textContent === "터미널")!;
     await act(async () => terminalButton.click());
-    expect(modeLabel(node)).toBe("에이전트 설정 따름");
+    expect(modeLabel(node)).toBe("에이전트 기본값");
   });
 
   it("keeps a handed-over request on a GJC session whatever was chosen before", async () => {
@@ -242,7 +242,7 @@ describe("terminal agents in the new session dialog", () => {
     expect(node.textContent).toContain("설치되어 있지 않습니다");
     // Claude Code has only its terminal: no screen switch
     expect(node.querySelector(".session-kind-switch")).toBeNull();
-    expect(modeLabel(node)).toBe("에이전트 설정 따름");
+    expect(modeLabel(node)).toBe("에이전트 기본값");
     await select(node, "plan");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
@@ -272,7 +272,7 @@ describe("terminal agents in the new session dialog", () => {
     );
     await act(async () => undefined);
     expect(modeLabel(node)).toBe("default");
-    await select(node, "에이전트 설정 따름");
+    await select(node, "에이전트 기본값");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
     expect(onCreate.mock.calls[0]![0]).toMatchObject({ agentKind: "claude", surface: "terminal", launch: { model: "haiku" } });
