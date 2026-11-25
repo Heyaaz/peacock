@@ -179,6 +179,10 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async getSessionStats(_sessionId: string): Promise<never> {
     throw new Error("not in this fake");
   }
+
+  async exportSessionHtml(_sessionId: string): Promise<null> {
+    return null;
+  }
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

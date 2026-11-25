@@ -1314,4 +1314,5 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "도구 호출": "Tool calls",
   "프리미엄 요청": "Premium requests",
   "이 세션의 사용량": "Usage of this session",
+  "HTML로 내보내기": "Export as HTML",
 };

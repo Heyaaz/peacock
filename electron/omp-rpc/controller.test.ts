@@ -124,6 +124,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "export_html") answer({ path: frame.outputPath });
       else if (frame.type === "get_session_stats")
         answer({
           sessionId: "x",
@@ -886,5 +887,14 @@ describe("OmpRpcController session name", () => {
     await context.controller.renameSession(session.id, "while running");
     expect(child.sent("set_session_name").at(-1)).toMatchObject({ name: "while running" });
     expect(context.controller.sessionTitle(session.id)).toBe("while running");
+  });
+});
+
+describe("OmpRpcController HTML export", () => {
+  it("asks omp to write the page where the save dialog chose", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.exportSessionHtml(session.id, "/tmp/out/chat.html")).resolves.toBe("/tmp/out/chat.html");
+    expect(context.processes[0]!.child.sent("export_html")[0]).toMatchObject({ outputPath: "/tmp/out/chat.html" });
   });
 });

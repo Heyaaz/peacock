@@ -199,6 +199,13 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [appError, setAppError] = useState("");
+  const exportSessionHtml = useCallback(
+    (session: AgentSession) => {
+      if (!backend.exportSessionHtml) return;
+      void backend.exportSessionHtml(session.id).catch((error: unknown) => setAppError(humanErrorMessage(error)));
+    },
+    [backend],
+  );
   // A session link that arrived before the first session list waits for it, so a
   // link that started the app is not reported missing before the list arrives.
   const sessionLinkRef = useRef<{ listed: boolean; waiting?: string }>({
@@ -1282,6 +1289,7 @@ export default function App() {
         onRename={startRename}
         onDelete={onDeleteSession}
         onHide={onHideSession}
+        onExportHtml={backend.exportSessionHtml ? exportSessionHtml : undefined}
         onSettings={openSettings}
         workspaceLabel={workspaceLabel}
         onWorkspaceLabelChange={startWorkspaceRename}

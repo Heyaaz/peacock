@@ -1,4 +1,5 @@
-import { ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import path from "node:path";
 import type {
   FileAttachment,
   MessageDelivery,
@@ -434,6 +435,21 @@ export function registerGjcIpcHandlers(
     if (typeof enabled !== "boolean") throw new Error("Runtime mode needs on or off");
     if (!controller.setRuntimeMode) throw new AgentUnsupportedError("setRuntimeMode", id);
     return controller.setRuntimeMode(id, mode, enabled);
+  });
+  handle(GJC_IPC.exportSessionHtml, async (event, sessionId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.exportSessionHtml) throw new AgentUnsupportedError("exportSessionHtml", id);
+    const name = (controller.sessionTitle(id) ?? "").replace(/[\\/:*?"<>|\r\n]+/gu, "-").trim().slice(0, 80) || "omp-session";
+    const options = {
+      defaultPath: path.join(app.getPath("downloads"), `${name}.html`),
+      filters: [{ name: "HTML", extensions: ["html"] }],
+    };
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const choice = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (choice.canceled || !choice.filePath) return null;
+    const written = await controller.exportSessionHtml(id, choice.filePath);
+    shell.showItemInFolder(written);
+    return written;
   });
   handle(GJC_IPC.getSessionStats, (_event, sessionId: unknown) => {
     const id = requiredId(sessionId, "Session ID");

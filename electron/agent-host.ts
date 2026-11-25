@@ -195,6 +195,8 @@ export interface AgentExtrasFacet {
   removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
   getSessionStats(sessionId: string): Promise<SessionUsageStats>;
+  /** Writes the conversation as an HTML page at `outputPath`; the path it wrote. */
+  exportSessionHtml(sessionId: string, outputPath: string): Promise<string>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

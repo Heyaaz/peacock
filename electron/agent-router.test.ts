@@ -76,6 +76,7 @@ const EXTRA_CALLS = new Set([
   "removeQueuedMessage",
   "setRuntimeMode",
   "getSessionStats",
+  "exportSessionHtml",
 ]);
 
 /** Router members that place calls rather than forward them. */

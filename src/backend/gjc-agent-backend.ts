@@ -224,6 +224,10 @@ export class GjcAgentBackend implements AgentBackend {
     return this.bridge.getSessionStats(sessionId);
   }
 
+  exportSessionHtml(sessionId: string): Promise<string | null> {
+    return this.bridge.exportSessionHtml(sessionId);
+  }
+
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {
     return this.bridge.queueFollowUp(sessionId, input);
   }

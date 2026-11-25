@@ -441,6 +441,10 @@ export class AgentRouter implements RoutingAgentHost {
     return this.facet(sessionId, "getSessionStats")(sessionId);
   }
 
+  exportSessionHtml(sessionId: string, outputPath: string): Promise<string> {
+    return this.facet(sessionId, "exportSessionHtml")(sessionId, outputPath);
+  }
+
   openHistorySession(sessionId: string): Promise<AgentSession> {
     return this.adopt(
       this.controllerFor(sessionId),

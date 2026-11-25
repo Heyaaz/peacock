@@ -97,6 +97,8 @@ export interface SessionCapabilities {
   queueEdit: boolean;
   /** Runtime switches: fast and slow modes, auto-compaction, auto-retry. */
   runtimeModes: boolean;
+  /** Saving the conversation as an HTML page. */
+  exportHtml: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -119,6 +121,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     subagentControl: value,
     queueEdit: value,
     runtimeModes: value,
+    exportHtml: value,
   };
 }
 
@@ -141,6 +144,7 @@ const LATER_CAPABILITIES = {
   subagentControl: false,
   queueEdit: false,
   runtimeModes: false,
+  exportHtml: false,
 } satisfies Partial<SessionCapabilities>;
 
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
@@ -1430,6 +1434,11 @@ export interface GjcDesktopBridge {
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
   /** Cost, tokens and requests so far. Only omp's chat answers. */
   getSessionStats(sessionId: string): Promise<SessionUsageStats>;
+  /**
+   * Saves the conversation as an HTML page where the user picks in a save dialog, and shows
+   * it in Finder; the saved path, or null when the dialog was cancelled. Only omp's chat answers.
+   */
+  exportSessionHtml(sessionId: string): Promise<string | null>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

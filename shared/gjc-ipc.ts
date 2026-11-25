@@ -43,6 +43,7 @@ export const GJC_IPC = {
   removeQueuedMessage: "agent-control:gjc:remove-queued-message",
   setRuntimeMode: "agent-control:gjc:set-runtime-mode",
   getSessionStats: "agent-control:gjc:get-session-stats",
+  exportSessionHtml: "agent-control:gjc:export-session-html",
   queueFollowUp: "agent-control:gjc:queue-follow-up",
   listQueuedMessages: "agent-control:gjc:list-queued-messages",
   flushQueuedNow: "agent-control:gjc:flush-queued-now",

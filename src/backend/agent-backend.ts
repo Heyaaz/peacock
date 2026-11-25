@@ -110,6 +110,8 @@ export interface AgentBackend {
   setRuntimeMode?(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
   /** Cost, tokens and requests so far, shown with the context breakdown (omp's chat). */
   getSessionStats?(sessionId: string): Promise<SessionUsageStats>;
+  /** Saves the conversation as HTML through a save dialog; null when cancelled (omp's chat). */
+  exportSessionHtml?(sessionId: string): Promise<string | null>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

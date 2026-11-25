@@ -81,6 +81,7 @@ const none: Readonly<SessionCapabilities> = {
   subagentControl: false,
   queueEdit: false,
   runtimeModes: false,
+  exportHtml: false,
 };
 
 /**
@@ -140,6 +141,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       subagentControl: true,
       queueEdit: true,
       runtimeModes: true,
+      exportHtml: true,
     },
   },
   {
@@ -184,6 +186,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       subagentControl: false,
       queueEdit: false,
       runtimeModes: false,
+      exportHtml: false,
     },
   },
   {

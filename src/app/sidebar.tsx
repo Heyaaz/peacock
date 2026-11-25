@@ -21,6 +21,7 @@ import {
   Settings,
   SquareTerminal,
   Trash2,
+  FileDown,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -367,6 +368,8 @@ export interface SidebarProps {
   onRename: (sessionId: string, title: string) => void;
   onDelete: (session: AgentSession) => void;
   onHide: (session: AgentSession) => void;
+  /** Saves a session as an HTML page, where its runtime can (omp's chat). */
+  onExportHtml?: (session: AgentSession) => void;
   onSettings: () => void;
   workspaceLabel: string;
   onWorkspaceLabelChange: (label: string) => void;
@@ -422,6 +425,7 @@ function SidebarView({
   onRename,
   onDelete,
   onHide,
+  onExportHtml,
   onSettings,
   workspaceLabel,
   onWorkspaceLabelChange,
@@ -948,6 +952,17 @@ function SidebarView({
                 onClick={() => beginRename(contextMenu.session)}
               >
                 <Pencil size={14} /> {t("이름 변경")} </button>
+              {onExportHtml && capabilitiesOf(contextMenu.session).exportHtml && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const session = contextMenu.session;
+                    setContextMenu(null);
+                    onExportHtml(session);
+                  }}
+                >
+                  <FileDown size={14} /> {t("HTML로 내보내기")} </button>
+              )}
               <button
                 type="button"
                 className="is-danger"

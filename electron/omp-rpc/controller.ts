@@ -498,6 +498,15 @@ export class OmpRpcController implements AgentRuntimeController {
     };
   }
 
+  /** `export_html`: omp renders the session file as one HTML page at the path given. */
+  async exportSessionHtml(sessionId: string, outputPath: string): Promise<string> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "export_html", outputPath }, 120_000));
+    const written = string(data.path);
+    if (!written) throw new Error("omp did not say where it saved the page");
+    return written;
+  }
+
   // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)
 
   /** omp's goal for the goal row; a chat whose omp is not running reads as the last one seen. */
