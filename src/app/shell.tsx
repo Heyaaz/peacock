@@ -1412,6 +1412,7 @@ export default function App() {
               ? { onOpenTree: () => setTreeDialogFor(selectedSession.id) }
               : {})}
             surfaceToggle={!ompChat && (!agentChat || agentTerminalReachable)}
+            {...(ompChat ? { changedFiles: Boolean(selectedCapabilities?.git) } : {})}
           />
           {treeDialogFor === selectedSession.id && (
             <SessionTreeDialog
@@ -1720,7 +1721,7 @@ export default function App() {
                 onClose={closeInspector}
               />
             )}
-            {surface === "chat" && !agentChat && !ompChat && diffOpen && (
+            {surface === "chat" && !agentChat && (!ompChat || selectedCapabilities?.git) && diffOpen && (
               <DiffPanel
                 session={selectedSession}
                 backend={backend}

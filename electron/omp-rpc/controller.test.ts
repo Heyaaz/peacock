@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -235,7 +236,7 @@ describe("OmpRpcController", () => {
     });
     expect(session.id).toMatch(/^omp-[0-9a-f-]{36}$/u);
     expect(runsInTerminal(session)).toBe(false);
-    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: true, fork: true, git: false });
+    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: true, fork: true, git: true });
     expect(context.claim).toHaveBeenCalledWith(session.id);
     expect(context.events).toEqual([{ type: "session.created", session }]);
     expect(await context.controller.listSessions()).toEqual([session]);
@@ -1089,5 +1090,21 @@ describe("OmpRpcController tree navigation in one file", () => {
     await expect(context.controller.navigateSessionTree(session.id, "u1")).resolves.toBe("first question");
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(await texts()).toEqual([]);
+  });
+});
+
+describe("OmpRpcController folder git panel", () => {
+  it("reads the chat folder's git status and changes, and refuses git writes outside a managed worktree", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    const git = (...args: string[]) => execFileSync("git", ["-C", context.workspace, ...args], { stdio: "pipe" });
+    git("init", "-q", "-b", "main");
+    git("-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base");
+    writeFileSync(path.join(context.workspace, "note.txt"), "hi\n");
+    const status = await context.controller.getGitStatus(session.id);
+    expect(status).toMatchObject({ branch: "main", files: expect.arrayContaining([expect.objectContaining({ path: expect.stringMatching(/note\.txt$/u) })]) });
+    const diff = await context.controller.getDiff(session.id);
+    expect(diff.files.map((file) => file.path)).toContain("note.txt");
+    await expect(context.controller.stageFiles(session.id, ["note.txt"])).rejects.toThrow("managed Gajae worktree");
   });
 });

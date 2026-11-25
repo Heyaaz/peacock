@@ -35,6 +35,8 @@ interface ChatHeaderProps {
   setSubagentsOpen?: (update: (open: boolean) => boolean) => void;
   /** Opens the conversation's tree, where the session has one (omp's chat). */
   onOpenTree?: () => void;
+  /** The changed-files panel, for a chat whose folder Gajae reads (GJC's, omp's); defaults to a non-terminal chat. */
+  changedFiles?: boolean;
 }
 
 export function ChatHeader({
@@ -57,6 +59,7 @@ export function ChatHeader({
   subagentsOpen = false,
   setSubagentsOpen,
   onOpenTree,
+  changedFiles,
 }: ChatHeaderProps) {
   return (
   <header className="chat-header">
@@ -165,7 +168,7 @@ export function ChatHeader({
           <MessageCircleQuestion size={18} />
         </button>
       )}
-      {!terminalAgent && (
+      {(changedFiles ?? !terminalAgent) && (
         <button
           className={`icon-button ${diffOpen ? "is-active" : ""}`}
           type="button"

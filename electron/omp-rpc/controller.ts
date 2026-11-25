@@ -11,6 +11,8 @@ import type {
   BackendConnection,
   ContextBreakdown,
   CreateSessionInput,
+  DiffSnapshot,
+  GitStatusSnapshot,
   GoalOperation,
   GoalSnapshot,
   MessageDelivery,
@@ -49,6 +51,8 @@ import { withoutInherited } from "../herdr-core/env.js";
 import { bounded, clockLabel, record, string, stripTerminalControls, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
 import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
 import { parseContextReport } from "./context-report.js";
+import { commitChanges, getGitStatus, pushChanges, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
+import { workspaceDiff } from "../herdr-core/workspace-diff.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
 import { OmpRpcClient, type RpcFrame, type RpcProcess, type RpcPromptResult } from "./rpc-client.js";
 import { OMP_RPC_SESSION_PREFIX, type OmpRpcSessionRecord, type OmpRpcSessionStore } from "./session-store.js";
@@ -621,6 +625,46 @@ export class OmpRpcController implements AgentRuntimeController {
     await this.refreshState(sessionId, client).catch(() => undefined);
     this.scheduleResync(sessionId);
     return string(data.editorText) ?? "";
+  }
+
+  // ---- the session's folder (git status and changes, as GJC's panel shows them; reads only)
+
+  /** What `git diff HEAD` and the untracked files show in the chat's folder (herdr's workspace-diff). */
+  async getDiff(sessionId: string): Promise<DiffSnapshot> {
+    const record = this.options.store.get(sessionId);
+    if (!record) throw new AgentUnsupportedError("reading changes", sessionId);
+    return workspaceDiff(sessionId, record.workspace);
+  }
+
+  /**
+   * The chat folder's git status through GJC's own reader. Staging, committing and pushing go
+   * through it too, which allows them only in a managed worktree; an omp chat has none, so they
+   * are refused as they are for a GJC session outside one.
+   */
+  private gitScope(sessionId: string): GitScope {
+    const record = this.options.store.get(sessionId);
+    if (!record) throw new AgentUnsupportedError("git", sessionId);
+    return { workspace: record.workspace, sessions: new Map([[sessionId, this.row(record)]]), sessionCwds: new Map([[sessionId, record.workspace]]) };
+  }
+
+  async getGitStatus(sessionId: string): Promise<GitStatusSnapshot> {
+    return getGitStatus(this.gitScope(sessionId), sessionId);
+  }
+
+  async stageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot> {
+    return stageFiles(this.gitScope(sessionId), sessionId, paths);
+  }
+
+  async unstageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot> {
+    return unstageFiles(this.gitScope(sessionId), sessionId, paths);
+  }
+
+  async commitChanges(sessionId: string, message: string): Promise<GitStatusSnapshot> {
+    return commitChanges(this.gitScope(sessionId), sessionId, message);
+  }
+
+  async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
+    return pushChanges(this.gitScope(sessionId), sessionId);
   }
 
   /** `export_html`: omp renders the session file as one HTML page at the path given. */

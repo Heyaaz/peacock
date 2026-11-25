@@ -86,8 +86,8 @@ describe("agent catalog", () => {
     expect(sessionRuntimeFor("gjc", "chat")).toBe("gjc");
     const chat = agentCatalogEntry("omp").chatCapabilities!;
     expect(Object.keys(chat).sort()).toEqual([...SESSION_CAPABILITY_KEYS].sort());
-    // what stays GJC's: suggestions, the git panel
-    expect(chat).toMatchObject({ send: true, streaming: true, approvals: true, questions: true, goal: true, fork: true, suggestion: false, git: false });
+    // what stays GJC's: suggestions
+    expect(chat).toMatchObject({ send: true, streaming: true, approvals: true, questions: true, goal: true, fork: true, suggestion: false, git: true });
   });
 
   it("answers which screens an agent supports", () => {
