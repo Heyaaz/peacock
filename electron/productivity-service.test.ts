@@ -267,4 +267,22 @@ describe('ProductivityService', () => {
     expect((await service.searchTranscripts('regression')).map((hit) => hit.itemId)).toEqual(['c2'])
     expect(read.mock.calls.map(([id]) => id)).toEqual(['terminal-claude'])
   })
+
+  it('searches an omp chat and notices its session file grew while no window followed it (design §10)', async () => {
+    const id = 'omp-0f8fad5b-d9cb-469f-a165-70867728950e'
+    const chat: AgentSession = { ...session(id, 'omp 채팅'), runtime: 'omp-rpc', agentKind: 'omp' }
+    const rows: Record<string, TranscriptItem[]> = { [id]: [item('r1', 'message', 'omp planned the lexer')] }
+    const revisions: Record<string, string> = { [id]: 'a' }
+    const read = vi.fn(async (sessionId: string) => rows[sessionId] ?? [])
+    const service = new ProductivityService({
+      listSessions: async () => [chat],
+      getTranscript: read,
+      getTranscriptRevision: async (sessionId) => revisions[sessionId],
+    }, ':memory:')
+    expect((await service.searchTranscripts('lexer')).map((hit) => hit.sessionId)).toEqual([id])
+    rows[id] = [...rows[id]!, item('r2', 'message', 'omp found a regression')]
+    revisions[id] = 'b'
+    await new Promise((resolve) => setTimeout(resolve, 1050))
+    expect((await service.searchTranscripts('regression')).map((hit) => hit.itemId)).toEqual(['r2'])
+  })
 })

@@ -12,7 +12,7 @@ import type {
 import type { MessageDeliveryTracker } from "../message-delivery";
 import {
   discoveryRevisionIsFresh,
-  initialSessionId,
+  selectionAfterFirstList,
   mergeDiscoveredSessions,
 } from "../transcript-utils";
 import { createBackendEventHandler } from "./backend-events";
@@ -195,7 +195,7 @@ export function useSessionSync(context: SessionSyncContext): void {
           );
           if (initial)
             setSelectedId((selected) =>
-              initialSessionId(listed, selected),
+              selectionAfterFirstList(listed, selected, sessionsRef.current),
             );
         })
         .catch(() => undefined)

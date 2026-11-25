@@ -208,7 +208,7 @@ Main
 7. TerminalView가 디스플레이 질의에 응답하는지.
 
 ## 9. 최종 요약 (P6 이후)
-P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고르는 범용 에이전트 셸이 됐다: 터미널은 herdr-core에서 앱 재시작을 넘어 유지되고, Claude Code·omp는 채팅 화면·상태·알림·도구 승인(창·폰)·전체 검색·병렬 실행까지 된다.
+P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고르는 범용 에이전트 셸이 됐다: 터미널은 herdr-core에서 앱 재시작을 넘어 유지되고, Claude Code·omp는 상태·알림·도구 승인(창·폰)·전체 검색·병렬 실행까지 된다. 창에서 Claude Code·codex는 터미널만(2dd1f3b), omp는 "터미널"(herdr 터미널)과 "채팅"(§10의 RPC 채팅, 별도 런타임) 중 고른다. 기존 omp 터미널 세션의 기록 채팅은 폰·검색용으로 남았다.
 
 **남은 한계**
 - 병렬 실행 시작 UI 없음(b9bd4e2에서 제거된 상태 유지, 브리지로만 시작). 터미널 에이전트 시도는 새 worktree의 폴더 신뢰 대화상자를 사용자가 답해야 요청이 들어간다(자동 응답 안 함).
@@ -216,6 +216,7 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 검색은 기록 파일의 따라가기 범위(끝부분 `initialBytes`)만 색인. Inbox·모델 설정·목표·사이드 채팅 등은 GJC 전용.
 - 터미널 에이전트 세션의 git 상태·변경 파일 패널(capabilities.git)은 꺼져 있다. 병렬 비교 화면만 worktree diff를 읽는다.
 - node-pty는 유지(채팅 화면 임시 셸, hc 실패 시 셸 폴백, GJC CLI 세션 삭제).
+- omp RPC 채팅의 한계는 §10 끝에 따로 적었다(프로세스 수, 거절 사유 미전달, 승인 범위, 폼 판독 범위, 터미널 전환 없음).
 - macOS 외 플랫폼은 hc가 없어 셸만 앱 안 셸로 폴백하고 에이전트 세션은 오류.
 
 **미확인**
@@ -248,3 +249,25 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 10. 그 밖의 프레임: `notice{level,message,source}`(MCP 도구 추가 등 info), `advisor_cost_changed`, `setWidget`(autoresearch), `queue_update`.
 
 **승인 짝짓기 결정**: select 제목을 "실행 중(`tool_execution_start` 뒤·end 전)이고 아직 짝이 없는 호출"과 내용으로 맞춘다. 첫 줄 `Allow tool: <이름>`이 같은 호출 중 인자의 문자열 값(command, path …) 첫 줄이 모두 제목에 들어 있는 것을, 그중 먼저 시작한 것을 고른다. 없으면 같은 이름의 가장 오래된 호출, 그래도 없으면 독립 카드. 병렬 2개 실측에서 정확히 짝지어졌다. 같은 이름·같은 인자의 병렬 호출은 구분할 수 없지만 카드 내용이 같아 결과도 같다. 확장(`-e`) 방식은 쓰지 않는다: 기존 omp 확장은 TUI에서만 `ui.approve`를 감싸고(`ctx.mode !== "tui"`면 손대지 않음), RPC 프레임에는 `tool_approval_requested`가 없어 확장이 호출 id를 넘기려면 `setStatus` 같은 우회 통로가 또 필요하다. 카드 id는 `<sessionId>:<callIdPart(callId)>` — 파일 판독기의 도구 행 id와 같아 턴이 끝나 파일로 다시 맞춰도 카드 자리가 유지된다.
+
+**구현 (P1~P5)**
+- 런타임: `electron/omp-rpc/` — `rpc-client.ts`(JSONL, `rpc_chunk` 재조립, id 대응, ready 대기, 종료 시 대기 중인 것 모두 거절), `session-store.ts`(`omp-rpc-sessions.json`, 0600, `{id: "omp-<uuid>", workspace, title, sessionFile, ompSessionId, launch}`), `live-rows.ts`(RPC 이벤트 → `TranscriptItem`·`AgentEvent`), `ui-requests.ts`(승인 짝짓기·HTML 폼 판독), `controller.ts`. `main.ts`가 `registerRuntime("omp-rpc")`로 라우터에 붙이고, 카탈로그의 omp에 `chatRuntime: "omp-rpc"`·`chatCapabilities`(goal·fork·suggestion·git 제외)를 뒀다. 새 세션 창에서 omp "채팅"을 고르면 `CreateSessionInput.runtime = "omp-rpc"`(`sessionRuntimeFor`), 저장된 `newSession {omp, chat}`은 그대로 쓴다. `runsInTerminal`은 omp-rpc 행을 터미널로 보지 않는다(셸·사이드바·검색이 이 기준).
+- 실행: 세션당 프로세스 하나, 창이 세션을 열 때(`refreshSessionContext`)나 보낼 때 띄운다: `omp --mode rpc-ui --cwd <ws> [--resume <sessionFile>] --approval-mode=<창의 선택 | always-ask> [--model=…]`. 환경은 herdr 코어와 같은 허용 목록 + 로그인 셸 PATH(`agentEnvironment`), Chromium FD는 `withoutInherited`로 닫는다. ready 뒤 `negotiate_protocol 2` → `set_event_filter {messageUpdates:"delta"}` → `set_ask_dialog` → `get_state`(sessionFile 저장). 앱 종료(`dispose`)에 stdin을 닫아 omp를 끝낸다.
+- 화면: 렌더러는 새 백엔드 없이 GJC 채팅 경로(Composer·QuestionBanner·ApprovalBanner·스트림 합치기)를 그대로 쓴다. omp-rpc 행은 화면 전환·세션 정보·변경 파일 버튼이 없고(헤더 `agentIcon="chat"`), goal·subagent·git 조회와 목표 줄은 `capabilitiesOf`로 막았다. 명령 목록은 omp 것만(GJC 번들 명령 제외), 입력창의 작업 폴더 전환과 `/new`는 omp 채팅을 새로 만든다.
+- 이벤트: `text_delta`→`message.delta`, `thinking_delta`→`thought.delta`, `toolcall_*`·`tool_execution_*`(부분 출력 포함)→`tool.updated`, `message_end`→`message.updated`, `available_commands_update`→`session.commands`(`btw` 추가: 목록엔 없지만 RPC가 답함), `get_state`·`model_changed`·`thinking_level_changed`→`session.config`(모델: `get_model_picker` 100개, 생각: `thinkingLevels`)·`session.updated`(model·thinking·컨텍스트 %), 압축 시작/끝→행 `phase: "compacting"`, `auto_retry_*`→행 `retry`, `notice`의 warning/error→알림 행.
+- 턴 끝(`prompt_result`): 세션 파일을 다시 읽어 실시간 행(`<session>:live:msg-N…`)을 파일 행(엔트리 id)으로 바꾸고 `transcript.synced`로 꼬리를 보낸다(둘이 공유하는 마지막 행부터, 없으면 전체). 파일이 아직 안 늘었으면 150ms~3s 간격으로 다시 읽는다. 도구 행은 양쪽 id가 같아 그대로다. 앱이 띄운 알림 행·열린 카드만 남긴다.
+- 승인(P3): 위 짝짓기로 도구 행에 카드를 올리고(`approval-required` + allow_once/reject_once), 답은 omp의 옵션 라벨("Approve"/"Approve Once", "Deny")로 보낸다. 짝이 없으면 `<session>:ui:approval-<요청 id>` 독립 카드. bash는 `commandRules`가 먼저 답하고(autoDecision), 카드의 "앞부분 항상 허용/거부"는 규칙 저장 뒤 답한다. omp가 `cancel`을 보내거나 턴이 끝나거나 프로세스가 죽으면 카드를 닫는다. 대기 중 상태는 waiting + `session.activity: permission`.
+- 질문(P3): `form`은 필드마다 질문 카드(라디오·체크박스·select·textarea·텍스트 입력, 라벨/legend/앞 문장을 질문으로), 모든 카드에 답이 모이면 `{data}` 한 번. `ask`(질문 배열)·`select`(승인 아닌 것)·`confirm`(예/아니요)·`input`/`editor`도 같은 카드, `notify`는 알림 행, `setStatus`·`setWidget` 등은 무시. 형식에 안 맞는 답(select에 직접 입력 등)은 카드에 이유를 띄우고 다시 받는다.
+- P4: `set_model`(provider/나머지 id)·`set_thinking_level`·`cycle_thinking_level`, `compact`, 실행 중 `/steer`·`/queue`와 `steerSession`·`queueFollowUp`(`steer`/`follow_up`), `listQueuedMessages`(`queue_update`), `flushQueuedNow`(`abort_and_deliver_queue`), 첨부(그림은 prompt.images, 다른 파일은 경로를 본문에), `/btw`(`btw` → `btw_record` 완료까지), `controlRetry("abort")`(`abort_retry`).
+- P5: 앱을 다시 켜면 목록은 저장소에서, 기록은 파일에서 읽고(프로세스 없이), 열 때 `--resume`으로 omp를 띄운다. 전체 검색은 omp 채팅도 `getTranscriptRevision`으로 파일 증가를 확인한다(`followsTranscriptFile`). 원격: 와이어 이름은 `omp-rpc` 그대로다. 구버전 PWA의 `runsInTerminal`은 GJC 아닌 에이전트를 모두 터미널로 보므로, 폰에서는 omp의 채팅(보내기·중지·카드)으로 열린다 — `gjc`로 바꿔도 그 PWA에는 차이가 없고(agentKind가 omp), 새 PWA에는 GJC 기능을 열게 된다. 단위 테스트로 확인(`shared/remote-protocol.test.ts`), 실제 구버전 기기로는 확인하지 않았다. 삭제는 목록에서 지우고 omp를 끝내되 omp의 세션 파일은 남긴다(터미널에서 이어 갈 수 있음, 확인 문구도 그렇게).
+- 실측(`npm run desktop:omp-rpc-smoke`, omp 19.1.1·기본 모델, `GAJAE_SMOKE_OMP_ARGS=--no-prewalk`): 9단계 — 채팅 만들기 → 창에서 열기(GJC Composer, 화면 전환 없음) → "OK" 응답이 `message.delta`로 스트리밍되어 0.5초에 표시 → bash `echo` 요청에 창의 카드가 뜨고 상태 waiting → 카드 승인 → 실행·출력 → "DONE" → 행 id가 모두 파일 id(`:live:` 남지 않음). 10단계(앱 재시작) — 같은 행이 목록에 있고, 열면 같은 id 5개로 다시 읽히고, omp가 세션 파일로 다시 떠 모델이 행에 돌아옴. 같은 스모크에서 앱 시작 직후 처음 받은 세션 목록이 사용자의 선택을 지우던 버그(`use-session-sync` 초기 목록이 늦게 오면 선택이 null)를 찾아 고쳤다.
+- `hc-agent-smoke` 3단계(Claude Code 채팅)는 Claude Code의 채팅 화면이 없어져 뺐다(4단계가 omp 기록 채팅).
+
+**한계 (omp RPC 채팅)**
+- 열린 채팅마다 omp 프로세스가 앱이 끝날 때까지 산다(유휴 종료 없음).
+- 거절 코멘트는 omp에 전달되지 않는다(RPC select는 라벨만 받음). "이 세션 동안 허용"·폴더 grant는 카드에 없다(카드의 선택은 어디서나 같은 뜻: 이번만 허용/거절, 나머지는 명령 규칙).
+- 폼 판독은 흔한 부분집합만: 이미지·SVG·표 안 입력은 질문 텍스트로만 쓰고, 같은 이름 필드가 둘이면 각각 카드가 된다. 18.20식 `ask` 대화상자는 단위 테스트로만 확인(19.1.1 ask 도구는 `form`을 씀).
+- 터미널↔RPC 전환은 없다(v1). 채팅 세션에는 터미널이 없고, 기존 omp 터미널 세션은 기록 채팅으로만 본다.
+- goal·fork·추천 입력·git·세션 정보·변경 파일 패널은 없다. 대화의 assistant 머리말은 다른 에이전트 채팅과 같이 "Gajae"로 나온다.
+- 앱이 턴 도중 끝나면 omp도 끝나고(stdin EOF), 파일에 쓰인 만큼만 다시 읽힌다. 실시간 행의 id는 턴이 끝나야 파일 id로 바뀐다.
+

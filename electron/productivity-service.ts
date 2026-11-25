@@ -73,6 +73,14 @@ export function searchable(session: AgentSession): boolean {
   return kind !== 'shell' && agentCatalogEntry(kind).transcript
 }
 
+/**
+ * Whether a session's rows come from an agent's own transcript file, which can grow while no window
+ * follows it: a terminal agent's, and an omp RPC chat's session file (design §10).
+ */
+function followsTranscriptFile(session: AgentSession): boolean {
+  return runsInTerminal(session) || session.runtime === 'omp-rpc'
+}
+
 /** How often search looks at the terminal agents' transcripts for unannounced growth. */
 const FOLLOW_CHECK_MS = 1000
 
@@ -303,9 +311,9 @@ export class ProductivityService {
   /** A session's rows, noting the revision a terminal agent's transcript was read at. */
   private async indexedTranscript(session: AgentSession): Promise<TranscriptItem[]> {
     // read before the rows: growth during the read is seen by the next check, not lost
-    const revision = runsInTerminal(session) ? await this.source.getTranscriptRevision?.(session.id) : undefined
+    const revision = followsTranscriptFile(session) ? await this.source.getTranscriptRevision?.(session.id) : undefined
     const items = await this.source.getTranscript(session.id)
-    if (runsInTerminal(session)) this.indexedRevisions.set(session.id, revision)
+    if (followsTranscriptFile(session)) this.indexedRevisions.set(session.id, revision)
     return items
   }
 
@@ -318,7 +326,7 @@ export class ProductivityService {
     const revisionOf = this.source.getTranscriptRevision?.bind(this.source)
     if (!revisionOf || Date.now() - this.lastFollowCheck < FOLLOW_CHECK_MS) return
     this.lastFollowCheck = Date.now()
-    const sessions = (await this.source.listSessions()).filter((session) => runsInTerminal(session) && searchable(session))
+    const sessions = (await this.source.listSessions()).filter((session) => followsTranscriptFile(session) && searchable(session))
     for (const session of sessions) {
       const revision = await revisionOf(session.id).catch(() => undefined)
       if (!this.indexedRevisions.has(session.id) || this.indexedRevisions.get(session.id) !== revision) this.invalidateSearch(session.id)

@@ -557,6 +557,20 @@ export function recentUserRequests(
   return requests;
 }
 
+/**
+ * The selection once the first session list answers. That list can arrive after the user already
+ * opened a session it does not hold (one made while GJC was still connecting): the choice stands.
+ */
+export function selectionAfterFirstList(
+  listed: ReadonlyArray<{ id: string; unread: boolean; title?: string }>,
+  selected: string | null,
+  known: ReadonlyArray<{ id: string }>,
+): string | null {
+  if (selected !== null && !listed.some((session) => session.id === selected) && known.some((session) => session.id === selected))
+    return selected;
+  return initialSessionId(listed, selected);
+}
+
 export function initialSessionId(
   sessions: ReadonlyArray<{ id: string; unread: boolean; title?: string }>,
   current: string | null,

@@ -6,6 +6,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { TerminalSessionStore } from "./terminal-session-store.js";
+import type { OmpRpcSessionStore } from "./omp-rpc/session-store.js";
 import { DeviceStore } from "./remote/devices.js";
 import type { RemoteOperationsHost } from "./remote/operations.js";
 import { RemoteAccessService } from "./remote/service.js";
@@ -32,16 +33,21 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * checks the session went waiting → idle → running → idle with the wait and the finished turn
  * announced, and that SessionStart recorded the agent's session. Phase 2 is a fresh app: the
  * still-running agent's `/clear` must reach it through the hook relay, then the session is deleted.
- * Phase 3 is the chat (design §5.5): the same kind of session opened in the window, switched to its
- * chat, a message sent from the chat composer that must reach the terminal, and the answer that
- * must appear in the chat. Phase 4 does the same with omp (one short prompt to a small model) and
- * records whether omp reports its state to herdr-core. Phase 5 is a tool approval (design §5.6): a
+ * Phase 3 was Claude Code's chat; Claude Code has no chat screen in the window any more (2dd1f3b),
+ * so it is gone and phase 4 is the transcript chat (design §5.5): an omp terminal session opened in
+ * the window, switched to its chat, a message sent from the chat composer that must reach the
+ * terminal, and the answer that must appear in the chat (one short prompt to a small model), with
+ * whether omp reports its state to herdr-core. Phase 5 is a tool approval (design §5.6): a
  * Claude Code in its default permission mode asks to run one Bash command, the card in the window
  * answers it. Phase 6 is a fresh app: the same agent asks again, a paired phone answers through the
  * remote protocol, and a third request answered at the terminal must close its card. Phase 8 is a
  * parallel run (P6): two Claude Code attempts (haiku) in their own worktrees of a throwaway
  * repository, started with no window showing them; their folder-trust dialogs are answered at the
  * terminal as a user would, and each attempt's request must be typed in once and answered.
+ * Phase 9 is omp's RPC chat (design §10): a chat created as the new-session dialog makes one, opened
+ * in the window with GJC's composer, a reply streamed into it, and one bash `echo` approved from
+ * its card. Phase 10 is a fresh app: the same chat lists, opens and reads back with the same item
+ * ids, and its omp starts again on the session file. No model call in phase 10.
  */
 export function attachHcAgentSmoke(
   window: BrowserWindow,
@@ -56,6 +62,8 @@ export function attachHcAgentSmoke(
     pressKeys?: (sessionId: string, keys: string[]) => Promise<void>;
     /** What a phone talks to: the app's router, served by a smoke-only remote server. */
     remote?: { host: RemoteOperationsHost; webRoot: string; version: string };
+    /** omp RPC chats (phases 9 and 10). */
+    ompStore?: OmpRpcSessionStore;
     exit: (code: number) => void;
   },
 ): void {
@@ -63,7 +71,7 @@ export function attachHcAgentSmoke(
   const timeout = setTimeout(() => {
     console.error("herdr agent smoke timed out");
     options.exit(1);
-  }, ["3", "4", "5", "6", "7", "8"].includes(options.phase) ? 300_000 : 150_000);
+  }, ["4", "5", "6", "7", "8", "9"].includes(options.phase) ? 300_000 : 150_000);
   const finish = async (result: Record<string, unknown>, ok: boolean): Promise<void> => {
     clearTimeout(timeout);
     await writeFile(options.resultPath, `${JSON.stringify(result, null, 2)}\n`).catch(() => undefined);
@@ -75,8 +83,11 @@ export function attachHcAgentSmoke(
       try {
         if (options.phase === "0") await phaseProbe();
         else if (options.phase === "1") await phaseOne();
-        else if (options.phase === "3") await phaseChat("claude");
+        else if (options.phase === "3")
+          await finish({ phase: 3, error: "phase 3 was dropped: Claude Code has no chat screen in the window; phase 4 is omp's transcript chat" }, false);
         else if (options.phase === "4") await phaseChat("omp");
+        else if (options.phase === "9") await phaseOmpRpcChat();
+        else if (options.phase === "10") await phaseOmpRpcRestart();
         else if (options.phase === "5") await phaseApproval();
         else if (options.phase === "6") await phaseRemoteApproval();
         else if (options.phase === "7") await phaseOmpApproval();
@@ -615,6 +626,160 @@ export function attachHcAgentSmoke(
       sessions.every((sessionId) => answers[sessionId]?.prompt && answers[sessionId]?.reply) &&
       found.length === sessions.length;
     await finish(result, ok);
+  }
+
+  /** omp's RPC chat (design §10): streamed reply, an approved bash call, rows read back by file id. */
+  async function phaseOmpRpcChat(): Promise<void> {
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-omp-rpc-smoke-")));
+    const title = "omp rpc smoke";
+    const model = process.env.GAJAE_SMOKE_OMP_MODEL || "opencodex/opengateway/deepseek/deepseek-v4.1-flash-eco";
+    const report = (await window.webContents.executeJavaScript(`(async () => {
+      const desktop = window.agentControlDesktop;
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const until = async (check, ms) => { const end = Date.now() + ms; while (Date.now() < end && !check()) await wait(150); return Boolean(check()); };
+      const agents = await desktop.terminal.listAgents();
+      const omp = agents.find((agent) => agent.id === "omp");
+      if (!omp?.installed) return { skipped: omp?.reason ?? "omp not installed" };
+      let sessionId = "";
+      const updates = [];
+      const kinds = {};
+      const offEvents = desktop.gjc.onEvent((event) => {
+        const id = event.session?.id ?? event.sessionId ?? event.item?.sessionId ?? event.tool?.sessionId ?? event.message?.sessionId;
+        if (id !== sessionId) return;
+        kinds[event.type] = (kinds[event.type] ?? 0) + 1;
+        if (event.type === "session.updated" && updates.at(-1) !== event.session.status) updates.push(event.session.status);
+      });
+      // what the new-session dialog sends for omp on its chat screen
+      const created = await desktop.gjc.createSession({ runtime: "omp-rpc", title: ${JSON.stringify(title)}, workspace: ${JSON.stringify(workspace)}, isolation: "workspace", agentKind: "omp", launch: { model: ${JSON.stringify(model)} } });
+      sessionId = created.id;
+      const rowNode = () => [...document.querySelectorAll(".session-row")].find((node) => node.textContent?.includes(${JSON.stringify(title)}));
+      await until(rowNode, 10000);
+      rowNode()?.click();
+      const surface = () => document.querySelector("main.workspace")?.getAttribute("data-surface") ?? null;
+      const textarea = () => document.querySelector(".composer:not(.composer--terminal-agent) textarea");
+      const errors = [];
+      window.addEventListener("error", (event) => errors.push(String(event.error?.stack ?? event.message).slice(0, 600)));
+      window.addEventListener("unhandledrejection", (event) => errors.push("rejection: " + String(event.reason?.stack ?? event.reason).slice(0, 600)));
+      const originalError = console.error;
+      console.error = (...args) => { errors.push("console: " + args.map((arg) => String(arg?.stack ?? arg)).join(" ").slice(0, 600)); originalError(...args); };
+      const composerShown = await until(() => surface() === "chat" && textarea(), 15000);
+      // omp starts as the chat opens: its model and commands arrive; the chat must still be there after
+      await until(() => (kinds["session.config"] ?? 0) > 0, 15000);
+      await wait(2000);
+      const headerAfterOpen = Boolean(document.querySelector(".chat-header strong"));
+      if (!headerAfterOpen) {
+        offEvents();
+        return { sessionId, composerShown, headerAfterOpen, errors, kinds, body: document.body.textContent?.slice(0, 400) };
+      }
+      const toggleShown = Boolean(document.querySelector(".surface-mode-toggle"));
+      const terminalComposer = Boolean(document.querySelector(".composer--terminal-agent"));
+      const send = async (text) => {
+        const field = textarea();
+        if (!field) return false;
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(field, text);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(300);
+        const button = document.querySelector(".composer:not(.composer--terminal-agent) .composer-submit-actions button[type=submit]");
+        if (!button || button.disabled) return false;
+        button.click();
+        return true;
+      };
+      const assistant = (pattern) => [...document.querySelectorAll(".conversation .message--assistant")].find((node) => pattern.test(node.textContent ?? ""));
+      const sentOk = composerShown ? await send("Reply with exactly the word OK and nothing else.") : false;
+      const startedAt = Date.now();
+      const okShown = sentOk ? await until(() => assistant(/(^|[^A-Za-z])OK([^A-Za-z]|$)/), 120000) : false;
+      const msToOk = Date.now() - startedAt;
+      const domAfterOk = {
+        messages: document.querySelectorAll(".conversation .message").length,
+        selected: document.querySelector(".chat-header strong")?.textContent ?? null,
+        text: (document.querySelector(".conversation")?.textContent ?? "").slice(-300),
+      };
+      await until(() => updates.at(-1) === "idle", 30000);
+      await wait(1500);
+      const sentEcho = okShown ? await send("Use the bash tool to run exactly this command and nothing else: echo gajae-rpc-smoke. Then reply with exactly the word DONE.") : false;
+      const cardShown = sentEcho ? await until(() => document.querySelector(".tool-card--approval .permission-options .button-primary"), 120000) : false;
+      const statusAtCard = updates.at(-1);
+      let approved = false;
+      if (cardShown) {
+        document.querySelector(".tool-card--approval .permission-options .button-primary")?.click();
+        approved = await until(() => !document.querySelector(".tool-card--approval"), 30000);
+      }
+      const doneShown = approved ? await until(() => assistant(/(^|[^A-Za-z])DONE([^A-Za-z]|$)/), 120000) : false;
+      await until(() => updates.at(-1) === "idle", 30000);
+      // the turn read back from omp's session file: the file's ids
+      await until(() => (kinds["transcript.synced"] ?? 0) >= 2, 15000);
+      await wait(1000);
+      const page = await desktop.gjc.getTranscriptPage(sessionId);
+      offEvents();
+      return {
+        sessionId, composerShown, headerAfterOpen, errors, toggleShown, terminalComposer, sentOk, okShown, msToOk, domAfterOk, sentEcho, cardShown, statusAtCard, approved, doneShown, updates, kinds,
+        ids: page.items.map((item) => item.id),
+        rows: page.items.map((item) => item.kind + (item.role ? ":" + item.role : "") + ":" + (item.status ? item.status + ":" : "") + String(item.content ?? item.output ?? item.name ?? "").slice(0, 40)),
+      };
+    })()`)) as Record<string, unknown> & { sessionId?: string; skipped?: string; ids?: string[]; rows?: string[] };
+    if (report.skipped) {
+      await finish({ phase: 9, skipped: report.skipped }, false);
+      return;
+    }
+    const record = report.sessionId ? options.ompStore?.get(report.sessionId) : undefined;
+    const rows = report.rows ?? [];
+    const result = {
+      phase: 9,
+      ...report,
+      sessionFile: record?.sessionFile ?? null,
+      sessionFileExists: record?.sessionFile ? existsSync(record.sessionFile) : false,
+      liveIdsLeft: (report.ids ?? []).filter((id) => id.includes(":live:")),
+      echoRan: rows.some((row) => /^tool:completed:gajae-rpc-smoke/u.test(row)),
+    };
+    const kinds = (report.kinds ?? {}) as Record<string, number>;
+    const ok =
+      report.composerShown === true &&
+      report.toggleShown === false &&
+      report.terminalComposer === false &&
+      report.okShown === true &&
+      (kinds["message.delta"] ?? 0) > 0 &&
+      report.cardShown === true &&
+      report.statusAtCard === "waiting" &&
+      report.approved === true &&
+      report.doneShown === true &&
+      result.echoRan &&
+      result.sessionFileExists &&
+      result.liveIdsLeft.length === 0;
+    await finish(result, ok);
+  }
+
+  /** A fresh app: the omp chat of phase 9 lists, opens and reads back with the same ids. */
+  async function phaseOmpRpcRestart(): Promise<void> {
+    const first = JSON.parse(await readFile(options.resultPath, "utf8")) as { sessionId?: string; ids?: string[] };
+    if (!first.sessionId) throw new Error("phase 9 left no session");
+    const sessionFile = options.ompStore?.get(first.sessionId)?.sessionFile ?? null;
+    const report = (await window.webContents.executeJavaScript(`(async () => {
+      const desktop = window.agentControlDesktop;
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const until = async (check, ms) => { const end = Date.now() + ms; while (Date.now() < end && !check()) await wait(150); return Boolean(check()); };
+      const sessionId = ${JSON.stringify(first.sessionId)};
+      const listed = (await desktop.gjc.listSessions()).find((session) => session.id === sessionId);
+      const rowNode = () => [...document.querySelectorAll(".session-row")].find((node) => node.textContent?.includes("omp rpc smoke"));
+      await until(rowNode, 10000);
+      rowNode()?.click();
+      const shown = await until(() => [...document.querySelectorAll(".conversation .message--assistant")].some((node) => /(^|[^A-Za-z])DONE([^A-Za-z]|$)/.test(node.textContent ?? "")), 15000);
+      const page = await desktop.gjc.getTranscriptPage(sessionId);
+      // opening started omp again on the session file: its model reaches the row
+      let restarted = false;
+      for (const end = Date.now() + 20000; !restarted && Date.now() < end; await wait(500))
+        restarted = Boolean((await desktop.gjc.listSessions()).find((session) => session.id === sessionId)?.model);
+      return { listed: Boolean(listed), runtime: listed?.runtime ?? null, shown, restarted, ids: page.items.map((item) => item.id) };
+    })()`)) as { listed: boolean; runtime: string | null; shown: boolean; restarted: boolean; ids: string[] };
+    const sameIds = JSON.stringify(report.ids) === JSON.stringify(first.ids);
+    const result = {
+      phase: 10,
+      sessionId: first.sessionId,
+      ...report,
+      sameIds,
+      sessionFileKept: (options.ompStore?.get(first.sessionId)?.sessionFile ?? null) === sessionFile,
+      firstIds: first.ids,
+    };
+    await finish(result, report.listed && report.runtime === "omp-rpc" && report.shown && report.restarted && sameIds && result.sessionFileKept);
   }
 
   async function phaseApproval(): Promise<void> {

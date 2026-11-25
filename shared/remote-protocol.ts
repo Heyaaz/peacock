@@ -24,6 +24,12 @@ export const REMOTE_PROTOCOL_VERSION = 1;
  * before P5 knows such a session only as "terminal" and shows it as a conversation
  * otherwise. The wire keeps the old name, and a newer client reads both
  * (normalizeRuntimeKind, runsInTerminal), so the protocol version stays 1.
+ *
+ * An omp RPC chat (design §10) keeps its own name `omp-rpc`. A PWA from before it reads such a row
+ * through its own `runsInTerminal`, which counts any agent other than GJC as a terminal: a phone
+ * shows it as the agent's chat (send, stop, approval and question cards on its rows), which is what
+ * the chat is. Calling it `gjc` instead would change nothing for that PWA while the row names omp,
+ * and would make a newer one offer GJC's goals and settings the router refuses for it.
  */
 export function toRemoteSession(session: AgentSession): AgentSession {
   return session.runtime === "herdr" ? { ...session, runtime: "terminal" as AgentSession["runtime"] } : session;

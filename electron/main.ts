@@ -774,6 +774,8 @@ const ompRpc = new OmpRpcController({
   commandRules,
   emit: (event) => broadcastAgentEvent(event),
   claim: (sessionId) => agentRouter.claimSession(sessionId, "omp-rpc"),
+  // the agent smoke runs omp apart from the user's own extras (prewalk): GAJAE_SMOKE_OMP_ARGS, read only there
+  extraArgs: hcAgentSmokePhase ? (process.env.GAJAE_SMOKE_OMP_ARGS?.split(" ").filter(Boolean) ?? []) : [],
 });
 agentRouter.registerRuntime("omp-rpc", ompRpc);
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
@@ -1628,6 +1630,7 @@ function createWindow(): BrowserWindow {
         await hc.call("terminal.keys", { terminal: address, keys });
       },
       remote: { host: agentRouter, webRoot: path.join(app.getAppPath(), "dist/web"), version: app.getVersion() },
+      ompStore: ompRpcSessions,
       exit: exitWithTerminals,
     });
   else if (hcTerminalSmokePhase)

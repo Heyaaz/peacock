@@ -11,6 +11,7 @@ import {
   GAJAE_PROGRESS_ROW_HEIGHT,
   groupTranscriptItems,
   initialSessionId,
+  selectionAfterFirstList,
   isNearTranscriptBottom,
   progressBlockId,
   resolveTurnProgress,
@@ -1699,5 +1700,15 @@ describe("mergeDiscoveredSessions", () => {
         [session("kept", "idle")],
       ).map((entry) => entry.id),
     ).toEqual(["kept"]);
+  });
+});
+
+describe("selectionAfterFirstList", () => {
+  it("keeps a session the user opened before the first list answered without it", () => {
+    const late = [{ id: "gjc-1", unread: true, title: "old" }];
+    expect(selectionAfterFirstList(late, "omp-new", [{ id: "omp-new" }])).toBe("omp-new");
+    // nothing chosen yet, or a choice that is gone: the first list decides
+    expect(selectionAfterFirstList(late, null, [])).toBe("gjc-1");
+    expect(selectionAfterFirstList(late, "gone", [])).toBe("gjc-1");
   });
 });

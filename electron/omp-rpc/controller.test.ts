@@ -273,6 +273,36 @@ describe("OmpRpcController", () => {
     expect(await context.controller.listSessions()).toEqual([]);
   });
 
+  it("reads a chat back with the same ids after an app restart, and resumes its session file on open", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    copyFileSync(new URL("./fixtures/session-approval-parallel.jsonl", import.meta.url), context.sessionFile);
+    const before = (await context.controller.getTranscriptPage(session.id)).items.map((item) => item.id);
+    context.controller.dispose();
+    // a fresh app: a new controller on the same store
+    const spawned: { args: readonly string[] }[] = [];
+    const next = new OmpRpcController({
+      store: new OmpRpcSessionStore(context.directory),
+      detect: context.detect,
+      environment: async () => ({ PATH: "/usr/bin" }),
+      spawn: (command, args, spawnOptions) => {
+        spawned.push({ args });
+        return context.spawn(command, args, spawnOptions);
+      },
+      emit: () => undefined,
+      log: () => undefined,
+    });
+    expect((await next.listSessions()).map((row) => [row.id, row.status])).toEqual([[session.id, "idle"]]);
+    // reading needs no omp
+    expect((await next.getTranscriptPage(session.id)).items.map((item) => item.id)).toEqual(before);
+    expect(spawned).toEqual([]);
+    await next.refreshSessionContext(session.id);
+    expect(spawned[0]!.args).toContain("--resume");
+    expect(spawned[0]!.args[spawned[0]!.args.indexOf("--resume") + 1]).toBe(context.sessionFile);
+    next.dispose();
+  });
+
   it("builds omp's command line from the chat's launch options", () => {
     expect(ompRpcArgs({ workspace: "/w", sessionFile: "/s.jsonl", launch: { model: "opencodex/x", permissionMode: "yolo" } }, true)).toEqual([
       "--mode",
@@ -439,8 +469,8 @@ describe("OmpRpcController approvals and questions (P3)", () => {
     await settle();
     child.exit(1);
     await settle();
-    const card = (await context.controller.getTranscript(session.id)).find((item) => item.kind === "question");
-    expect(card).toMatchObject({ status: "closed", answerable: false });
+    // the card closes; once the file is read back the ask tool's own row tells how it ended
+    expect(context.events).toContainEqual(expect.objectContaining({ type: "question.updated", question: expect.objectContaining({ status: "closed", answerable: false }) }));
     expect(await context.controller.listPendingQuestions(session.id)).toEqual([]);
   });
 });
