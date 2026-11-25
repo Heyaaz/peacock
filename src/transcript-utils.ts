@@ -1113,6 +1113,12 @@ function isRendererEcho(id: string): boolean {
   return id.startsWith("local-prompt-renderer-");
 }
 
+// A row omp streams under `<session>:live:<messageId>`. The session file names the
+// same prompt by its entry id, so the two ids never match even though the row is one.
+function isLiveEcho(id: string): boolean {
+  return id.includes(":live:");
+}
+
 export function cacheTranscript(
   transcripts: Record<string, TranscriptItem[]>,
   sessionId: string,
@@ -1337,6 +1343,14 @@ export function mergeTranscriptItem(
     if (pending >= 0)
       return items.map((existing, at) => at === pending ? withLocalImages(item, existing) : existing);
   }
+  // The window draws its own bubble before sending. If omp's live echo of that same
+  // prompt got on screen first (a page read and the RPC stream racing), appending the
+  // bubble put the request there twice until the next sync, and the recent-request
+  // strip listed it twice in the meantime.
+  if (isRendererEcho(item.id) && item.kind === "message" && item.role === "user" &&
+    items.some((existing) => existing.kind === "message" && existing.role === "user" &&
+      isLiveEcho(existing.id) && sameUserRequest(existing, item)))
+    return items.slice();
   // GJC can replay a user_message_chunk for a prompt this window already echoed.
   // The local bubble is the same request, so appending the replay put the prompt on
   // screen twice until the next full transcript read (or a window reload) removed it.
@@ -1434,14 +1448,24 @@ function supersededLocalIndex(
   items: readonly TranscriptItem[],
   item: TranscriptItem,
 ): number {
-  if (item.kind === "message" && item.id.startsWith("shared-message-")) {
+  // A prompt or reply the window showed under its own id -- GJC's local echo, omp's
+  // live `<session>:live:<messageId>` -- becomes the persisted row under another id.
+  // Matching only `shared-message-` left omp's live prompt standing beside the file's
+  // row until a rescan replaced the whole tail, so the request showed twice meanwhile.
+  if (
+    item.kind === "message" &&
+    !isLocalEcho(item.id) &&
+    !isRendererEcho(item.id) &&
+    !isLiveEcho(item.id) &&
+    !item.id.startsWith("gjc-message-")
+  ) {
     const body = requestText(item.content);
     if (!body) return -1;
     return items.findIndex(
       (existing) =>
         existing.kind === "message" &&
         existing.role === item.role &&
-        hasLocalPrefix(existing.id, LOCAL_MESSAGE_PREFIXES) &&
+        (hasLocalPrefix(existing.id, LOCAL_MESSAGE_PREFIXES) || isLiveEcho(existing.id)) &&
         requestText(existing.content) === body,
     );
   }

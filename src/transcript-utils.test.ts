@@ -1028,6 +1028,37 @@ describe("cacheTranscript", () => {
     expect(settled["session-1"].map((item) => item.id)).toEqual([remote.id]);
   });
 
+  it("swaps a live prompt for the file's row of the same request", () => {
+    const live = { ...message, id: "session-1:live:msg-1", role: "user" as const, content: "같은 요청" };
+    const file = { ...live, id: "session-1:e1" };
+    const merged = mergeTranscriptItem([live], file);
+    expect(merged.map((item) => item.id)).toEqual([file.id]);
+    expect(merged[0]).toMatchObject({ content: "같은 요청" });
+  });
+
+  it("does not stack the window's own echo on a live prompt of the same request", () => {
+    const live = { ...message, id: "session-1:live:msg-1", role: "user" as const, content: "같은 요청" };
+    const echo = { ...live, id: "local-prompt-renderer-1" };
+    expect(mergeTranscriptItem([live], echo).map((item) => item.id)).toEqual([live.id]);
+  });
+
+  it("keeps two live prompts of the same text apart", () => {
+    const first = { ...message, id: "session-1:live:msg-1", role: "user" as const, content: "다시" };
+    const second = { ...first, id: "session-1:live:msg-2" };
+    expect(mergeTranscriptItem([first], second)).toHaveLength(2);
+  });
+
+  it("pairs repeated live prompts with their file rows one for one", () => {
+    const live = (id: string) => ({ ...message, id: `session-1:live:${id}`, role: "user" as const, content: "다시" });
+    const file = (id: string) => ({ ...live(id), id: `session-1:${id}` });
+    let items = mergeTranscriptItem([], live("a"));
+    items = mergeTranscriptItem(items, live("b"));
+    items = mergeTranscriptItem(items, file("a"));
+    items = mergeTranscriptItem(items, file("b"));
+    expect(items.map((item) => item.id)).toEqual(["session-1:a", "session-1:b"]);
+  });
+
+
   it("keeps two identical requests when only one has been confirmed", () => {
     const echoOne = {
       ...message,
