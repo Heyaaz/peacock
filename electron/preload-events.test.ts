@@ -51,6 +51,7 @@ function createHarness(invoke: IpcInvoke, fetchMock: typeof fetch) {
     "../shared/remote-ipc.js": { REMOTE_IPC: {} },
     "../shared/quick-input.js": { QUICK_INPUT_IPC: {} },
     "../shared/onboarding.js": { ONBOARDING_IPC: {} },
+    "../shared/omp-accounts.js": { OMP_ACCOUNTS_IPC: {} },
   };
   const source = readFileSync(new URL("./preload.ts", import.meta.url), "utf8");
   const javascript = ts.transpileModule(source, {

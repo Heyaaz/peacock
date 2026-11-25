@@ -12,6 +12,7 @@ import { CLAUDE_EFFORTS, CLAUDE_PERMISSION_MODES, CODEX_EFFORTS, OMP_APPROVAL_MO
 import type { AgentAvailability } from "../../shared/terminal-ipc";
 import { t } from "../i18n";
 import { BackgroundTerminalsRow } from "./background-terminals-row";
+import { OmpAccountsSection } from "./omp-accounts-section";
 import { Dropdown } from "./primitives";
 
 /** The options an agent's sessions can start with, as the settings offer them. */
@@ -59,6 +60,7 @@ export function AgentsSettingsPanel({
   onOpenGjc: () => void;
 }) {
   const terminalBridge = window.agentControlDesktop?.terminal;
+  const ompAccountsBridge = window.agentControlDesktop?.ompAccounts;
   const [found, setFound] = useState<AgentAvailability[] | null>(null);
   const [drafts, setDrafts] = useState<AgentPreferencesMap>(agents);
   const [saving, setSaving] = useState<AgentKindId | null>(null);
@@ -257,6 +259,7 @@ export function AgentsSettingsPanel({
                     {saving === entry.id ? t("저장 중…") : t("저장")}
                   </button>
                 </div>
+                {entry.id === "omp" && detection?.installed && ompAccountsBridge && <OmpAccountsSection bridge={ompAccountsBridge} />}
               </>
             ) : (
               <small>{t("로그인 셸(SHELL)을 엽니다. 따로 설정할 것이 없습니다.")}</small>

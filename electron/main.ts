@@ -73,6 +73,8 @@ import { AgentDetector } from "./herdr-core/agent-detect.js";
 import { installHerdrCore, readHcVersion } from "./herdr-core/install.js";
 import { agentEnvironment, coreEnvironment, corePath } from "./herdr-core/env.js";
 import { OmpRpcController } from "./omp-rpc/controller.js";
+import { OmpAccounts } from "./omp-rpc/accounts.js";
+import { registerOmpAccountsIpc } from "./omp-accounts-ipc.js";
 import { OmpRpcSessionStore } from "./omp-rpc/session-store.js";
 import { HC_BUNDLE, HC_VERSION } from "./herdr-core/version.js";
 import {
@@ -778,6 +780,14 @@ const ompRpc = new OmpRpcController({
   extraArgs: hcAgentSmokePhase ? (process.env.GAJAE_SMOKE_OMP_ARGS?.split(" ").filter(Boolean) ?? []) : [],
 });
 agentRouter.registerRuntime("omp-rpc", ompRpc);
+// omp's sign-in in the settings: an omp of its own with no session, started when asked
+const ompAccounts = new OmpAccounts({
+  detect: () => agentDetector.detect("omp"),
+  environment: () => userLoginPath().then((pathValue) => agentEnvironment(process.env, pathValue)),
+  cwd: userDataDirectory,
+  openUrl: (url) => void shell.openExternal(url),
+});
+const unregisterOmpAccountsIpc = registerOmpAccountsIpc(ompAccounts, ipcSecurity);
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
   store: terminalSessions,
   provider: hcTerminals,
@@ -797,6 +807,7 @@ function exitWithTerminals(code: number): void {
   terminalIpc.disposeAll();
   herdrAgents?.dispose();
   ompRpc.dispose();
+  ompAccounts.dispose();
   agentHooks?.stop();
   hcCore?.dispose();
   app.exit(code);
@@ -1711,6 +1722,8 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   ipcSecurity.dispose();
   unregisterGjcIpc();
+  unregisterOmpAccountsIpc();
+  ompAccounts.dispose();
   unregisterSettingsIpc();
   unregisterDesktopServicesIpc();
   unregisterProductivityIpc();

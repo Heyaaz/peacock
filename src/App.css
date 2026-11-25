@@ -10365,3 +10365,182 @@ button.diff-line-number:hover {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* omp's sign-in in the agents settings */
+.omp-accounts {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.omp-accounts-head {
+  display: grid;
+  gap: 2px;
+}
+.omp-accounts-head strong {
+  font-size: 12.5px;
+}
+.omp-accounts-head small,
+.omp-accounts > small {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.omp-accounts-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.omp-accounts-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+.omp-accounts-list > li:hover {
+  background: var(--bg-hover);
+}
+.omp-accounts-list > li.is-unavailable .omp-accounts-name {
+  color: var(--text-tertiary);
+}
+.omp-accounts-name {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.omp-accounts-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+.omp-accounts-actions button,
+.omp-accounts-credential button,
+.omp-login-question button,
+.omp-login-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.omp-accounts-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.omp-accounts-credential button.is-danger {
+  color: var(--danger);
+}
+.omp-login,
+.omp-accounts-credentials {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--overlay) 3%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.omp-login strong {
+  font-size: 12px;
+}
+.omp-login-instructions {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+.omp-login-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: 11.5px;
+}
+.omp-login-progress {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.omp-login-progress--warning {
+  color: var(--warning);
+}
+.omp-login-progress--error {
+  color: var(--danger);
+}
+.omp-login-question {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.omp-login-question label {
+  display: grid;
+  flex: 1;
+  min-width: 180px;
+  gap: 3px;
+}
+.omp-login-question input {
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.omp-login-question small {
+  display: block;
+  color: var(--text-tertiary);
+}
+.omp-login-cancel {
+  width: fit-content;
+}
+.omp-accounts-credential {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.omp-accounts-credential small {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+}
+.omp-accounts-notice {
+  color: var(--success) !important;
+}
+.omp-accounts-more {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.omp-accounts-more button {
+  padding: 3px 9px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.omp-accounts-more input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}

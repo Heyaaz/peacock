@@ -12,6 +12,7 @@ import type { TerminalDesktopBridge } from "../shared/terminal-ipc";
 import type { SessionShortcut } from "../shared/settings-ipc";
 import type { QuickInputDesktopBridge } from "../shared/quick-input";
 import type { OnboardingDesktopBridge } from "../shared/onboarding";
+import type { OmpAccountsDesktopBridge } from "../shared/omp-accounts";
 
 declare global {
   interface AgentControlDesktopBridge {
@@ -32,6 +33,8 @@ declare global {
     readonly quickInput: QuickInputDesktopBridge;
     /** Absent from an older main or a window without first-run setup. */
     readonly onboarding?: OnboardingDesktopBridge;
+    /** omp's sign-in for the settings; absent from an older main. */
+    readonly ompAccounts?: OmpAccountsDesktopBridge;
     onCycleEffort(listener: () => void): () => void;
     onAbortRun(listener: () => void): () => void;
     onSessionShortcut(

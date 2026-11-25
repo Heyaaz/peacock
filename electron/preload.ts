@@ -26,6 +26,7 @@ import type {
   RuntimeModeId,
 } from "../shared/agent-contract.js";
 import type { ProductivityDesktopBridge } from "../shared/productivity-ipc.js";
+import { OMP_ACCOUNTS_IPC, type OmpAccountsDesktopBridge, type OmpLoginAnswer, type OmpLoginEvent } from "../shared/omp-accounts.js";
 import type { DesktopIntegrationPreferences } from "../shared/desktop-integration.js";
 import type { GjcSettingChange } from "../shared/gjc-settings.js";
 import type {
@@ -707,6 +708,20 @@ ipcRenderer.on(
     else unheardSessionShortcuts.push(shortcut);
   },
 );
+const ompAccounts: OmpAccountsDesktopBridge = Object.freeze({
+  listProviders: () => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.listProviders),
+  listAccounts: (providerId: string) => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.listAccounts, providerId),
+  login: (providerId: string) => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.login, providerId),
+  respond: (requestId: string, answer: OmpLoginAnswer) => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.respond, requestId, answer),
+  cancelLogin: () => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.cancelLogin),
+  logout: (providerId: string, credentialId: number) => ipcRenderer.invoke(OMP_ACCOUNTS_IPC.logout, providerId, credentialId),
+  onLoginEvent: (listener: (event: OmpLoginEvent) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, loginEvent: OmpLoginEvent) => listener(loginEvent);
+    ipcRenderer.on(OMP_ACCOUNTS_IPC.loginEvent, wrapped);
+    return () => ipcRenderer.removeListener(OMP_ACCOUNTS_IPC.loginEvent, wrapped);
+  },
+});
+
 contextBridge.exposeInMainWorld(
   "agentControlDesktop",
   Object.freeze({
@@ -726,6 +741,7 @@ contextBridge.exposeInMainWorld(
     terminal,
     quickInput,
     onboarding,
+    ompAccounts,
     onCycleEffort: (listener: () => void) => {
       const wrapped = () => listener();
       ipcRenderer.on(DESKTOP_IPC.cycleEffort, wrapped);
