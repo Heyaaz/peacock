@@ -26,7 +26,7 @@ import type {
   QuestionSubmission,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
-import type { ForkSessionInput } from "../../shared/agent-contract";
+import type { ContextBreakdown, ForkSessionInput } from "../../shared/agent-contract";
 import {
   isTerminalSessionId,
   type TerminalDesktopBridge,
@@ -184,6 +184,10 @@ export class GjcAgentBackend implements AgentBackend {
 
   compactSession(sessionId: string): Promise<void> {
     return this.bridge.compactSession(sessionId);
+  }
+
+  getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    return this.bridge.getContextBreakdown(sessionId);
   }
 
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {

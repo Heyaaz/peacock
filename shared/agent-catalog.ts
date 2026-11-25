@@ -77,6 +77,7 @@ const none: Readonly<SessionCapabilities> = {
   git: false,
   attachments: false,
   streaming: false,
+  contextBreakdown: false,
 };
 
 /**
@@ -131,6 +132,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       thinking: true,
       attachments: true,
       streaming: true,
+      contextBreakdown: true,
     },
   },
   {
@@ -171,6 +173,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       git: true,
       attachments: true,
       streaming: true,
+      contextBreakdown: false,
     },
   },
   {

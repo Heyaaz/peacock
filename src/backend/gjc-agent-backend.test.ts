@@ -151,6 +151,10 @@ class FakeGjcBridge implements GjcDesktopBridge {
   }
   async controlRetry(_sessionId: string, _action: "now" | "abort"): Promise<void> {}
   async compactSession(_sessionId: string): Promise<void> {}
+
+  async getContextBreakdown(_sessionId: string): Promise<null> {
+    return null;
+  }
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

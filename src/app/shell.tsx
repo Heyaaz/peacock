@@ -77,6 +77,7 @@ import { useTranscriptStore } from "./use-transcript-store";
 import { useMessageDelivery } from "./use-message-delivery";
 import { useSendMessage } from "./use-send-message";
 import { SubagentsPanel, TurnStatusLine } from "./turn-status";
+import { ContextBar, ContextDialog } from "./context-usage";
 import { useInbox } from "./use-inbox";
 import { useShellShortcuts } from "./use-shell-shortcuts";
 import { useSessionSync } from "./use-session-sync";
@@ -164,6 +165,16 @@ export default function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [subagentsOpen, setSubagentsOpen] = useState(false);
+  // the session whose "컨텍스트" dialog is open (omp's chat)
+  const [contextDialogFor, setContextDialogFor] = useState<string | null>(null);
+  const loadContextBreakdown = useCallback(
+    () =>
+      contextDialogFor && backend.getContextBreakdown
+        ? backend.getContextBreakdown(contextDialogFor)
+        : Promise.resolve(null),
+    [backend, contextDialogFor],
+  );
+  const closeContextDialog = useCallback(() => setContextDialogFor(null), []);
 
   // Each open is its own request: a second prefill while the dialog is up
   // remounts it with the new values instead of being dropped.
@@ -1475,6 +1486,7 @@ export default function App() {
                   <TurnStatusLine
                     status={selectedSession.liveStatus}
                     running={selectedSession.status === "running" || selectedSession.status === "waiting"}
+                    hideContext={Boolean(selectedCapabilities?.contextBreakdown && backend.getContextBreakdown)}
                   />
                 )}
                 <QuestionBanner
@@ -1507,6 +1519,20 @@ export default function App() {
                   onOperate={(operation) => void operateGoal(operation)}
                 />
                 </>
+                )}
+                {selectedCapabilities?.contextBreakdown && backend.getContextBreakdown && selectedSession.liveStatus && (
+                  <ContextBar
+                    status={selectedSession.liveStatus}
+                    onOpen={() => setContextDialogFor(selectedSession.id)}
+                    onCompact={selectedCapabilities.compact && !remoteViewOnly ? onComposerCompact : undefined}
+                  />
+                )}
+                {contextDialogFor === selectedSession.id && (
+                  <ContextDialog
+                    load={loadContextBreakdown}
+                    onClose={closeContextDialog}
+                    onCompact={selectedCapabilities?.compact && !remoteViewOnly ? onComposerCompact : undefined}
+                  />
                 )}
                 <Composer
                   sessionId={selectedSession.id}

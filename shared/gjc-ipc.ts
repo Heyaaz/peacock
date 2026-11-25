@@ -35,6 +35,7 @@ export const GJC_IPC = {
   suggestNextInput: "agent-control:gjc:suggest-next-input",
   controlRetry: "agent-control:gjc:control-retry",
   compactSession: "agent-control:gjc:compact-session",
+  getContextBreakdown: "agent-control:gjc:get-context-breakdown",
   queueFollowUp: "agent-control:gjc:queue-follow-up",
   listQueuedMessages: "agent-control:gjc:list-queued-messages",
   flushQueuedNow: "agent-control:gjc:flush-queued-now",

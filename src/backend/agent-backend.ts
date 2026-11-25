@@ -24,7 +24,7 @@ import type {
   QuestionSubmission,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
-import type { ForkSessionInput } from "../../shared/agent-contract";
+import type { ContextBreakdown, ForkSessionInput } from "../../shared/agent-contract";
 import type { RemoteAccessBridge } from "../../shared/remote-protocol";
 
 export interface AgentBackend {
@@ -88,6 +88,11 @@ export interface AgentBackend {
   /** Skips GJC's wait before retrying a failed model call, or stops retrying. */
   controlRetry?(sessionId: string, action: "now" | "abort"): Promise<void>;
   compactSession(sessionId: string): Promise<void>;
+  /**
+   * What fills the context window, by category, or null when the runtime cannot tell.
+   * Only omp's chat answers; read it where the session's `contextBreakdown` capability is on.
+   */
+  getContextBreakdown?(sessionId: string): Promise<ContextBreakdown | null>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

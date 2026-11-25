@@ -16,6 +16,9 @@ const every = (value: boolean): SessionCapabilities =>
     SESSION_CAPABILITY_KEYS.map((key) => [key, value]),
   ) as unknown as SessionCapabilities;
 
+/** A GJC chat's default: everything it had before capabilities existed, nothing that came later. */
+const gjcChat = (): SessionCapabilities => ({ ...every(true), contextBreakdown: false });
+
 const session = (
   runtime: RuntimeKind,
   capabilities?: AgentSession["capabilities"],
@@ -42,6 +45,7 @@ describe("session capability keys", () => {
         "git",
         "attachments",
         "streaming",
+        "contextBreakdown",
       ].sort(),
     );
   });
@@ -49,11 +53,11 @@ describe("session capability keys", () => {
 
 describe("capabilitiesOf runtime defaults", () => {
   it("keeps every feature a GJC chat had before capabilities existed", () => {
-    expect(capabilitiesOf(session("gjc"))).toEqual(every(true));
+    expect(capabilitiesOf(session("gjc"))).toEqual(gjcChat());
   });
 
   it("treats the mock backend's rows like the GJC chat they stand in for", () => {
-    expect(capabilitiesOf(session("hermes"))).toEqual(every(true));
+    expect(capabilitiesOf(session("hermes"))).toEqual(gjcChat());
   });
 
   it("offers nothing to a terminal session of an older host (runtime `terminal`), and reads its name as herdr", () => {
@@ -93,7 +97,7 @@ describe("capabilitiesOf reported values", () => {
     ).toEqual({ ...every(false), send: true, cancel: true, git: true });
     expect(
       capabilitiesOf(session("gjc", { attachments: false, streaming: false })),
-    ).toEqual({ ...every(true), attachments: false, streaming: false });
+    ).toEqual({ ...gjcChat(), attachments: false, streaming: false });
   });
 
   it("ignores values that are not booleans and keys it does not know", () => {
@@ -114,7 +118,7 @@ describe("capabilitiesOf reported values", () => {
         capabilitiesOf(
           session("gjc", reported as unknown as AgentSession["capabilities"]),
         ),
-      ).toEqual(every(true));
+      ).toEqual(gjcChat());
   });
 
   it("returns a fresh object the caller may change", () => {

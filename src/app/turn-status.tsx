@@ -22,7 +22,16 @@ function TaskMark({ task }: { task: TodoSnapshotTask }) {
  * The line above the composer while an agent works (omp's chat): how long the turn has run, what
  * it does now, its todo progress (a checklist on click) and how full the context is.
  */
-export function TurnStatusLine({ status, running }: { status: SessionLiveStatus; running: boolean }) {
+export function TurnStatusLine({
+  status,
+  running,
+  hideContext = false,
+}: {
+  status: SessionLiveStatus;
+  running: boolean;
+  /** The context bar above the composer shows it instead. */
+  hideContext?: boolean;
+}) {
   const [now, setNow] = useState(() => Date.now());
   const [todoOpen, setTodoOpen] = useState(false);
   const started = running ? status.turnStartedAtMs : undefined;
@@ -37,7 +46,7 @@ export function TurnStatusLine({ status, running }: { status: SessionLiveStatus;
     started !== undefined,
     running && Boolean(status.activity),
     tasks.length > 0,
-    status.contextPercent !== undefined,
+    !hideContext && status.contextPercent !== undefined,
   ];
   if (!parts.some(Boolean)) return null;
   return (
@@ -87,7 +96,7 @@ export function TurnStatusLine({ status, running }: { status: SessionLiveStatus;
           )}
         </span>
       )}
-      {status.contextPercent !== undefined && (
+      {!hideContext && status.contextPercent !== undefined && (
         <span className="turn-status-context" title={t("이 대화가 쓴 컨텍스트 비율")}>
           {t`컨텍스트 ${Math.round(status.contextPercent)}%`}
         </span>

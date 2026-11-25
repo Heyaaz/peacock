@@ -2,6 +2,7 @@ import type {
   AgentSession,
   ArtifactContent,
   BackendConnection,
+  ContextBreakdown,
   CreateSessionInput,
   DiffSnapshot,
   EffectiveRuntimeState,
@@ -25,9 +26,11 @@ import type {
 } from "../shared/agent-contract.js";
 import {
   AgentUnsupportedError,
+  type AgentExtrasFacet,
   type AgentFacets,
   type AgentRuntimeController,
   type FullAgentHost,
+  type RoutingAgentHost,
 } from "./agent-host.js";
 import type { GjcHostProcess } from "./gjc-host-process.js";
 import type { DeleteSessionOptions } from "./gjc-sdk-lifecycle.js";
@@ -55,7 +58,7 @@ function routedRuntime(runtime: RuntimeKind): runtime is RoutedRuntimeKind {
  * as a rejected promise, never a synchronous throw, so a caller's `.catch`
  * sees it.
  */
-export class AgentRouter implements FullAgentHost {
+export class AgentRouter implements RoutingAgentHost {
   private readonly runtimes = new Map<RoutedRuntimeKind, AgentRuntimeController>();
   /** Sessions a registered runtime owns. Every other session is GJC's. */
   private readonly owners = new Map<string, RoutedRuntimeKind>();
@@ -125,19 +128,19 @@ export class AgentRouter implements FullAgentHost {
   }
 
   /** The owning controller's implementation of a facet call, or a refusal. */
-  private facet<K extends keyof AgentFacets>(
+  private facet<K extends keyof (AgentFacets & AgentExtrasFacet)>(
     sessionId: string,
     method: K,
-  ): AgentFacets[K] {
+  ): (AgentFacets & AgentExtrasFacet)[K] {
     const controller = this.controllerFor(sessionId);
     const implementation = controller[method] as
       | ((...args: never[]) => unknown)
       | undefined;
     if (typeof implementation === "function")
-      return implementation.bind(controller) as AgentFacets[K];
+      return implementation.bind(controller) as (AgentFacets & AgentExtrasFacet)[K];
     const refusal = () =>
       Promise.reject(new AgentUnsupportedError(method, sessionId));
-    return refusal as unknown as AgentFacets[K];
+    return refusal as unknown as (AgentFacets & AgentExtrasFacet)[K];
   }
 
   // Runtime-wide calls. Only GJC has a connection, saved history or tool ids
@@ -399,6 +402,12 @@ export class AgentRouter implements FullAgentHost {
 
   listSubagents(sessionId: string): Promise<SubagentSnapshot[]> {
     return this.facet(sessionId, "listSubagents")(sessionId);
+  }
+
+  // Extras: GJC has none of them, so a GJC session's call is refused.
+
+  getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    return this.facet(sessionId, "getContextBreakdown")(sessionId);
   }
 
   openHistorySession(sessionId: string): Promise<AgentSession> {

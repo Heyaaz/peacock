@@ -66,6 +66,9 @@ const CALLS: [keyof FullAgentHost, unknown[]][] = [
   ["dispose", []],
 ];
 
+/** Calls only some runtimes answer; GJC has none of them. */
+const EXTRA_CALLS = new Set(["getContextBreakdown"]);
+
 /** Router members that place calls rather than forward them. */
 const ROUTING_MEMBERS = new Set([
   "constructor",
@@ -144,7 +147,7 @@ afterEach(() => {
 describe("AgentRouter with GJC alone", () => {
   it("forwards every call the GJC controller has and nothing else", () => {
     const forwarded = Object.getOwnPropertyNames(AgentRouter.prototype).filter(
-      (name) => !ROUTING_MEMBERS.has(name),
+      (name) => !ROUTING_MEMBERS.has(name) && !EXTRA_CALLS.has(name),
     );
     expect(forwarded.sort()).toEqual(CALLS.map(([name]) => name).sort());
     const controller = GjcSdkController.prototype as unknown as Record<string, unknown>;
@@ -424,5 +427,22 @@ describe("AgentRouter with a second runtime", () => {
     router.dispose();
     expect(gjc.dispose).toHaveBeenCalledTimes(1);
     expect(herdr.dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AgentRouter extras", () => {
+  it("refuses an extra for a GJC session and hands it to a runtime that has it", async () => {
+    const gjc = fakeHost();
+    const breakdown = { contextWindow: 10, usedTokens: 1, categories: [], autoCompactBufferTokens: 0, freeTokens: 9, notes: [] };
+    const omp = fakeRuntime({ getContextBreakdown: vi.fn(async () => breakdown) });
+    const router = new AgentRouter(gjc);
+    router.registerRuntime("omp-rpc", omp);
+    router.claimSession("omp-1", "omp-rpc");
+    await expect(router.getContextBreakdown("g1")).rejects.toBeInstanceOf(AgentUnsupportedError);
+    await expect(router.getContextBreakdown("omp-1")).resolves.toBe(breakdown);
+    expect(omp.getContextBreakdown).toHaveBeenCalledWith("omp-1");
+    router.registerRuntime("herdr", fakeRuntime());
+    router.claimSession("h1", "herdr");
+    await expect(router.getContextBreakdown("h1")).rejects.toMatchObject({ code: "unsupported" });
   });
 });

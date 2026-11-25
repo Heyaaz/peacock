@@ -89,6 +89,8 @@ export interface SessionCapabilities {
   attachments: boolean;
   /** Replies that stream in as they are written. */
   streaming: boolean;
+  /** What fills the context window, by category (omp's `/context`). */
+  contextBreakdown: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -107,6 +109,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     git: value,
     attachments: value,
     streaming: value,
+    contextBreakdown: value,
   };
 }
 
@@ -127,7 +130,8 @@ function runtimeCapabilities(runtime: unknown): SessionCapabilities {
   switch (runtime) {
     case "gjc":
     case "hermes":
-      return uniformCapabilities(true);
+      // every feature a GJC chat had before capabilities existed; what came later is another runtime's
+      return { ...uniformCapabilities(true), contextBreakdown: false };
     default:
       return uniformCapabilities(false);
   }
@@ -490,6 +494,38 @@ export interface SessionLiveStatus {
   todo?: TodoSnapshotPhase[];
   /** How much of the context window the conversation uses (percent). */
   contextPercent?: number;
+  /** The tokens that share is of, and the window's size. */
+  contextTokens?: number;
+  contextWindow?: number;
+}
+
+/** The kinds of content omp counts in a context window. */
+export type ContextCategoryId =
+  | "systemPrompt"
+  | "systemTools"
+  | "systemContext"
+  | "instructionFiles"
+  | "skills"
+  | "messages"
+  | "other";
+
+/**
+ * What fills a session's context window, by category, as omp's `/context` counts it.
+ * Token counts are omp's estimates; categories with nothing in them read 0.
+ */
+export interface ContextBreakdown {
+  /** The model the window belongs to, as the session names it. */
+  model?: string;
+  contextWindow: number;
+  usedTokens: number;
+  categories: { id: ContextCategoryId; label: string; tokens: number }[];
+  /** Room kept free so auto-compaction can run before the window fills. */
+  autoCompactBufferTokens: number;
+  freeTokens: number;
+  /** Where auto-compaction starts (tokens); unset while it is off. */
+  autoCompactAtTokens?: number;
+  /** omp's further lines, such as snapcompact's estimated savings, as it wrote them. */
+  notes: string[];
 }
 
 export interface SessionRetry {
@@ -1321,6 +1357,8 @@ export interface GjcDesktopBridge {
   suggestNextInput(sessionId: string): Promise<string | null>;
   controlRetry(sessionId: string, action: "now" | "abort"): Promise<void>;
   compactSession(sessionId: string): Promise<void>;
+  /** What fills the context window, by category; null when omp cannot tell. Only omp's chat answers. */
+  getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

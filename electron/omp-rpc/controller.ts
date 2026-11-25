@@ -9,6 +9,7 @@ import type {
   ModelCatalogFacts,
   AgentSession,
   BackendConnection,
+  ContextBreakdown,
   CreateSessionInput,
   MessageDelivery,
   NoticeActivity,
@@ -40,6 +41,7 @@ import { recentLabel, timestampMs } from "../gjc-sdk-model.js";
 import { withoutInherited } from "../herdr-core/env.js";
 import { bounded, clockLabel, record, string, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
 import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
+import { parseContextReport } from "./context-report.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
 import { OmpRpcClient, type RpcFrame, type RpcProcess, type RpcPromptResult } from "./rpc-client.js";
 import { OMP_RPC_SESSION_PREFIX, type OmpRpcSessionRecord, type OmpRpcSessionStore } from "./session-store.js";
@@ -1071,6 +1073,37 @@ export class OmpRpcController implements AgentRuntimeController {
     this.scheduleResync(sessionId);
   }
 
+  /**
+   * `/context`: what fills the context window, by category. omp 19.1.1 has no RPC command
+   * for it, but answers the slash command itself, without a model call or a line in the
+   * session file, as one `command_output` frame before the prompt's response.
+   */
+  async getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    const client = await this.ensureProcess(sessionId);
+    let text: string | undefined;
+    const stop = client.onFrame((frame) => {
+      if (frame.type === "command_output" && typeof frame.text === "string") text = frame.text;
+    });
+    try {
+      await client.call({ type: "prompt", message: "/context" });
+    } finally {
+      stop();
+    }
+    const report = text === undefined ? null : parseContextReport(text);
+    // the same moment's model and auto-compaction setting, and a fresh share for the bar
+    await this.refreshState(sessionId, client).catch(() => undefined);
+    if (!report) return null;
+    const state = this.chats.get(sessionId)?.state ?? {};
+    const model = record(state.model);
+    const name = string(model.name, model.id);
+    const compacts = state.autoCompactionEnabled !== false && report.autoCompactBufferTokens > 0;
+    return {
+      ...report,
+      ...(name ? { model: name } : {}),
+      ...(compacts ? { autoCompactAtTokens: report.contextWindow - report.autoCompactBufferTokens } : {}),
+    };
+  }
+
   async steerSession(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
     if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
     const client = await this.ensureProcess(sessionId);
@@ -1386,6 +1419,8 @@ export class OmpRpcController implements AgentRuntimeController {
       ...(chat?.activity ? { activity: chat.activity } : {}),
       ...(todo.length > 0 ? { todo } : {}),
       ...(typeof usage.percent === "number" && Number.isFinite(usage.percent) ? { contextPercent: usage.percent } : {}),
+      ...(typeof usage.tokens === "number" && Number.isFinite(usage.tokens) ? { contextTokens: usage.tokens } : {}),
+      ...(typeof usage.contextWindow === "number" && usage.contextWindow > 0 ? { contextWindow: usage.contextWindow } : {}),
     };
     return {
       ...live,

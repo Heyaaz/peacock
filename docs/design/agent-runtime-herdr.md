@@ -271,6 +271,12 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 서브에이전트 패널(헤더 버튼): `set_subagent_subscription {level:"progress"}`, `subagent_lifecycle`/`subagent_progress` 프레임과 `get_subagents`로 실행 중·대기·완료·실패 목록과 작업·모델·비용·시간·도구 수·컨텍스트·최근 활동·기록 파일 경로. 진행 정보(`AgentProgress`)의 타입은 19.1.1 패키지 밖(pi-tui)에 있어, 바이너리의 서브에이전트 렌더러가 쓰는 이름(toolCount·contextTokens·contextWindow·cost·model)을 넓게 읽는다. 실제 서브에이전트 실행으로는 확인하지 않았다(단위 테스트만).
 - 빠진 것: 백그라운드 작업 패널 — 19.1.1 RPC에는 작업 목록·이벤트·취소 명령이 없고 `get_state.hasPendingAsyncWork`(불린)뿐이다(rpc-types·wire/events·rpc-mode에 job 없음). Tern은 지원 폴더의 `daemon.state`가 `omp --resume <id>`를 PTY로 띄우는 것으로 보아 omp TUI 화면을 보여 주는 앱이라 RPC 근거가 되지 않는다. 서브에이전트 기록 "열기"는 앱에 파일 열기 브리지가 없어 경로만 보인다.
 
+**컨텍스트 막대와 "컨텍스트" 대화상자**
+- 19.1.1 RPC에는 컨텍스트를 카테고리별로 주는 명령이 없다(`get_state.contextUsage`·`get_session_stats.contextUsage`는 tokens/contextWindow/percent뿐). 대신 `prompt "/context"`를 RPC가 직접 처리한다: `executeAcpBuiltinSlashCommand` → `buildContextReportText`(slash-commands/helpers/context-report.ts)가 `command_output` 프레임 하나를 낸 뒤 `{agentInvoked:false}` 응답, `prompt_result` 없음, 모델 호출·세션 파일 기록 없음(실측: 세션 파일 바이트 그대로, 287ms). 카테고리는 pi-tui context-usage의 고정 6개(System prompt·System tools·System context·Instruction files·Skills·Messages)와 Auto-compact buffer·Free이며, 0인 카테고리는 줄이 빠진다. `electron/omp-rpc/context-report.ts`가 이 텍스트를 읽고(ANSI 막대 제거), 컨트롤러 `getContextBreakdown`이 `get_state`의 모델·`autoCompactionEnabled`를 붙인다. 자동 압축 시작점 = 창 − 버퍼(버퍼는 `min(창 − 임계값, 창 − 사용량)`이라 임계값을 넘으면 "지났습니다").
+- 경로: `AgentExtrasFacet.getContextBreakdown`(GJC에는 없는 호출: 라우터가 런타임에 있으면 넘기고 없으면 unsupported) → IPC `getContextBreakdown` → `AgentBackend.getContextBreakdown?`. 화면은 새 capability `contextBreakdown`(omp 채팅만 true, GJC 기본값 false)으로 연다.
+- 입력창 위 막대: 사용 %·막대·창 크기(`liveStatus.contextTokens/contextWindow`), 버튼 둘(카테고리별 보기, 지금 압축). 상태 줄의 "컨텍스트 x%"는 막대가 있을 때 숨긴다. Tern 스크린샷의 두 아이콘(점선 사각형, 망치)은 Tern UI가 Rust 바이너리+웹뷰라 코드로 확인하지 못했다. omp 19.1.1에서 망치 글리프(`cmd.hammer`)는 `/force`(다음 턴에 특정 도구 강제), 컨텍스트 아이콘은 `/context`에 쓰인다. 확인되지 않은 동작을 흉내 내지 않고 보기·압축 버튼으로 두었다.
+- 빠진 것: 대화 메시지를 User/Assistant/Thinking/Tool calls/Tool output으로 나눈 값과 도구별 하위 행은 TUI 컨텍스트 뷰어(`buildSessionContextView`, session/context-view.ts)에만 있고 RPC로 나오지 않는다. Custom tools는 System tools에 합쳐져 있다.
+
 **한계 (omp RPC 채팅)**
 - 열린 채팅마다 omp 프로세스가 앱이 끝날 때까지 산다(유휴 종료 없음).
 - 거절 코멘트는 omp에 전달되지 않는다(RPC select는 라벨만 받음). "이 세션 동안 허용"·폴더 grant는 카드에 없다(카드의 선택은 어디서나 같은 뜻: 이번만 허용/거절, 나머지는 명령 규칙).

@@ -2,6 +2,7 @@ import type {
   AgentSession,
   ArtifactContent,
   BackendConnection,
+  ContextBreakdown,
   CreateSessionInput,
   DiffSnapshot,
   EffectiveRuntimeState,
@@ -178,11 +179,24 @@ export type AgentFacets = AgentQueueFacet &
 export type FullAgentHost = AgentHost & AgentFacets;
 
 /**
+ * Calls only some runtimes answer, and GJC none: omp's chat reports what fills its
+ * context window. The router refuses them as unsupported for a session whose
+ * controller lacks them.
+ */
+export interface AgentExtrasFacet {
+  getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null>;
+}
+
+/** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */
+export type RoutingAgentHost = FullAgentHost & AgentExtrasFacet;
+
+/**
  * A runtime registered with the router next to GJC: the core calls, and any
  * facet it has. A facet it lacks is refused as unsupported for its sessions.
  */
 export type AgentRuntimeController = AgentHost &
-  Partial<AgentFacets> & {
+  Partial<AgentFacets> &
+  Partial<AgentExtrasFacet> & {
     /** A session a remote device may neither see nor drive (a shell, design §5.7). */
     hiddenFromRemote?(sessionId: string): boolean;
     /** The session one of its tool ids names, for a runtime whose tool ids carry it. */

@@ -25,6 +25,15 @@ function turnFrames(name: string): Record<string, unknown>[] {
   return rows.slice(start + 1, end + 1).filter((row) => row.dir === "in").map((row) => row.frame);
 }
 
+const CONTEXT_REPORT = [
+  "Context window: 950000 tokens (2% used)",
+  "  System prompt    [░░░░] 0%  1861 tokens",
+  "  System tools     [░░░░] 1%  5743 tokens",
+  "  Messages         [░░░░] 0%  6746 tokens",
+  "  Auto-compact buf [█░░░] 15%  142500 tokens",
+  "  Free             [███░] 83%  793150 tokens",
+].join("\n");
+
 function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject"> } = {}) {
   const addRule = vi.fn(async () => undefined);
   const commandRules = {
@@ -62,8 +71,17 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
           thinkingLevel: "low",
           configuredThinkingLevel: "low",
           thinkingLevels: ["off", "auto", "low", "high"],
-          contextUsage: { percent: 1.5 },
+          contextUsage: { percent: 1.5, tokens: 14350, contextWindow: 950000 },
+          autoCompactionEnabled: true,
         });
+      else if (frame.type === "prompt" && frame.message === "/context")
+        // omp answers the slash command itself: its report, then the response, and no prompt_result
+        queueMicrotask(() =>
+          child.emitFrames(
+            { type: "command_output", text: CONTEXT_REPORT },
+            { id: frame.id, type: "response", command: "prompt", success: true, data: { agentInvoked: false } },
+          ),
+        );
       else if (frame.type === "prompt") {
         prompts += 1;
         answer();
@@ -627,5 +645,36 @@ describe("OmpRpcController status line and subagents (P6)", () => {
         sessionFile: "/tmp/sa-1.jsonl",
       },
     ]);
+  });
+});
+
+describe("OmpRpcController context breakdown", () => {
+  it("reads omp's /context report with no model call or row, with the model and where auto-compaction starts", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    const before = context.events.length;
+    const breakdown = await context.controller.getContextBreakdown(session.id);
+    const child = context.processes[0]!.child;
+    expect(child.sent("prompt").map((frame) => frame.message)).toEqual(["/context"]);
+    expect(context.prompts()).toBe(0);
+    expect(breakdown).toMatchObject({
+      model: "DeepSeek Flash",
+      contextWindow: 950000,
+      usedTokens: 14350,
+      autoCompactBufferTokens: 142500,
+      freeTokens: 793150,
+      autoCompactAtTokens: 807500,
+    });
+    expect(breakdown!.categories.map((category) => [category.id, category.tokens])).toEqual([
+      ["systemPrompt", 1861],
+      ["systemTools", 5743],
+      ["systemContext", 0],
+      ["instructionFiles", 0],
+      ["skills", 0],
+      ["messages", 6746],
+    ]);
+    expect(context.events.slice(before).filter((event) => event.type.startsWith("transcript"))).toEqual([]);
+    const row = (await context.controller.listSessions())[0]!;
+    expect(row.liveStatus).toMatchObject({ contextPercent: 1.5, contextTokens: 14350, contextWindow: 950000 });
   });
 });

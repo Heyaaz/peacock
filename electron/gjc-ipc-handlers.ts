@@ -23,7 +23,7 @@ import {
   destructiveSlashAction,
   destructiveSlashMessage,
 } from "./gjc-sdk-controller.js";
-import type { FullAgentHost } from "./agent-host.js";
+import { AgentUnsupportedError, type AgentExtrasFacet, type FullAgentHost } from "./agent-host.js";
 import { AttachmentStore } from "./attachment-store.js";
 import { fileAttachment } from "./settings-ipc-handlers.js";
 import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
@@ -171,7 +171,7 @@ export async function withResolvedMessageInput<T>(
 }
 
 export function registerGjcIpcHandlers(
-  controller: FullAgentHost,
+  controller: FullAgentHost & Partial<AgentExtrasFacet>,
   attachments: AttachmentStore,
   security: IpcSecurity,
 ): () => void {
@@ -398,6 +398,11 @@ export function registerGjcIpcHandlers(
   handle(GJC_IPC.compactSession, (_event, sessionId: unknown) =>
     controller.compactSession(requiredId(sessionId, "Session ID")),
   );
+  handle(GJC_IPC.getContextBreakdown, (_event, sessionId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.getContextBreakdown) throw new AgentUnsupportedError("getContextBreakdown", id);
+    return controller.getContextBreakdown(id);
+  });
   handle(
     GJC_IPC.queueFollowUp,
     (event, sessionId: unknown, input: unknown) => deliver(event, sessionId, input, "queueFollowUp"),

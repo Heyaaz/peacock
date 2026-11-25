@@ -369,6 +369,8 @@ const gjc: GjcDesktopBridge = Object.freeze({
     ipcRenderer.invoke(GJC_IPC.controlRetry, sessionId, action),
   compactSession: (sessionId: string) =>
     ipcRenderer.invoke(GJC_IPC.compactSession, sessionId),
+  getContextBreakdown: (sessionId: string) =>
+    ipcRenderer.invoke(GJC_IPC.getContextBreakdown, sessionId),
   queueFollowUp: (sessionId: string, input: MessageInput) =>
     ipcRenderer.invoke(GJC_IPC.queueFollowUp, sessionId, input),
   listQueuedMessages: (sessionId: string) =>
