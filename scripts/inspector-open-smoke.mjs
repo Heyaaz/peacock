@@ -1748,8 +1748,7 @@ app.whenReady().then(async () => {
     else {
       settings.click();
       await wait(400);
-      // the dialog opens on 에이전트; the Enter behavior lives in GJC's tab
-      [...document.querySelectorAll('.settings-dialog nav button')].find(button => button.textContent.trim() === 'GJC')?.click();
+      // the dialog opens on 일반, where the Enter behavior lives
       await wait(200);
       const trigger = document.querySelector('button[aria-label="실행 중 Enter 동작"]');
       if (!trigger) issues.push('running Enter dropdown missing');

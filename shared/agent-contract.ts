@@ -1,5 +1,5 @@
 import type { AppUpdateStatus } from "./app-update.js";
-import type { WorkspaceInspection } from "./settings-ipc.js";
+import type { SystemInfo, WorkspaceInspection } from "./settings-ipc.js";
 import type { DesktopIntegrationPreferences } from "./desktop-integration.js";
 import type { CommandRuleMatch, ProjectCommandRules } from "./command-rules.js";
 import type { EnvironmentReport } from "./environment-check.js";
@@ -1603,6 +1603,10 @@ export interface SettingsDesktopBridge {
   applyGjcSettings(changes: GjcSettingChange[]): Promise<GjcSetting[]>;
   /** The saved bash allow and reject rules of every project. Desktop only. */
   listCommandRules(): Promise<ProjectCommandRules[]>;
+  /** The data folder, its move from Gajae and herdr-core, for Settings › 고급. */
+  getSystemInfo(): Promise<SystemInfo>;
+  /** Opens the data folder in Finder. */
+  revealDataFolder(): Promise<void>;
   /** Forgets one rule and returns the rules that remain. */
   removeCommandRule(root: string, prefix: string): Promise<ProjectCommandRules[]>;
   /** Whether the environment check should open at launch. */

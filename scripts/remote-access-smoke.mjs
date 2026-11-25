@@ -386,7 +386,7 @@ async function main() {
     )
     settingsButton?.click()
     const tab = await until(() => Array.from(document.querySelectorAll('.settings-dialog nav button')).find(
-      (button) => /원격 접속|Remote access/i.test(button.textContent ?? ''),
+      (button) => /원격·폰|Remote & phone/i.test(button.textContent ?? ''),
     ))
     tab?.click()
     await until(() => document.querySelector('.remote-panel')?.textContent?.includes('Smoke iPhone'))

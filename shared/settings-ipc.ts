@@ -31,7 +31,22 @@ export const SETTINGS_IPC = {
   checkEnvironment: "agent-control:settings:check-environment",
   environmentCheckDue: "agent-control:settings:environment-check-due",
   quickInputShortcutStatus: "agent-control:settings:quick-input-shortcut-status",
+  getSystemInfo: "agent-control:settings:get-system-info",
+  revealDataFolder: "agent-control:settings:reveal-data-folder",
 } as const;
+
+/** What Settings › 고급 shows about this installation: the data folder, its move, herdr-core. */
+export interface SystemInfo {
+  appVersion: string;
+  /** The data folder this run uses (`~/Library/Application Support/Peacock`). */
+  userData: string;
+  /** The record the first launch wrote when it copied Gajae's folder (design §11). */
+  migration?: { from: string; migratedAt: string; files: number; bytes: number };
+  /** Gajae's folder, still there when it was not deleted by hand. */
+  legacyUserData?: string;
+  /** herdr-core, where terminal sessions run; absent off macOS. */
+  herdrCore?: { session: string; running: boolean; bundledVersion: string; version?: string };
+}
 
 /** What the new-session dialog needs to know about the folder it is about to start in. */
 export interface WorkspaceInspection {

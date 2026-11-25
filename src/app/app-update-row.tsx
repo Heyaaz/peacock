@@ -31,7 +31,7 @@ export function AppUpdateRow({
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    if (!bridge) return;
+    if (typeof bridge?.getAppUpdateStatus !== "function") return;
     let active = true;
     void bridge
       .getAppUpdateStatus()
@@ -57,12 +57,12 @@ export function AppUpdateRow({
   }
 
   return (
-    <div className="gjc-update-row">
+    <div className="settings-toggle-row">
       <span>
         <strong>{t("Peacock 버전")}</strong>
         <small>{status ? appUpdateSummary(status) : t("업데이트 정보를 확인합니다")}</small>
       </span>
-      <span className="gjc-update-actions">
+      <span className="settings-row-actions">
         <button
           type="button"
           disabled={!bridge || checking}

@@ -1,45 +1,94 @@
-import { useEffect, useState } from "react";
-import { Check, CircleAlert, SquareTerminal } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Bot, Check, CircleAlert, LoaderCircle } from "lucide-react";
 import type {
   AgentKindId,
   AgentPreferences,
   AgentPreferencesMap,
-  NewSessionChoice,
   SettingsDesktopBridge,
 } from "../../shared/agent-contract";
-import { AGENT_CATALOG, agentCatalogEntry } from "../../shared/agent-catalog";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
 import { CLAUDE_EFFORTS, CLAUDE_PERMISSION_MODES, CODEX_EFFORTS, OMP_APPROVAL_MODES, type AgentLaunchOptions } from "../../shared/agent-launch";
 import type { AgentAvailability } from "../../shared/terminal-ipc";
 import { t } from "../i18n";
-import { BackgroundTerminalsRow } from "./background-terminals-row";
 import { OmpAccountsSection } from "./omp-accounts-section";
 import { Dropdown } from "./primitives";
+import { SETTINGS_AGENTS, type SettingsAgent } from "./settings-model";
+
 
 /** The options an agent's sessions can start with, as the settings offer them. */
-const LAUNCH_FIELDS: Partial<Record<AgentKindId, { model: boolean; efforts: readonly string[]; permissionModes: readonly string[] }>> = {
-  claude: { model: true, efforts: CLAUDE_EFFORTS, permissionModes: CLAUDE_PERMISSION_MODES },
-  omp: { model: true, efforts: [], permissionModes: OMP_APPROVAL_MODES },
-  codex: { model: true, efforts: CODEX_EFFORTS, permissionModes: [] },
+const LAUNCH_FIELDS: Record<Exclude<SettingsAgent, "gjc">, { efforts: readonly string[]; permissionModes: readonly string[] }> = {
+  claude: { efforts: CLAUDE_EFFORTS, permissionModes: CLAUDE_PERMISSION_MODES },
+  omp: { efforts: [], permissionModes: OMP_APPROVAL_MODES },
+  codex: { efforts: CODEX_EFFORTS, permissionModes: [] },
 };
-
-function agentLabel(id: AgentKindId): string {
-  return id === "shell" ? t("셸") : agentCatalogEntry(id).name;
-}
-
-/** "Claude Code · 터미널": an agent and the screen its new sessions open on. */
-function choiceValue(choice: NewSessionChoice): string {
-  return `${choice.agentKind}:${choice.surface}`;
-}
 
 function errorText(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : String(cause);
   return message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/u, "");
 }
 
+/** Where an agent's sign-in lives, for the agents that keep it to themselves. */
+function signInNote(id: SettingsAgent): string {
+  if (id === "claude") return t("Claude Code가 직접 관리합니다. 터미널 세션에서 /login을 실행하세요.");
+  if (id === "codex") return t("Codex가 직접 관리합니다. 터미널에서 codex login을 실행하세요.");
+  return t("omp를 설치하면 여기서 계정을 관리할 수 있습니다.");
+}
+
+/** The header every agent card shares: name, where it was found, and whether it can run. */
+function AgentCardHead({ id, detection, checking, status }: { id: SettingsAgent; detection?: AgentAvailability; checking: boolean; status?: ReactNode }) {
+  const where = detection?.binary
+    ? detection.configured
+      ? t`설정한 경로 · ${detection.binary}`
+      : detection.binary
+    : detection && !detection.installed
+      ? (detection.reason ?? t("이 Mac에서 찾지 못했습니다"))
+      : "";
+  return (
+    <header className="agent-card__head">
+      <span className="agent-card__icon" aria-hidden="true">
+        <Bot size={17} />
+      </span>
+      <span className="agent-card__title">
+        <strong>{agentCatalogEntry(id).name}</strong>
+        {where && (
+          <small className={detection?.binary ? "agent-card__path" : "agent-card__reason"} title={where}>
+            {where}
+          </small>
+        )}
+        {status}
+      </span>
+      {checking ? (
+        <span className="agent-card__state agent-card__state--checking">
+          <LoaderCircle size={12} aria-hidden="true" /> {t("확인 중")}
+        </span>
+      ) : detection?.installed ? (
+        <span className="agent-card__state agent-card__state--ready">
+          <Check size={12} aria-hidden="true" /> {detection.version ?? t("설치됨")}
+        </span>
+      ) : (
+        <span className="agent-card__state agent-card__state--missing">
+          <CircleAlert size={12} aria-hidden="true" /> {t("설치 안 됨")}
+        </span>
+      )}
+    </header>
+  );
+}
+
+/** One labelled field in an agent card's grid. */
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <label className={`agent-field${wide ? " agent-field--wide" : ""}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
 /**
- * The agents Gajae can run (P5): what new sessions open, and for each agent what was
- * found here (path and version, or why not), the executable to use instead, and what
- * its new sessions start with. GJC's own settings, update and sign-in stay in its tab.
+ * Settings › 에이전트: one card per agent, the same parts in the same order. What was found
+ * here (path and version), the executable to use instead, what its new sessions start with
+ * (model, effort, approval mode), and where its sign-in lives. GJC's card carries GJC's own
+ * settings, which the dialog renders and saves (`gjc`).
  *
  * The edits start from `agents` as mounted: the settings dialog mounts the panel again
  * once the saved preferences are loaded.
@@ -47,31 +96,29 @@ function errorText(cause: unknown): string {
 export function AgentsSettingsPanel({
   bridge,
   agents,
-  newSession,
   onAgents,
-  onNewSession,
-  onOpenGjc,
+  gjc,
 }: {
   bridge: SettingsDesktopBridge | undefined;
   agents: AgentPreferencesMap;
-  newSession: NewSessionChoice | undefined;
   onAgents: (agents: AgentPreferencesMap) => void;
-  onNewSession: (choice: NewSessionChoice | undefined) => void;
-  onOpenGjc: () => void;
+  /** GJC's card body and the connection line under its name. */
+  gjc: { status?: ReactNode; body: ReactNode };
 }) {
   const terminalBridge = window.agentControlDesktop?.terminal;
   const ompAccountsBridge = window.agentControlDesktop?.ompAccounts;
+  const canList = typeof terminalBridge?.listAgents === "function";
   const [found, setFound] = useState<AgentAvailability[] | null>(null);
   const [drafts, setDrafts] = useState<AgentPreferencesMap>(agents);
   const [saving, setSaving] = useState<AgentKindId | null>(null);
+  const [saved, setSaved] = useState<AgentKindId | null>(null);
   const [errors, setErrors] = useState<Partial<Record<AgentKindId, string>>>({});
-  const [choiceError, setChoiceError] = useState("");
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (typeof terminalBridge?.listAgents !== "function") return;
+    if (!canList) return;
     let current = true;
-    terminalBridge.listAgents().then(
+    terminalBridge!.listAgents().then(
       (list) => {
         if (current) setFound(list);
       },
@@ -82,28 +129,10 @@ export function AgentsSettingsPanel({
     return () => {
       current = false;
     };
-  }, [terminalBridge, reload]);
-
-  const choices = AGENT_CATALOG.flatMap((entry) =>
-    entry.surfaces.map((surface) => ({
-      value: choiceValue({ agentKind: entry.id, surface }),
-      label: `${agentLabel(entry.id)} · ${surface === "chat" ? t("채팅") : t("터미널")}`,
-    })),
-  );
-
-  async function saveChoice(value: string): Promise<void> {
-    if (!bridge) return;
-    setChoiceError("");
-    const [agentKind, surface] = value.split(":") as [AgentKindId, "chat" | "terminal"];
-    try {
-      const saved = await bridge.setNewSession(value === "" ? null : { agentKind, surface });
-      onNewSession(saved ?? undefined);
-    } catch (cause) {
-      setChoiceError(errorText(cause));
-    }
-  }
+  }, [canList, terminalBridge, reload]);
 
   function editDraft(id: AgentKindId, change: (current: AgentPreferences) => AgentPreferences): void {
+    setSaved(null);
     setDrafts((current) => ({ ...current, [id]: change(current[id] ?? {}) }));
   }
 
@@ -122,12 +151,13 @@ export function AgentsSettingsPanel({
     setSaving(id);
     setErrors((current) => ({ ...current, [id]: "" }));
     try {
-      const saved = await bridge.setAgentPreferences(id, {
-        ...(id !== "gjc" ? { executable: draft.executable?.trim() ?? "" } : {}),
+      const next = await bridge.setAgentPreferences(id, {
+        executable: draft.executable?.trim() ?? "",
         launch: draft.launch ?? {},
       });
-      onAgents(saved);
-      setDrafts((current) => ({ ...current, [id]: saved[id] ?? {} }));
+      onAgents(next);
+      setDrafts((current) => ({ ...current, [id]: next[id] ?? {} }));
+      setSaved(id);
       setReload((value) => value + 1);
     } catch (cause) {
       setErrors((current) => ({ ...current, [id]: errorText(cause) }));
@@ -136,134 +166,88 @@ export function AgentsSettingsPanel({
     }
   }
 
+  const follow = t("에이전트 설정 따름");
   return (
-    <div className="settings-stack agents-settings">
-      <div className="settings-panel">
-        <label>
-          <span>
-            <strong>{t("새 세션 기본값")}</strong>
-            <small>{t("새 세션을 처음 열 에이전트와 화면입니다. 새 세션 창에서 고르면 그 선택이 다음 기본값이 됩니다.")}</small>
-          </span>
-          <Dropdown
-            ariaLabel={t("새 세션 기본값")}
-            value={newSession ? choiceValue(newSession) : ""}
-            options={[{ value: "", label: t("자동 (설치된 첫 에이전트)") }, ...choices]}
-            onChange={(value) => void saveChoice(value)}
-          />
-        </label>
-        {choiceError && <small className="composer-error" role="alert">{choiceError}</small>}
-        <BackgroundTerminalsRow />
-      </div>
-      {AGENT_CATALOG.map((entry) => {
-        const detection = found?.find((agent) => agent.id === entry.id);
-        const draft = drafts[entry.id] ?? {};
-        const fields = LAUNCH_FIELDS[entry.id];
+    <div className="agents-settings">
+      {SETTINGS_AGENTS.map((id) => {
+        const detection = found?.find((agent) => agent.id === id);
+        const checking = canList && found === null;
+        if (id === "gjc")
+          return (
+            <section key={id} id="agent-card-gjc" className="agent-card" aria-label="GJC">
+              <AgentCardHead id={id} detection={detection} checking={checking} status={gjc.status} />
+              {gjc.body}
+            </section>
+          );
+        const draft = drafts[id] ?? {};
+        const fields = LAUNCH_FIELDS[id];
+        const label = agentCatalogEntry(id).name;
         return (
-          <section key={entry.id} className="settings-panel agent-settings" aria-label={agentLabel(entry.id)}>
-            <header className="agent-settings__header">
-              <SquareTerminal size={16} aria-hidden="true" />
-              <strong>{agentLabel(entry.id)}</strong>
-              {detection ? (
-                detection.installed ? (
-                  <span className="ready-badge ready-badge--connected">
-                    <Check size={12} /> {detection.version ?? t("설치됨")}
-                  </span>
-                ) : (
-                  <span className="ready-badge ready-badge--disconnected">
-                    <CircleAlert size={12} /> {detection.reason ?? t("사용할 수 없음")}
-                  </span>
-                )
-              ) : (
-                <small>{found === null ? t("확인 중…") : ""}</small>
-              )}
-            </header>
-            {detection?.binary && (
-              <small className="agent-settings__path" title={detection.binary}>
-                {detection.configured ? t`설정한 실행 파일: ${detection.binary}` : t`찾은 위치: ${detection.binary}`}
-              </small>
-            )}
-            {entry.id === "gjc" ? (
-              <div className="gjc-update-row">
-                <span>
-                  <small>{t("GJC의 실행 파일, 모델 프로필, 도구 승인, 업데이트와 AI 로그인은 GJC 탭에 있습니다.")}</small>
-                </span>
-                <span className="gjc-update-actions">
-                  <button type="button" onClick={onOpenGjc}>
-                    {t("GJC 설정 열기")}
-                  </button>
-                </span>
-              </div>
-            ) : entry.binaries.length > 0 ? (
-              <>
-                <label className="settings-field-wide">
-                  <span>
-                    <strong>{t("실행 파일")}</strong>
-                    <small>{t("비워 두면 PATH와 설치 위치에서 찾습니다")}</small>
-                  </span>
-                  <input
-                    value={draft.executable ?? ""}
-                    placeholder={t("자동으로 찾기")}
-                    onChange={(event) => editDraft(entry.id, (current) => ({ ...current, executable: event.target.value }))}
+          <section key={id} id={`agent-card-${id}`} className="agent-card" aria-label={label}>
+            <AgentCardHead id={id} detection={detection} checking={checking} />
+            <div className="agent-card__grid">
+              <Field label={t("실행 파일")} wide>
+                <input
+                  value={draft.executable ?? ""}
+                  placeholder={t("비워 두면 PATH에서 찾습니다")}
+                  aria-label={t`${label} 실행 파일`}
+                  onChange={(event) => editDraft(id, (current) => ({ ...current, executable: event.target.value }))}
+                />
+              </Field>
+              <Field label={t("기본 모델")}>
+                <input
+                  value={draft.launch?.model ?? ""}
+                  placeholder={follow}
+                  aria-label={t`${label} 기본 모델`}
+                  onChange={(event) => editLaunch(id, "model", event.target.value.trim())}
+                />
+              </Field>
+              {fields.efforts.length > 0 && (
+                <Field label={t("기본 effort")}>
+                  <Dropdown
+                    ariaLabel={t`${label} 기본 effort`}
+                    value={draft.launch?.effort ?? ""}
+                    options={[{ value: "", label: follow }, ...fields.efforts.map((effort) => ({ value: effort, label: effort }))]}
+                    onChange={(value) => editLaunch(id, "effort", value)}
                   />
-                </label>
-                {fields && (
-                  <div className="agent-settings__launch">
-                    {fields.model && (
-                      <label>
-                        <span>
-                          <strong>{t("기본 모델")}</strong>
-                        </span>
-                        <input
-                          value={draft.launch?.model ?? ""}
-                          placeholder={t("에이전트 설정 따름")}
-                          onChange={(event) => editLaunch(entry.id, "model", event.target.value.trim())}
-                        />
-                      </label>
-                    )}
-                    {fields.efforts.length > 0 && (
-                      <label>
-                        <span>
-                          <strong>{t("기본 effort")}</strong>
-                        </span>
-                        <Dropdown
-                          ariaLabel={t`${agentLabel(entry.id)} 기본 effort`}
-                          value={draft.launch?.effort ?? ""}
-                          options={[{ value: "", label: t("에이전트 설정 따름") }, ...fields.efforts.map((effort) => ({ value: effort, label: effort }))]}
-                          onChange={(value) => editLaunch(entry.id, "effort", value)}
-                        />
-                      </label>
-                    )}
-                    {fields.permissionModes.length > 0 && (
-                      <label>
-                        <span>
-                          <strong>{t("기본 권한 모드")}</strong>
-                        </span>
-                        <Dropdown
-                          ariaLabel={t`${agentLabel(entry.id)} 기본 권한 모드`}
-                          value={draft.launch?.permissionMode ?? ""}
-                          options={[{ value: "", label: t("에이전트 설정 따름") }, ...fields.permissionModes.map((mode) => ({ value: mode, label: mode }))]}
-                          onChange={(value) => editLaunch(entry.id, "permissionMode", value)}
-                        />
-                      </label>
-                    )}
-                  </div>
+                </Field>
+              )}
+              <Field label={t("기본 승인 방식")}>
+                {fields.permissionModes.length > 0 ? (
+                  <Dropdown
+                    ariaLabel={t`${label} 기본 승인 방식`}
+                    value={draft.launch?.permissionMode ?? ""}
+                    options={[{ value: "", label: follow }, ...fields.permissionModes.map((mode) => ({ value: mode, label: mode }))]}
+                    onChange={(value) => editLaunch(id, "permissionMode", value)}
+                  />
+                ) : (
+                  <em className="agent-field__static">{t("Codex 설정을 따릅니다")}</em>
                 )}
-                {errors[entry.id] && <small className="composer-error" role="alert">{errors[entry.id]}</small>}
-                <div className="agent-settings__actions">
-                  <button
-                    type="button"
-                    className="button-primary"
-                    disabled={!bridge || saving === entry.id}
-                    onClick={() => void saveAgent(entry.id)}
-                  >
-                    {saving === entry.id ? t("저장 중…") : t("저장")}
-                  </button>
-                </div>
-                {entry.id === "omp" && detection?.installed && ompAccountsBridge && <OmpAccountsSection bridge={ompAccountsBridge} />}
-              </>
-            ) : (
-              <small>{t("로그인 셸(SHELL)을 엽니다. 따로 설정할 것이 없습니다.")}</small>
-            )}
+              </Field>
+            </div>
+            <div className="agent-card__signin">
+              <span className="agent-card__label">{t("로그인")}</span>
+              {id === "omp" && detection?.installed && ompAccountsBridge ? (
+                <OmpAccountsSection bridge={ompAccountsBridge} />
+              ) : (
+                <small>{signInNote(id)}</small>
+              )}
+            </div>
+            <footer className="agent-card__foot">
+              {errors[id] ? (
+                <small className="composer-error" role="alert">{errors[id]}</small>
+              ) : (
+                <small>{saved === id ? t("저장했습니다. 다음 새 세션부터 적용됩니다.") : t("다음 새 세션부터 적용됩니다.")}</small>
+              )}
+              <button
+                type="button"
+                className="button-primary"
+                disabled={!bridge || saving === id}
+                onClick={() => void saveAgent(id)}
+              >
+                {saving === id ? t("저장 중…") : t("저장")}
+              </button>
+            </footer>
           </section>
         );
       })}

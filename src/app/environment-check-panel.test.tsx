@@ -86,7 +86,7 @@ describe("EnvironmentCheckPanel", () => {
   it("shows each row's state, reason and fix command", async () => {
     const container = await render(async () => cleanMac);
     expect(container.textContent).toContain(
-      "필수 항목 중 준비되지 않은 것이 있습니다",
+      "준비되지 않은 도구가 있습니다",
     );
     expect(rowText(container, "missing")).toEqual([
       expect.stringContaining("설치되어 있지 않거나 PATH에서 찾지 못했습니다"),
@@ -139,7 +139,7 @@ describe("EnvironmentCheckPanel", () => {
       "사용 가능한 AI 모델이 없습니다. AI에 로그인하거나 프록시 연결을 설정하세요",
     );
     expect(container.textContent).toContain(
-      "필수 항목 중 준비되지 않은 것이 있습니다",
+      "준비되지 않은 도구가 있습니다",
     );
     expect(container.querySelector(".environment-row-fix code")).toBeNull();
     const login = [...container.querySelectorAll("button")].find(
@@ -223,14 +223,14 @@ describe("EnvironmentCheckPanel", () => {
       });
     const container = await render(check);
     expect(container.textContent).toContain(
-      "Some required items are not ready",
+      "Something is missing",
     );
     const again = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "Check again",
     );
     await act(async () => again!.click());
     expect(check).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toContain("Every required item is ready");
+    expect(container.textContent).toContain("Everything the app needs is ready");
     expect(container.textContent).toContain("Default model profile");
   });
 });

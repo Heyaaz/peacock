@@ -4,6 +4,7 @@ import type { SettingsDesktopBridge } from "../../shared/agent-contract";
 import type { ProjectCommandRules } from "../../shared/command-rules";
 import { t } from "../i18n";
 import { projectNameOf } from "./project-model";
+import { SettingsSection } from "./settings-layout";
 
 type Bridge = Pick<SettingsDesktopBridge, "listCommandRules" | "removeCommandRule">;
 
@@ -55,27 +56,23 @@ export function CommandRulesPanel({ bridge }: { bridge: Bridge | undefined }) {
   );
 
   return (
-    <section className="settings-panel command-rules" aria-label={t("명령 규칙")}>
-      <div className="gjc-update-row">
-        <span>
-          <strong>{t("명령 규칙")}</strong>
-          <small>
-            {t("승인 카드에서 저장한, 프로젝트별로 묻지 않고 허용하거나 거절할 bash 명령의 앞부분입니다.")}
-          </small>
-        </span>
-      </div>
+    <SettingsSection
+      className="command-rules"
+      title={t("명령 규칙")}
+      description={t("승인 카드에서 저장한 규칙입니다. 프로젝트마다, 이 앞부분으로 시작하는 bash 명령은 묻지 않고 허용하거나 거절합니다.")}
+    >
       {error && <p className="diff-error">{error}</p>}
       {projects && sorted.length === 0 && !error && (
-        <p className="settings-note">
-          {t("저장된 명령 규칙이 없습니다. 승인 카드의 앞부분 항상 허용·거부로 추가할 수 있습니다.")}
+        <p className="settings-empty">
+          {t("저장한 규칙이 없습니다. 승인 카드에서 ‘앞부분 항상 허용’이나 ‘앞부분 항상 거부’를 누르면 여기에 쌓입니다.")}
         </p>
       )}
       {sorted.map((project) => (
         <section className="command-rules-project" key={project.root}>
-          <h3>
+          <h4>
             {projectNameOf(project.root)}
             <small>{project.root}</small>
-          </h3>
+          </h4>
           {project.rules.map((rule) => (
             <div className="command-rule-row" key={rule.prefix}>
               <em className={`command-rule-decision command-rule-decision--${rule.decision}`}>
@@ -94,6 +91,6 @@ export function CommandRulesPanel({ bridge }: { bridge: Bridge | undefined }) {
           ))}
         </section>
       ))}
-    </section>
+    </SettingsSection>
   );
 }

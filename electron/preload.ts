@@ -533,6 +533,8 @@ const settings: SettingsDesktopBridge = Object.freeze({
   environmentCheckDue: () => ipcRenderer.invoke(SETTINGS_IPC.environmentCheckDue),
   quickInputShortcutStatus: () =>
     ipcRenderer.invoke(SETTINGS_IPC.quickInputShortcutStatus),
+  getSystemInfo: () => ipcRenderer.invoke(SETTINGS_IPC.getSystemInfo),
+  revealDataFolder: () => ipcRenderer.invoke(SETTINGS_IPC.revealDataFolder),
 });
 const management: ManagementDesktopBridge = Object.freeze({
   getSnapshot: (w: string) =>

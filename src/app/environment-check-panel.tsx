@@ -10,6 +10,7 @@ import {
 } from "../../shared/environment-check";
 import { t } from "../i18n";
 import { MessageCopyButton } from "./primitives";
+import { SettingsSection } from "./settings-layout";
 
 const CHECK_LABELS: Record<EnvironmentCheckId, () => string> = {
   bun: () => "Bun",
@@ -92,7 +93,7 @@ function EnvironmentRow({
 }
 
 /**
- * Whether this Mac has what Gajae runs on, with the command for anything missing.
+ * Whether this Mac has the tools the app relies on, with the command for anything missing.
  *
  * This panel only looks: every fix is a command for the user to run, except
  * signing in, which opens the app's own flow. The one install the app does itself,
@@ -136,40 +137,35 @@ export function EnvironmentCheckPanel({
   }, [bridge, attempt]);
 
   return (
-    <div className="settings-stack">
-      <div className="settings-panel environment-check">
-        <div className="gjc-update-row">
-          <span>
-            <strong>{t("환경 점검")}</strong>
-            <small>
-              {error ||
-                (report
-                  ? report.ready
-                    ? t("필수 항목이 모두 준비됐습니다")
-                    : t("필수 항목 중 준비되지 않은 것이 있습니다")
-                  : t("점검 중…"))}
-            </small>
-          </span>
-          <span className="gjc-update-actions">
-            <button
-              type="button"
-              disabled={!bridge || checking}
-              onClick={() => {
-                setChecking(true);
-                setAttempt((value) => value + 1);
-              }}
-            >
-              {checking ? t("점검 중…") : t("다시 점검")}
-            </button>
-          </span>
-        </div>
-        {report?.rows.map((row) => (
-          <EnvironmentRow key={row.id} row={row} onLogin={onLogin} />
-        ))}
-      </div>
-      <p className="settings-note">
-        {t("필요한 명령을 복사해 터미널에서 실행한 뒤 다시 점검하세요.")}
-      </p>
-    </div>
+    <SettingsSection
+      className="environment-check"
+      title={t("진단")}
+      description={
+        error ||
+        (report
+          ? report.ready
+            ? t("필요한 도구가 모두 준비됐습니다.")
+            : t("준비되지 않은 도구가 있습니다. 명령을 복사해 터미널에서 실행한 뒤 다시 점검하세요.")
+          : t("점검하는 중…"))
+      }
+      actions={
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={!bridge || checking}
+          onClick={() => {
+            setChecking(true);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          {checking ? t("점검하는 중…") : t("다시 점검")}
+        </button>
+      }
+    >
+      {report?.rows.map((row) => (
+        <EnvironmentRow key={row.id} row={row} onLogin={onLogin} />
+      ))}
+      {!report && <p className="settings-empty">{checking ? t("점검하는 중…") : t("점검 결과가 없습니다.")}</p>}
+    </SettingsSection>
   );
 }

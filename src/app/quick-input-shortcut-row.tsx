@@ -36,7 +36,7 @@ export function QuickInputShortcutRow({
   const [status, setStatus] = useState<QuickInputShortcutStatus | null>(null);
 
   useEffect(() => {
-    if (!bridge) return;
+    if (typeof bridge?.quickInputShortcutStatus !== "function") return;
     let active = true;
     void bridge
       .quickInputShortcutStatus()

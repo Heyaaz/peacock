@@ -151,7 +151,7 @@ export function GjcSettingsPanel({ bridge }: { bridge: Bridge | undefined }) {
   return (
     <div className="settings-stack gjc-settings">
       <div className="settings-panel">
-        <div className="gjc-update-row">
+        <div className="settings-toggle-row">
           <span>
             <strong>{t("GJC 설정")}</strong>
             <small>
@@ -164,7 +164,7 @@ export function GjcSettingsPanel({ bridge }: { bridge: Bridge | undefined }) {
                   : t("불러오는 중…")}
             </small>
           </span>
-          <span className="gjc-update-actions">
+          <span className="settings-row-actions">
             {error && !settings && (
               <button type="button" onClick={() => setAttempt((n) => n + 1)}>
                 {t("다시 시도")}

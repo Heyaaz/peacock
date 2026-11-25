@@ -15,7 +15,7 @@ import {
   type WebContents,
 } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -102,7 +102,14 @@ import { QuickInputShortcut } from "./quick-input.js";
 import { QuickInputWindow, type QuickInputHandoff } from "./quick-input-window.js";
 import { quickInputProjects } from "../shared/quick-input.js";
 import { launchCheckSatisfied } from "../shared/environment-check.js";
-import { developmentUserData, migrateUserData, type UserDataMigration } from "./user-data-migration.js";
+import {
+  developmentUserData,
+  LEGACY_USER_DATA_NAME,
+  migrateUserData,
+  MIGRATION_MARKER,
+  type UserDataMigration,
+} from "./user-data-migration.js";
+import type { SystemInfo } from "../shared/settings-ipc.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const {
@@ -606,6 +613,39 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
   () => renderDesktopStatus?.(desktopIntegration.state()),
   (changes) => gjcController.applyLiveSettings(changes),
   commandRules,
+  {
+    async info(): Promise<SystemInfo> {
+      let migration: SystemInfo["migration"];
+      try {
+        const record = JSON.parse(readFileSync(path.join(userDataDirectory, MIGRATION_MARKER), "utf8")) as Record<string, unknown>;
+        if (typeof record.from === "string" && typeof record.migratedAt === "string")
+          migration = { from: record.from, migratedAt: record.migratedAt, files: Number(record.files) || 0, bytes: Number(record.bytes) || 0 };
+      } catch {
+        // no move recorded: a fresh install, or a run from source
+      }
+      const legacy = path.join(app.getPath("appData"), LEGACY_USER_DATA_NAME);
+      return {
+        appVersion: app.getVersion(),
+        userData: userDataDirectory,
+        ...(migration ? { migration } : {}),
+        ...(legacy !== userDataDirectory && existsSync(legacy) ? { legacyUserData: legacy } : {}),
+        ...(hcCore
+          ? {
+              herdrCore: {
+                session: hcCore.session,
+                running: hcCore.isRunning(),
+                bundledVersion: HC_VERSION,
+                ...(hcCore.core?.version ? { version: hcCore.core.version } : {}),
+              },
+            }
+          : {}),
+      };
+    },
+    async revealDataFolder(): Promise<void> {
+      const failure = await shell.openPath(userDataDirectory);
+      if (failure) throw new Error(failure);
+    },
+  },
 );
 const unregisterDesktopServicesIpc =
   registerDesktopServicesIpcHandlers(desktopManagement, ipcSecurity);
@@ -1374,33 +1414,37 @@ function createWindow(): BrowserWindow {
             // The dialog is a deferred chunk; give the import a beat on a cold run.
             await wait(500);
             assert(document.querySelector('[role="dialog"]'), 'Settings dialog did not open');
-            // the dialog opens on the agents (P5); GJC's own settings are a tab away
-            assert(document.querySelector('.agents-settings') && document.querySelector('.agent-settings[aria-label="Claude Code"]'), 'Agents settings did not render');
-            assert(!document.querySelector('.settings-panel select'), 'Native select renders in the agents settings');
-            Array.from(document.querySelectorAll('[role="dialog"] button')).find((button) => button.textContent?.trim() === 'GJC')?.click();
+            // the dialog opens on 일반, the window's own preferences; the default folder is there
+            assert(document.querySelector('.settings-general'), 'Settings did not open on 일반');
+            assert(document.querySelector('.workspace-card'), 'Default folder row did not render');
+            assert(!document.querySelector('.settings-dialog select'), 'Native select renders in settings');
+            const settingsNav = (label) => Array.from(document.querySelectorAll('.settings-dialog > nav button')).find((button) => button.textContent?.trim() === label);
+            settingsNav('에이전트')?.click();
             await wait(100);
-            assert(document.querySelectorAll('.backend-card').length === 1, 'GJC settings card did not render');
-            assert(document.querySelector('.backend-logo svg'), 'The GJC mark did not render in settings');
-            assert(document.querySelector('input[list="gjc-model-profiles"]'), 'Custom profile field did not render');
-            assert(!document.querySelector('.settings-panel select'), 'Native select still renders in settings');
-            const approvalDropdown = document.querySelector('.settings-panel .dropdown-trigger');
-            assert(approvalDropdown, 'Approval dropdown did not render');
+            assert(document.querySelector('.agent-card[aria-label="Claude Code"]') && document.querySelectorAll('.agent-card').length === 4, 'Agent cards did not render');
+            const gjcCard = document.querySelector('#agent-card-gjc');
+            assert(gjcCard?.querySelector('input[list="gjc-model-profiles"]'), 'GJC model profile field did not render on its card');
+            const approvalDropdown = gjcCard.querySelector('.dropdown-trigger[aria-label="GJC 기본 승인 방식"]');
+            assert(approvalDropdown, 'GJC approval dropdown did not render');
             approvalDropdown.click();
             await wait(50);
             assert(document.querySelectorAll('.dropdown-menu [role="option"]').length === 3, 'Approval dropdown options did not render');
             document.querySelector('.dropdown-menu [role="option"]')?.click();
             await wait(50);
             assert(!document.querySelector('.dropdown-menu'), 'Approval dropdown did not close after selection');
-            assert(buttonWithText('MCP') && buttonWithText('Skills/Plugins') && settingsTab('사용량', 'Usage') && settingsTab('자동화', 'Automations'), 'Management settings tabs did not render');
-            settingsTab('자동화', 'Automations')?.click();
+            const gjcPage = (label) => Array.from(gjcCard.querySelectorAll('.agent-card__links button')).find((button) => button.textContent?.trim() === label);
+            assert(gjcPage('MCP') && gjcPage('스킬·플러그인') && gjcPage('사용량') && gjcPage('자동화'), "GJC's own pages are not linked from its card");
+            gjcPage('자동화').click();
             await wait(50);
             assert(document.querySelector('.automation-panel'), 'Automation settings panel did not render');
-            assert(!buttonWithText('Accounts'), 'Removed Accounts settings tab still renders');
-            const workspaceTab = settingsTab('작업 공간', 'Workspace');
-            assert(workspaceTab, 'Workspace settings tab did not render');
-            workspaceTab.click();
+            assert(document.querySelector('.settings-back'), 'A GJC page has no way back to the agents');
+            settingsNav('승인 규칙')?.click();
             await wait(100);
-            assert(document.querySelector('.workspace-card'), 'Workspace scope card did not render');
+            assert(document.querySelectorAll('.approval-mode-row').length === 4, 'Approval modes by agent did not render');
+            settingsNav('고급')?.click();
+            await wait(100);
+            assert(document.querySelector('.environment-check'), 'Diagnostics did not render under 고급');
+            assert(!buttonWithText('Accounts'), 'Removed Accounts settings tab still renders');
             document.querySelector('[role="dialog"] .icon-button')?.click();
             await wait(100);
 

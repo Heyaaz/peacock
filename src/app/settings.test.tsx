@@ -188,9 +188,11 @@ describe("settings dialog language", () => {
         onInstallUpdate: () => undefined,
       }),
     );
+    // it opens on General, the page with the window's own preferences
+    expect(markup).toContain("General");
+    expect(markup).toContain("Agents");
     expect(markup).toContain("Appearance");
     expect(markup).toContain("Notifications");
-    expect(markup).toContain("Save");
     expect(markup).not.toContain("모양");
   });
 });
@@ -200,7 +202,7 @@ describe("settings AI sign-in entry", () => {
     vi.stubGlobal("window", { agentControlDesktop: undefined });
     return renderToStaticMarkup(
       createElement(SettingsDialog, {
-        initialTab: "gjc",
+        initialTab: "agents",
         connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
         thoughtsExpanded: false,
         onToggleThoughtsExpanded: () => undefined,
@@ -216,14 +218,25 @@ describe("settings AI sign-in entry", () => {
     );
   };
 
-  it("offers the sign-in and provider add on the GJC tab when the host can run it", () => {
+  it("offers the sign-in on GJC's card when the host can run it", () => {
     const markup = dialog(() => undefined);
-    expect(markup).toContain("AI 로그인 / 제공자 추가");
-    expect(markup).toContain(">AI 로그인<");
+    const card = /<section id="agent-card-gjc"[\s\S]*?<\/section>/u.exec(markup)?.[0] ?? "";
+    expect(card).toContain(">AI 로그인<");
+    expect(card).toContain("API 키로 로그인합니다");
   });
 
-  it("leaves it out where the host cannot", () => {
-    expect(dialog()).not.toContain("제공자 추가");
+  it("leaves the button out where the host cannot", () => {
+    expect(dialog()).not.toContain(">AI 로그인<");
+  });
+
+  it("gives every agent the same card, GJC's own settings in GJC's", () => {
+    const markup = dialog(() => undefined);
+    for (const name of ["Claude Code", "Oh My Pi", "Codex", "GJC"]) expect(markup).toContain(`aria-label="${name}"`);
+    expect(markup.match(/class="agent-card"/gu)).toHaveLength(4);
+    expect(markup).toContain('list="gjc-model-profiles"');
+    // GJC's catalog, MCP, skills, usage and automations hang off its card
+    expect(markup).toContain("세부 설정");
+    expect(markup).toContain("자동화");
   });
 });
 
@@ -243,7 +256,6 @@ describe("settings reasoning-card toggle", () => {
       act(async () => {
         root.render(
           createElement(SettingsDialog, {
-            initialTab: "gjc",
             connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
             thoughtsExpanded,
             onToggleThoughtsExpanded,
@@ -259,7 +271,7 @@ describe("settings reasoning-card toggle", () => {
       });
     const checkbox = () =>
       [...host.querySelectorAll("label")]
-        .find((label) => label.textContent?.includes("추론 카드 펼치기"))
+        .find((label) => label.textContent?.includes("추론 카드 펼쳐 두기"))
         ?.querySelector<HTMLInputElement>("input[type=checkbox]");
     try {
       await render(false);
@@ -278,7 +290,7 @@ describe("settings reasoning-card toggle", () => {
 describe("settings command rules", () => {
   const dialog = () =>
     createElement(SettingsDialog, {
-      initialTab: "gjc",
+      initialTab: "approvals",
       connection: { state: "connected", backend: "gjc", label: "GJC", detail: "", workspace: "/tmp" },
       thoughtsExpanded: false,
       onToggleThoughtsExpanded: () => undefined,
@@ -291,7 +303,7 @@ describe("settings command rules", () => {
       onInstallUpdate: () => undefined,
     });
 
-  it("lists the saved rules on the GJC tab and deletes one", async () => {
+  it("lists the saved rules under 승인 규칙 and deletes one", async () => {
     const rule = { tool: "bash", prefix: "git status", decision: "allow", createdAt: "2026-11-04T00:00:00.000Z" };
     const removeCommandRule = vi.fn(async () => []);
     const bridge = window as unknown as { agentControlDesktop?: unknown };
@@ -307,7 +319,7 @@ describe("settings command rules", () => {
     const root = createRoot(host);
     try {
       await act(async () => root.render(dialog()));
-      expect(host.querySelector(".command-rules-project h3")?.textContent).toBe("alpha/work/alpha");
+      expect(host.querySelector(".command-rules-project h4")?.textContent).toBe("alpha/work/alpha");
       await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="git status 규칙 삭제"]')!.click());
       expect(removeCommandRule).toHaveBeenCalledWith("/work/alpha", "git status");
       expect(host.querySelector(".command-rule-row")).toBeNull();
@@ -343,7 +355,7 @@ describe("settings errors", () => {
   });
 });
 
-describe("settings desktop tab", () => {
+describe("settings desktop preferences (일반)", () => {
   it("saves each desktop toggle on its own without touching the others", async () => {
     const setDesktopIntegration = vi.fn(
       async (value: AgentControlPreferences["desktopIntegration"]) => value,
@@ -386,16 +398,12 @@ describe("settings desktop tab", () => {
           }),
         );
       });
-      const desktopTab = [...host.querySelectorAll("button")].find(
-        (button) => button.textContent?.trim() === "데스크톱",
-      );
-      await act(async () => desktopTab?.click());
       const toggle = (label: string) =>
         host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
-      expect(toggle("메뉴바 상태 표시")?.checked).toBe(true);
+      expect(toggle("메뉴바에 상태 표시")?.checked).toBe(true);
       expect(toggle("Dock 배지")?.checked).toBe(true);
 
-      await act(async () => toggle("메뉴바 상태 표시")?.click());
+      await act(async () => toggle("메뉴바에 상태 표시")?.click());
       expect(setDesktopIntegration).toHaveBeenLastCalledWith({
         ...DEFAULT_DESKTOP_INTEGRATION,
         menuBarStatus: false,
@@ -406,8 +414,8 @@ describe("settings desktop tab", () => {
         menuBarStatus: false,
         dockBadge: false,
       });
-      expect(toggle("메뉴바 상태 표시")?.checked).toBe(false);
-      await act(async () => toggle("Peacock 업데이트 확인")?.click());
+      expect(toggle("메뉴바에 상태 표시")?.checked).toBe(false);
+      await act(async () => toggle("새 버전 알림")?.click());
       expect(setDesktopIntegration).toHaveBeenLastCalledWith({
         ...DEFAULT_DESKTOP_INTEGRATION,
         menuBarStatus: false,
@@ -474,10 +482,6 @@ describe("settings desktop tab", () => {
           }),
         );
       });
-      const desktopTab = [...host.querySelectorAll("button")].find(
-        (button) => button.textContent?.trim() === "데스크톱",
-      );
-      await act(async () => desktopTab?.click());
       const row = () => host.querySelector(".quick-input-shortcut-row");
       const toggle = () =>
         host.querySelector<HTMLInputElement>('input[aria-label="빠른 입력 단축키"]');

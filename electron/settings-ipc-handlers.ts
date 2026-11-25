@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { gjcExecutableOf, type AgentControlPreferences, type FileAttachment, type ImageAttachment, type UiLanguage } from '../shared/agent-contract.js'
-import { SETTINGS_IPC, type WorkspaceInspection } from '../shared/settings-ipc.js'
+import { SETTINGS_IPC, type SystemInfo, type WorkspaceInspection } from '../shared/settings-ipc.js'
 import { isGitRepository } from './git-exclude.js'
 import { broadFolders, isBroadWorkspace } from './workspace-scope.js'
 import type { DesktopIntegrationPreferences } from '../shared/desktop-integration.js'
@@ -142,6 +142,7 @@ export function registerSettingsIpcHandlers(
   onLanguage?: (language: UiLanguage) => void,
   onGjcSettingsApplied?: (changes: readonly GjcSettingChange[]) => Promise<void>,
   commandRules?: Pick<CommandRuleStore, 'list' | 'remove'>,
+  system?: { info(): Promise<SystemInfo>; revealDataFolder(): Promise<void> },
 ): () => void {
   ipcMain.handle(SETTINGS_IPC.getPreferences, security.guarded(() => store.get()))
   ipcMain.handle(SETTINGS_IPC.chooseWorkspace, security.guarded(async (event, currentPath: unknown) => {
@@ -310,6 +311,10 @@ export function registerSettingsIpcHandlers(
   if (environment) {
     ipcMain.handle(SETTINGS_IPC.checkEnvironment, security.guarded(() => environment.check()))
     ipcMain.handle(SETTINGS_IPC.environmentCheckDue, security.guarded(() => environment.due()))
+  }
+  if (system) {
+    ipcMain.handle(SETTINGS_IPC.getSystemInfo, security.guarded(() => system.info()))
+    ipcMain.handle(SETTINGS_IPC.revealDataFolder, security.guarded(() => system.revealDataFolder()))
   }
 
   return () => {

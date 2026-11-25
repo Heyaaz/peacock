@@ -27,7 +27,7 @@ export function BackgroundTerminalsRow() {
     }
   };
   return (
-    <div className="gjc-update-row" data-background-terminals>
+    <div className="settings-toggle-row" data-background-terminals>
       <span>
         <strong>{t("백그라운드 터미널")}</strong>
         <small>
@@ -35,7 +35,7 @@ export function BackgroundTerminalsRow() {
             t("터미널 세션의 셸은 앱을 닫아도 계속 실행됩니다. 여기서 모두 종료할 수 있습니다.")}
         </small>
       </span>
-      <span className="gjc-update-actions">
+      <span className="settings-row-actions">
         <button type="button" disabled={busy} onClick={() => void endAll()}>
           {busy ? t("종료하는 중…") : t("모두 종료")}
         </button>

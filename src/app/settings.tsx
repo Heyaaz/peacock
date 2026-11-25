@@ -14,12 +14,12 @@ import type {
   NotificationPreferences,
 } from "../../shared/agent-contract";
 import type { AgentControlPreferences, BackendConnection } from "../backend/types";
-import { Bell, Bot, CalendarClock, ChartNoAxesColumn, Check, Command, FolderOpen, Monitor, Palette, Server, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, SquareTerminal, Stethoscope, X } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, FolderOpen, ShieldCheck, SlidersHorizontal, Smartphone, Wrench, X } from "lucide-react";
 import {
   DEFAULT_DESKTOP_INTEGRATION,
   type DesktopIntegrationPreferences,
 } from "../../shared/desktop-integration";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { connectionStateLabel } from "./format";
 import { gjcVersionWarning } from "../../shared/gjc-version";
 import { readStoredTheme, setThemeMode, type ThemeMode } from "../theme";
@@ -29,10 +29,13 @@ import { AutomationPanel, ManagementPanel } from "./panels";
 import { Dropdown } from "./primitives";
 import { AppUpdateRow } from "./app-update-row";
 import { QuickInputShortcutRow } from "./quick-input-shortcut-row";
-import { EnvironmentCheckPanel } from "./environment-check-panel";
 import { GjcSettingsPanel } from "./gjc-settings-panel";
-import { CommandRulesPanel } from "./command-rules-panel";
 import { AgentsSettingsPanel } from "./agents-settings-panel";
+import { ApprovalSettingsPanel } from "./approval-settings-panel";
+import { gjcApprovalLabel } from "./settings-model";
+import { AdvancedSettingsPanel } from "./advanced-settings-panel";
+import { SettingsSection } from "./settings-layout";
+import { AGENT_CATALOG } from "../../shared/agent-catalog";
 const RemoteAccessPanel = lazy(() =>
   import("./remote-access-panel").then((mod) => ({ default: mod.RemoteAccessPanel })),
 );
@@ -55,26 +58,28 @@ export interface SettingsDialogProps {
   updateError: string;
   onCheckUpdate: () => void;
   onInstallUpdate: () => void;
-  /** The tab to open on; the launch environment check opens on its own tab. */
+  /** The page to open on: 일반 by default, 고급 for the launch environment check. */
   initialTab?: SettingsTab;
   /** Opens the AI sign-in flow; absent where the host cannot run GJC's login. */
   onLogin?: () => void;
 }
 
+/** The five pages, and GJC's own pages under 에이전트. */
 export type SettingsTab =
+  | "general"
   | "agents"
-  | "gjc"
-  | "gjcAdvanced"
-  | "appearance"
-  | "workspace"
+  | "approvals"
   | "remote"
+  | "advanced"
+  | "gjcSettings"
   | "mcp"
   | "skills"
   | "usage"
-  | "notifications"
-  | "desktop"
-  | "environment"
   | "automations";
+
+const GJC_PAGES = ["gjcSettings", "mcp", "skills", "usage", "automations"] as const;
+type GjcPage = (typeof GJC_PAGES)[number];
+const isGjcPage = (tab: SettingsTab): tab is GjcPage => (GJC_PAGES as readonly string[]).includes(tab);
 
 /**
  * The preferences to show once the first read lands.
@@ -161,26 +166,10 @@ const NOTIFICATION_ROWS: ReadonlyArray<{
   label: string;
   detail: string;
 }> = [
-  {
-    key: "completed",
-    label: "작업 완료",
-    detail: "실행 중인 턴이 정상적으로 끝났을 때",
-  },
-  {
-    key: "permission",
-    label: "승인·질문 대기",
-    detail: "도구 승인이나 사용자의 답변을 기다릴 때",
-  },
-  {
-    key: "failed",
-    label: "실패",
-    detail: "턴이 오류로 끝났을 때",
-  },
-  {
-    key: "message",
-    label: "새 응답",
-    detail: "턴 밖의 보조 메시지와 연결 복구",
-  },
+  { key: "completed", label: "작업 완료", detail: "턴이 끝났을 때" },
+  { key: "permission", label: "승인·질문 대기", detail: "도구 승인이나 답을 기다릴 때" },
+  { key: "failed", label: "실패", detail: "턴이 오류로 끝났을 때" },
+  { key: "message", label: "새 응답", detail: "턴 밖에서 온 메시지와 연결 복구" },
 ];
 
 const NOTIFICATION_SOUND_LABELS: Record<
@@ -195,6 +184,21 @@ const NOTIFICATION_SOUND_LABELS: Record<
   Submarine: "Submarine",
 };
 
+/** "Claude Code · 터미널": an agent and the screen its new sessions open on. */
+function choiceValue(choice: NewSessionChoice): string {
+  return `${choice.agentKind}:${choice.surface}`;
+}
+
+/** One labelled field of an agent card (the same parts the agents panel uses). */
+function CardField({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
+  return (
+    <label className={`agent-field${wide ? " agent-field--wide" : ""}`}>
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
 export function SettingsDialog({
   connection,
   thoughtsExpanded,
@@ -206,7 +210,7 @@ export function SettingsDialog({
   updateError,
   onCheckUpdate,
   onInstallUpdate,
-  initialTab = "agents",
+  initialTab = "general",
   onLogin,
 }: SettingsDialogProps) {
   const detectedPreset = connection.modelPreset ?? DEFAULT_MODEL_PRESET;
@@ -234,18 +238,25 @@ export function SettingsDialog({
   const [original, setOriginal] =
     useState<AgentControlPreferences>(fallbackPreferences);
   const [saving, setSaving] = useState(false);
+  const [savedNote, setSavedNote] = useState("");
   const [loadError, setLoadError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [workspaceError, setWorkspaceError] = useState("");
+  const [choiceError, setChoiceError] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const editedBeforeLoad = useRef(new Set<keyof AgentControlPreferences>());
   const editRevision = useRef(0);
   const mounted = useRef(true);
   const onCloseRef = useRef(onClose);
+  const originalRef = useRef(original);
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     onCloseRef.current = onClose;
   });
+  useEffect(() => {
+    originalRef.current = original;
+  }, [original]);
   // Read while rendering: child autoFocus effects run before this component's own.
   const [opener] = useState(() =>
     typeof document === "undefined" ? null : document.activeElement,
@@ -267,42 +278,42 @@ export function SettingsDialog({
   const preferencesRef = useRef(preferences);
   const settingsBridge = window.agentControlDesktop?.settings;
   const managementBridge = window.agentControlDesktop?.management;
-  const dirty = JSON.stringify(preferences) !== JSON.stringify(original);
   const runtimeDirty =
     preferences.modelPreset !== original.modelPreset ||
     preferences.permissionHandling !== original.permissionHandling ||
     (preferences.agents?.gjc?.executable ?? "") !== (original.agents?.gjc?.executable ?? "");
-  const tabTitle = {
+  const page: Exclude<SettingsTab, GjcPage> = isGjcPage(tab) ? "agents" : tab;
+  const pageTitle: Record<SettingsTab, string> = {
+    general: t("일반"),
     agents: t("에이전트"),
-    gjc: "GJC",
-    gjcAdvanced: t("고급 설정"),
-    appearance: t("모양"),
-    workspace: t("작업 공간 범위"),
-    remote: t("원격 접속"),
+    approvals: t("승인 규칙"),
+    remote: t("원격·폰"),
+    advanced: t("고급"),
+    gjcSettings: t("GJC 세부 설정"),
     mcp: t("MCP 서버"),
-    skills: "Skills & Plugins",
+    skills: t("스킬·플러그인"),
     usage: t("사용량"),
-    notifications: t("알림"),
-    desktop: t("데스크톱"),
-    environment: t("환경 점검"),
     automations: t("자동화"),
-  }[tab];
-  const tabDescription = {
-    agents: t("이 Mac에서 찾은 에이전트와 새 세션이 시작될 에이전트·실행 옵션을 설정합니다."),
-    gjc: t("GJC 실행 파일과 새 세션이 시작될 모델 프로필·도구 승인 방식을 설정합니다."),
-    gjcAdvanced: t("GJC가 세션에서 쓰는 켜고 끄는 설정과 숫자 설정을 바꿉니다."),
-    appearance: t("앱의 테마와 표시 언어를 설정합니다."),
-    workspace: t("GJC가 확인하고 수정할 폴더를 선택합니다."),
-    remote: t("휴대폰과 다른 개인 기기에서 이 컴퓨터의 세션을 조회·조작합니다."),
-    mcp: t("GJC가 자동으로 로드할 MCP 서버를 관리합니다."),
-    skills: t("발견된 스킬과 설치된 플러그인을 확인합니다."),
-    usage: t("모델별 토큰, 캐시율, 비용을 확인합니다."),
-    notifications:
-      t("완료·승인/질문 대기·실패를 이벤트별로 알리고 소리를 고릅니다."),
-    desktop: t("창 밖에서 동작하는 기능을 설정합니다."),
-    environment: t("Peacock이 쓰는 도구가 이 Mac에 준비됐는지 확인합니다."),
-    automations: t("앱이 닫혀 있어도 GJC 작업을 정해진 시간에 실행합니다."),
-  }[tab];
+  };
+  const pageDescription: Record<SettingsTab, string> = {
+    general: t("모양, 새 세션, 알림, 데스크톱 동작"),
+    agents: t("이 Mac의 에이전트와, 새 세션이 시작할 때 쓰는 설정"),
+    approvals: t("묻지 않고 넘어가는 것과 승인할 수 있는 곳"),
+    remote: t("휴대폰에서 이 Mac의 세션을 보고 조작합니다"),
+    advanced: t("herdr-core, 데이터 폴더, 진단"),
+    gjcSettings: t("터미널의 GJC와 함께 쓰는 설정입니다"),
+    mcp: t("GJC가 불러오는 MCP 서버"),
+    skills: t("GJC가 찾은 스킬과 설치한 플러그인"),
+    usage: t("GJC 세션의 모델별 토큰, 캐시, 비용"),
+    automations: t("앱이 닫혀 있어도 정한 시간에 GJC 작업을 실행합니다"),
+  };
+  const navItems: { id: Exclude<SettingsTab, GjcPage>; label: string; icon: ReactNode }[] = [
+    { id: "general", label: pageTitle.general, icon: <SlidersHorizontal size={16} aria-hidden="true" /> },
+    { id: "agents", label: pageTitle.agents, icon: <Bot size={16} aria-hidden="true" /> },
+    { id: "approvals", label: pageTitle.approvals, icon: <ShieldCheck size={16} aria-hidden="true" /> },
+    { id: "remote", label: pageTitle.remote, icon: <Smartphone size={16} aria-hidden="true" /> },
+    { id: "advanced", label: pageTitle.advanced, icon: <Wrench size={16} aria-hidden="true" /> },
+  ];
 
   useEffect(() => {
     mounted.current = true;
@@ -310,6 +321,11 @@ export function SettingsDialog({
       mounted.current = false;
     };
   }, []);
+
+  // a new page starts at its top
+  useEffect(() => {
+    contentRef.current?.scrollTo?.({ top: 0 });
+  }, [tab]);
 
   useEffect(() => {
     if (!settingsBridge) return;
@@ -366,7 +382,7 @@ export function SettingsDialog({
     }
   }
 
-  /** A field the agents tab saved on its own channel: the dialog's copy and its baseline follow it. */
+  /** A field saved on its own channel: the dialog's copy and its baseline follow it. */
   function adoptSaved(change: { agents?: AgentPreferencesMap; newSession?: NewSessionChoice | null }): void {
     const apply = (value: AgentControlPreferences): AgentControlPreferences => {
       const next = { ...value };
@@ -384,6 +400,18 @@ export function SettingsDialog({
     preferencesRef.current = apply(preferencesRef.current);
     setPreferences(preferencesRef.current);
     setOriginal((current) => apply(current));
+  }
+
+  async function saveNewSessionChoice(value: string): Promise<void> {
+    if (!settingsBridge) return;
+    setChoiceError("");
+    const [agentKind, surface] = value.split(":") as [NewSessionChoice["agentKind"], NewSessionChoice["surface"]];
+    try {
+      const saved = await settingsBridge.setNewSession(value === "" ? null : { agentKind, surface });
+      adoptSaved({ newSession: saved ?? null });
+    } catch (error) {
+      setChoiceError(settingsErrorMessage(error));
+    }
   }
 
   async function persistDesktopIntegration(
@@ -461,6 +489,7 @@ export function SettingsDialog({
     preferencesRef.current = next;
     setPreferences(next);
     setSaveError("");
+    setSavedNote("");
   }
 
   useEffect(() => {
@@ -495,29 +524,16 @@ export function SettingsDialog({
     };
   }, [management, managementBridge, preferences.workspace, tab]);
 
-  async function chooseWorkspace(): Promise<void> {
-    if (!settingsBridge) return;
-    setWorkspaceError("");
-    try {
-      const selected = await settingsBridge.chooseWorkspace(
-        preferences.workspace,
-      );
-      if (selected) {
-        editPreferences((current) => ({ ...current, workspace: selected }));
-        setManagement(null);
-      }
-    } catch (error) {
-      setWorkspaceError(settingsErrorMessage(error));
-    }
-  }
-
+  /** Saves the whole preferences object (GJC's settings, the default folder); the dialog stays open. */
   async function saveSettings(): Promise<void> {
+    const dirty = JSON.stringify(preferencesRef.current) !== JSON.stringify(originalRef.current);
     if (!settingsBridge || !canSavePreferences(dirty, saving, true, loaded)) return;
     const revisionAtSave = editRevision.current;
     setSaving(true);
     setSaveError("");
+    setSavedNote("");
     try {
-      const saved = await settingsBridge.savePreferences(preferences);
+      const saved = await settingsBridge.savePreferences(preferencesRef.current);
       const outcome = resolvePreferenceSave({
         mounted: mounted.current,
         revisionAtSave,
@@ -529,14 +545,184 @@ export function SettingsDialog({
       preferencesRef.current = outcome.preferences;
       setPreferences(outcome.preferences);
       setOriginal(outcome.original);
+      originalRef.current = outcome.original;
       onSaved(outcome.original);
-      if (outcome.close) onClose();
+      setSavedNote(saved.runtimeReconnected ? t("저장하고 GJC를 다시 연결했습니다.") : t("저장했습니다."));
     } catch (error) {
-      if (mounted.current) setSaveError(settingsErrorMessage(error));
+      if (mounted.current) {
+        const message = settingsErrorMessage(error);
+        // the host's own confirmation, declined: nothing to report
+        if (!/cancel/iu.test(message)) setSaveError(message);
+      }
     } finally {
       if (mounted.current) setSaving(false);
     }
   }
+
+  async function chooseWorkspace(): Promise<void> {
+    if (!settingsBridge) return;
+    setWorkspaceError("");
+    try {
+      const selected = await settingsBridge.chooseWorkspace(
+        preferences.workspace,
+      );
+      if (selected && selected !== preferencesRef.current.workspace) {
+        editPreferences((current) => ({ ...current, workspace: selected }));
+        setManagement(null);
+        await saveSettings();
+      }
+    } catch (error) {
+      setWorkspaceError(settingsErrorMessage(error));
+    }
+  }
+
+  const newSessionChoices = AGENT_CATALOG.flatMap((entry) =>
+    entry.surfaces.map((surface) => ({
+      value: choiceValue({ agentKind: entry.id, surface }),
+      label: `${entry.id === "shell" ? t("셸") : entry.name} · ${surface === "chat" ? t("채팅") : t("터미널")}`,
+    })),
+  );
+  const versionWarning = gjcVersionWarning(connection.version);
+  const gjcLinks: { id: GjcPage; label: string }[] = [
+    { id: "gjcSettings", label: t("세부 설정") },
+    { id: "mcp", label: "MCP" },
+    { id: "skills", label: t("스킬·플러그인") },
+    { id: "usage", label: t("사용량") },
+    { id: "automations", label: t("자동화") },
+  ];
+  const openAgentCard = (id: string): void => {
+    setTab("agents");
+    // after the page renders: bring the card into view
+    requestAnimationFrame(() => document.getElementById(`agent-card-${id}`)?.scrollIntoView?.({ block: "start" }));
+  };
+
+  const gjcStatus = (
+    <small className={`agent-card__connection agent-card__connection--${connection.state}`}>
+      {connectionStateLabel(connection.state)}
+      {connection.detail && connection.state !== "connected" ? ` · ${connection.detail}` : ""}
+    </small>
+  );
+  const gjcBody = (
+    <>
+      {versionWarning && (
+        <div className="gjc-version-warning" role="alert">
+          {versionWarning}
+        </div>
+      )}
+      <div className="agent-card__grid">
+        <CardField label={t("실행 파일")} wide>
+          <input
+            aria-label={t("GJC 실행 파일")}
+            value={preferences.agents?.gjc?.executable ?? ""}
+            placeholder={t("비워 두면 PATH에서 찾습니다")}
+            onChange={(event) =>
+              editPreferences((current) => {
+                const { executable: _previous, ...gjc } = current.agents?.gjc ?? {};
+                const executable = event.target.value;
+                return {
+                  ...current,
+                  agents: { ...current.agents, gjc: { ...gjc, ...(executable ? { executable } : {}) } },
+                };
+              })
+            }
+          />
+        </CardField>
+        <CardField label={t("모델 프로필")}>
+          <input
+            list="gjc-model-profiles"
+            aria-label={t("모델 프로필")}
+            value={preferences.modelPreset}
+            onChange={(event) =>
+              editPreferences((current) => ({
+                ...current,
+                modelPreset: event.target.value,
+              }))
+            }
+            placeholder="codex-medium"
+          />
+          <datalist id="gjc-model-profiles">
+            {BUILT_IN_MODEL_PRESETS.map((preset) => (
+              <option key={preset} value={preset} />
+            ))}
+          </datalist>
+        </CardField>
+        <CardField label={t("기본 승인 방식")}>
+          <Dropdown
+            value={preferences.permissionHandling}
+            ariaLabel={t("GJC 기본 승인 방식")}
+            options={(["prompt", "auto", "always-allow"] as const).map((value) => ({ value, label: gjcApprovalLabel(value) }))}
+            onChange={(value) =>
+              editPreferences((current) => ({
+                ...current,
+                permissionHandling:
+                  value as AgentControlPreferences["permissionHandling"],
+              }))
+            }
+          />
+        </CardField>
+      </div>
+      <div className="agent-card__signin">
+        <span className="agent-card__label">{t("로그인")}</span>
+        <small>
+          {onLogin
+            ? t("ChatGPT·Claude 구독이나 API 키로 로그인합니다. 다른 AI를 더할 때도 여기서 합니다.")
+            : t("데스크톱 앱에서 로그인할 수 있습니다.")}
+        </small>
+        {onLogin && (
+          <button type="button" className="button-secondary" onClick={onLogin}>
+            {t("AI 로그인")}
+          </button>
+        )}
+      </div>
+      <div className="agent-card__signin">
+        <span className="agent-card__label">{t("업데이트")}</span>
+        <small>
+          {updateError ||
+            (updateStatus
+              ? updateStatus.updateAvailable
+                ? t`${updateStatus.currentVersion} → ${updateStatus.latestVersion} 사용 가능`
+                : t`최신 버전 ${updateStatus.currentVersion}`
+              : t("아직 확인하지 않았습니다"))}
+        </small>
+        <span className="agent-card__actions">
+          <button type="button" className="button-secondary" disabled={Boolean(updateBusy)} onClick={onCheckUpdate}>
+            {updateBusy === "checking" ? t("확인 중…") : t("다시 확인")}
+          </button>
+          {updateStatus?.updateAvailable && (
+            <button type="button" className="button-primary" disabled={Boolean(updateBusy)} onClick={onInstallUpdate}>
+              {updateBusy === "installing" ? t("업데이트 중…") : t("업데이트")}
+            </button>
+          )}
+        </span>
+      </div>
+      <nav className="agent-card__links" aria-label={t("GJC 설정 더 보기")}>
+        {gjcLinks.map((link) => (
+          <button type="button" key={link.id} onClick={() => setTab(link.id)}>
+            {link.label} <ChevronRight size={12} aria-hidden="true" />
+          </button>
+        ))}
+      </nav>
+      <footer className="agent-card__foot">
+        {saveError ? (
+          <small className="composer-error" role="alert">{saveError}</small>
+        ) : (
+          <small>
+            {!loaded
+              ? t("설정을 불러온 뒤 저장할 수 있습니다.")
+              : savedNote || (runtimeDirty ? t("저장하면 GJC를 다시 연결합니다.") : t("바꾼 내용이 없습니다."))}
+          </small>
+        )}
+        <button
+          type="button"
+          className="button-primary"
+          disabled={!canSavePreferences(runtimeDirty, saving, Boolean(settingsBridge), loaded)}
+          onClick={() => void saveSettings()}
+        >
+          {saving ? t("저장 중…") : t("저장")}
+        </button>
+      </footer>
+    </>
+  );
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -547,106 +733,36 @@ export function SettingsDialog({
         aria-label={t("설정")}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <nav>
+        <nav aria-label={t("설정")}>
           <h2>{t("설정")}</h2>
-          <button
-            type="button"
-            className={tab === "agents" ? "is-active" : ""}
-            onClick={() => setTab("agents")}
-          >
-            <Bot size={17} /> {t("에이전트")}
-          </button>
-          <button
-            type="button"
-            className={tab === "gjc" ? "is-active" : ""}
-            onClick={() => setTab("gjc")}
-          >
-            <Command size={17} /> GJC
-          </button>
-          <button
-            type="button"
-            className={tab === "gjcAdvanced" ? "is-active" : ""}
-            onClick={() => setTab("gjcAdvanced")}
-          >
-            <SlidersHorizontal size={17} /> {t("고급 설정")} </button>
-          <button
-            type="button"
-            className={tab === "appearance" ? "is-active" : ""}
-            onClick={() => setTab("appearance")}
-          >
-            <Palette size={17} /> {t("모양")} </button>
-          <button
-            type="button"
-            className={tab === "workspace" ? "is-active" : ""}
-            onClick={() => setTab("workspace")}
-          >
-            <FolderOpen size={17} /> {t("작업 공간")}
-          </button>
-          <button
-            type="button"
-            className={tab === "remote" ? "is-active" : ""}
-            onClick={() => setTab("remote")}
-          >
-            <Smartphone size={17} /> {t("원격 접속")} </button>
-          <button
-            type="button"
-            className={tab === "notifications" ? "is-active" : ""}
-            onClick={() => setTab("notifications")}
-          >
-            <Bell size={17} /> {t("알림")} </button>
-          <button
-            type="button"
-            className={tab === "desktop" ? "is-active" : ""}
-            onClick={() => setTab("desktop")}
-          >
-            <Monitor size={17} /> {t("데스크톱")} </button>
-          <button
-            type="button"
-            className={tab === "environment" ? "is-active" : ""}
-            onClick={() => setTab("environment")}
-          >
-            <Stethoscope size={17} /> {t("환경 점검")} </button>
-          <button
-            type="button"
-            className={tab === "mcp" ? "is-active" : ""}
-            onClick={() => setTab("mcp")}
-          >
-            <Server size={17} /> MCP
-          </button>
-          <button
-            type="button"
-            className={tab === "skills" ? "is-active" : ""}
-            onClick={() => setTab("skills")}
-          >
-            <Sparkles size={17} /> Skills/Plugins
-          </button>
-          <button
-            type="button"
-            className={tab === "usage" ? "is-active" : ""}
-            onClick={() => setTab("usage")}
-          >
-            <ChartNoAxesColumn size={17} /> {t("사용량")}
-          </button>
-          <button
-            type="button"
-            className={tab === "automations" ? "is-active" : ""}
-            onClick={() => setTab("automations")}
-          >
-            <CalendarClock size={17} /> {t("자동화")}
-          </button>
+          {navItems.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className={page === item.id ? "is-active" : ""}
+              aria-current={page === item.id ? "page" : undefined}
+              onClick={() => setTab(item.id)}
+            >
+              {item.icon} {item.label}
+            </button>
+          ))}
         </nav>
-        <div className="settings-content">
+        <div className="settings-content" ref={contentRef}>
           <header>
             <div>
-              <h2>{tabTitle}</h2>
-              <p>{tabDescription}</p>
+              {isGjcPage(tab) && (
+                <button type="button" className="settings-back" onClick={() => openAgentCard("gjc")}>
+                  <ArrowLeft size={13} aria-hidden="true" /> {t("에이전트")} · GJC
+                </button>
+              )}
+              <h2>{pageTitle[tab]}</h2>
+              <p>{pageDescription[tab]}</p>
             </div>
-            <button className="icon-button" type="button" onClick={onClose}>
+            <button className="icon-button" type="button" aria-label={t("닫기")} onClick={onClose}>
               <X size={19} />
             </button>
           </header>
 
-          {workspaceError && <p className="diff-error" role="alert">{t("폴더를 선택하지 못했습니다:")} {workspaceError}</p>}
           {loadError && (
             <p className="diff-error" role="alert">
               {t("설정을 불러오지 못했습니다:")} {loadError}
@@ -655,29 +771,30 @@ export function SettingsDialog({
                 className="button-secondary"
                 onClick={() => setLoadAttempt((attempt) => attempt + 1)}
               >
-                {t("다시 시도")} </button>
+                {t("다시 시도")}
+              </button>
             </p>
           )}
-          {saveError && (
+          {saveError && page !== "agents" && (
             <p className="diff-error" role="alert">
               {t("설정을 저장하지 못했습니다:")} {saveError}
             </p>
           )}
 
-          {tab === "appearance" && (
-            <div className="settings-stack">
-              <div className="settings-panel">
+          {tab === "general" && (
+            <div className="settings-stack settings-general">
+              <SettingsSection title={t("모양")}>
                 <div className="settings-toggle-row">
                   <span>
                     <strong>{t("테마")}</strong>
-                    <small>{t("앱 전체의 밝기 모드를 선택합니다.")}</small>
+                    <small>{t("‘시스템’은 macOS 화면 모드를 따릅니다.")}</small>
                   </span>
                   <Dropdown
                     ariaLabel={t("테마")}
                     value={themeMode}
                     options={[
-                      { value: "light", label: t("화이트") },
-                      { value: "dark", label: t("블랙") },
+                      { value: "light", label: t("라이트") },
+                      { value: "dark", label: t("다크") },
                       { value: "system", label: t("시스템") },
                     ]}
                     onChange={(value) => {
@@ -687,18 +804,16 @@ export function SettingsDialog({
                     }}
                   />
                 </div>
-              </div>
-              <div className="settings-panel">
                 <div className="settings-toggle-row">
                   <span>
-                    <strong>{t("표시 언어")}</strong>
-                    <small>{t("앱 전체에 표시할 언어를 선택합니다.")}</small>
+                    <strong>{t("언어")}</strong>
+                    <small>{t("바꾸면 바로 적용됩니다.")}</small>
                   </span>
                   <Dropdown
-                    ariaLabel={t("표시 언어")}
+                    ariaLabel={t("언어")}
                     value={languageMode}
                     options={[
-                      { value: "ko", label: t("한국어") },
+                      { value: "ko", label: "한국어" },
                       { value: "en", label: "English" },
                       { value: "system", label: t("시스템") },
                     ]}
@@ -722,23 +837,75 @@ export function SettingsDialog({
                     }}
                   />
                 </div>
-              </div>
-              <p className="settings-note">
-                {t(
-                  "시스템은 macOS의 화면 모드를 따르며, 변경 즉시 앱 전체에 적용됩니다.",
-                )}
-              </p>
-              <p className="settings-note">
-                {t("언어를 바꾸면 현재 창에 즉시 적용됩니다.")}
-              </p>
-            </div>
-          )}
+              </SettingsSection>
 
-          {tab === "notifications" && (
-            <div className="settings-stack">
-              <p className="settings-note">
-                {t("지금 보고 있는 세션의 완료·실패·승인 알림은 생략합니다. 창이 앞에 있어도 다른 세션의 결과는 알립니다. 원격 PWA에는 같은 이벤트의 읽지 않은 세션 수가 앱 배지로 표시됩니다.")} </p>
-              <div className="settings-panel">
+              <SettingsSection title={t("새 세션")}>
+                <div className="settings-toggle-row">
+                  <span>
+                    <strong>{t("기본 에이전트")}</strong>
+                    <small>{t("새 세션 창이 처음에 고르는 에이전트와 화면입니다. 창에서 다른 것을 고르면 그게 다음 기본값이 됩니다.")}</small>
+                    {choiceError && <small className="composer-error" role="alert">{choiceError}</small>}
+                  </span>
+                  <Dropdown
+                    ariaLabel={t("기본 에이전트")}
+                    value={preferences.newSession ? choiceValue(preferences.newSession) : ""}
+                    options={[{ value: "", label: t("자동 (설치된 첫 에이전트)") }, ...newSessionChoices]}
+                    onChange={(value) => void saveNewSessionChoice(value)}
+                  />
+                </div>
+                <div className="settings-toggle-row workspace-card">
+                  <span>
+                    <strong>{t("기본 폴더")}</strong>
+                    <small>{t("새 세션 창이 처음 여는 폴더입니다.")}</small>
+                    <code className="settings-path" title={preferences.workspace}>{preferences.workspace}</code>
+                    {workspaceError && <small className="composer-error" role="alert">{t("폴더를 고르지 못했습니다:")} {workspaceError}</small>}
+                  </span>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    disabled={!settingsBridge || !loaded || saving}
+                    onClick={() => void chooseWorkspace()}
+                  >
+                    <FolderOpen size={13} aria-hidden="true" /> {t("바꾸기…")}
+                  </button>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection title={t("대화")}>
+                <div className="settings-toggle-row">
+                  <span>
+                    <strong>{t("작업 중에 Enter를 누르면")}</strong>
+                    <small>{t("/queue와 /steer는 이 설정과 상관없이 그대로 동작합니다.")}</small>
+                  </span>
+                  <Dropdown
+                    value={preferences.runningSubmission}
+                    ariaLabel={t("실행 중 Enter 동작")}
+                    options={[
+                      { value: "queue", label: t("턴이 끝나면 보내기 (Queue)") },
+                      { value: "steer", label: t("지금 끼어들기 (Steer)") },
+                    ]}
+                    onChange={(value) =>
+                      void persistRunningSubmission(value as "queue" | "steer")
+                    }
+                  />
+                </div>
+                <label className="settings-toggle-row">
+                  <span>
+                    <strong>{t("추론 카드 펼쳐 두기")}</strong>
+                    <small>{t("모든 세션에서 추론(thinking) 내용을 펼친 채로 보여 줍니다.")}</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={thoughtsExpanded}
+                    onChange={onToggleThoughtsExpanded}
+                  />
+                </label>
+              </SettingsSection>
+
+              <SettingsSection
+                title={t("알림")}
+                description={t("지금 보고 있는 세션은 알리지 않습니다. 원격 PWA는 같은 기준으로 앱 배지를 붙입니다.")}
+              >
                 {NOTIFICATION_ROWS.map((row) => {
                   const preference =
                     preferences.notificationPreferences[row.key];
@@ -750,22 +917,6 @@ export function SettingsDialog({
                         <small>{t(row.detail)}</small>
                       </span>
                       <span className="notification-controls">
-                        <input
-                          type="checkbox"
-                          aria-label={t`${label} 알림`}
-                          checked={preference.enabled}
-                          disabled={!settingsBridge}
-                          onChange={(event) =>
-                            void persistNotifications({
-                              ...preferencesRef.current
-                                .notificationPreferences,
-                              [row.key]: {
-                                ...preference,
-                                enabled: event.target.checked,
-                              },
-                            })
-                          }
-                        />
                         <Dropdown
                           value={preference.sound}
                           ariaLabel={t`${label} 알림 소리`}
@@ -784,38 +935,45 @@ export function SettingsDialog({
                             })
                           }
                         />
+                        <input
+                          type="checkbox"
+                          aria-label={t`${label} 알림`}
+                          checked={preference.enabled}
+                          disabled={!settingsBridge}
+                          onChange={(event) =>
+                            void persistNotifications({
+                              ...preferencesRef.current
+                                .notificationPreferences,
+                              [row.key]: {
+                                ...preference,
+                                enabled: event.target.checked,
+                              },
+                            })
+                          }
+                        />
                       </span>
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          )}
+              </SettingsSection>
 
-          {tab === "desktop" && (
-            <div className="settings-stack">
-              <div className="settings-panel">
+              <SettingsSection title={t("데스크톱")}>
                 {(
                   [
                     {
                       key: "preventSleep",
-                      label: t("실행 중 잠자기 방지"),
-                      detail: t("세션이 작업 중일 때만 Mac이 잠들지 않게 합니다. 모든 작업이 끝나면 해제합니다."),
+                      label: t("작업 중 잠자기 막기"),
+                      detail: t("세션이 일하는 동안만 Mac이 잠들지 않게 합니다."),
                     },
                     {
                       key: "menuBarStatus",
-                      label: t("메뉴바 상태 표시"),
-                      detail: t("실행 중인 세션과 확인이 필요한 세션 수를 메뉴바에 표시합니다. 눌러서 세션으로 바로 이동할 수 있습니다."),
+                      label: t("메뉴바에 상태 표시"),
+                      detail: t("일하는 세션과 확인이 필요한 세션 수를 메뉴바에 보여 줍니다."),
                     },
                     {
                       key: "dockBadge",
                       label: t("Dock 배지"),
-                      detail: t("승인·질문 대기, 실패, 안 읽은 완료 세션 수를 Dock 아이콘에 표시합니다."),
-                    },
-                    {
-                      key: "checkAppUpdates",
-                      label: t("Peacock 업데이트 확인"),
-                      detail: t("배포된 앱은 시작할 때와 하루에 한 번 GitHub 릴리스를 확인하고, 새 버전마다 한 번만 알립니다. 앱을 내려받거나 바꾸지는 않습니다."),
+                      detail: t("승인 대기, 실패, 읽지 않은 완료 세션 수를 Dock 아이콘에 붙입니다."),
                     },
                   ] as const
                 ).map((row) => (
@@ -848,8 +1006,29 @@ export function SettingsDialog({
                     })
                   }
                 />
+              </SettingsSection>
+
+              <SettingsSection title={t("업데이트")}>
                 <AppUpdateRow bridge={settingsBridge} />
-              </div>
+                <div className="settings-toggle-row">
+                  <span>
+                    <strong>{t("새 버전 알림")}</strong>
+                    <small>{t("하루에 한 번 GitHub 릴리스를 확인하고, 새 버전마다 한 번만 알립니다. 내려받지는 않습니다.")}</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    aria-label={t("새 버전 알림")}
+                    checked={preferences.desktopIntegration.checkAppUpdates}
+                    disabled={!settingsBridge}
+                    onChange={(event) =>
+                      void persistDesktopIntegration({
+                        ...preferencesRef.current.desktopIntegration,
+                        checkAppUpdates: event.target.checked,
+                      })
+                    }
+                  />
+                </div>
+              </SettingsSection>
             </div>
           )}
 
@@ -858,223 +1037,18 @@ export function SettingsDialog({
               key={loaded ? "loaded" : "fallback"}
               bridge={settingsBridge}
               agents={preferences.agents ?? {}}
-              newSession={preferences.newSession}
               onAgents={(agents) => adoptSaved({ agents })}
-              onNewSession={(choice) => adoptSaved({ newSession: choice ?? null })}
-              onOpenGjc={() => setTab("gjc")}
+              gjc={{ status: gjcStatus, body: gjcBody }}
             />
           )}
-          {tab === "gjcAdvanced" && (
-            <GjcSettingsPanel bridge={settingsBridge} />
-          )}
-          {tab === "environment" && (
-            <EnvironmentCheckPanel bridge={settingsBridge} onLogin={onLogin} />
-          )}
 
-          {tab === "gjc" && (
-            <div className="settings-stack">
-              <article className="backend-card">
-                <span className="backend-logo backend-logo--gjc">
-                  <SquareTerminal size={20} aria-hidden="true" />
-                </span>
-                <span>
-                  <strong>{connection.label}</strong>
-                  <small>{connection.detail}</small>
-                </span>
-                <span
-                  className={`ready-badge ready-badge--${connection.state}`}
-                >
-                  <Check size={13} /> {connectionStateLabel(connection.state)}
-                </span>
-              </article>
-              {gjcVersionWarning(connection.version) && (
-                <div className="gjc-version-warning" role="alert">
-                  {gjcVersionWarning(connection.version)}
-                </div>
-              )}
-              {onLogin && (
-                <div className="settings-panel">
-                  <div className="gjc-update-row">
-                    <span>
-                      <strong>{t("AI 로그인 / 제공자 추가")}</strong>
-                      <small>
-                        {t("ChatGPT·Claude 같은 구독 계정이나 API 키로 로그인합니다. 다른 AI를 더하거나 로그인이 만료됐을 때도 여기서 하세요.")}
-                      </small>
-                    </span>
-                    <span className="gjc-update-actions">
-                      <button type="button" onClick={onLogin}>
-                        {t("AI 로그인")}
-                      </button>
-                    </span>
-                  </div>
-                </div>
-              )}
-              <div className="settings-panel">
-                <label>
-                  <span>
-                    <strong>{t("모델 프로필")}</strong>
-                    <small>{t("기본 preset 또는 models.yml의 custom ID")}</small>
-                  </span>
-                  <input
-                    list="gjc-model-profiles"
-                    value={preferences.modelPreset}
-                    onChange={(event) =>
-                      editPreferences((current) => ({
-                        ...current,
-                        modelPreset: event.target.value,
-                      }))
-                    }
-                    placeholder="codex-medium or custom profile ID"
-                  />
-                  <datalist id="gjc-model-profiles">
-                    {BUILT_IN_MODEL_PRESETS.map((preset) => (
-                      <option key={preset} value={preset} />
-                    ))}
-                  </datalist>
-                </label>
-                <label>
-                  <span>
-                    <strong>{t("도구 승인")}</strong>
-                    <small>
-                      {preferences.permissionHandling === "prompt"
-                        ? t("명령 실행은 매번 묻습니다. 파일 수정은 묻지 않고 바로 적용합니다.")
-                        : t("명령 실행과 파일 수정을 묻지 않고 바로 진행합니다.")}
-                    </small>
-                  </span>
-                  <Dropdown
-                    value={preferences.permissionHandling}
-                    ariaLabel={t("도구 승인")}
-                    options={[
-                      { value: "prompt", label: t("명령 실행만 확인") },
-                      { value: "auto", label: t("GJC 스마트 정책") },
-                      { value: "always-allow", label: t("항상 허용") },
-                    ]}
-                    onChange={(value) =>
-                      editPreferences((current) => ({
-                        ...current,
-                        permissionHandling:
-                          value as AgentControlPreferences["permissionHandling"],
-                      }))
-                    }
-                  />
-                </label>
-                <label className="settings-toggle-row">
-                  <span>
-                    <strong>{t("추론 카드 펼치기")}</strong>
-                    <small>{t("추론(thinking) 기록을 모든 세션에서 펼친 상태로 둡니다")}</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={thoughtsExpanded}
-                    onChange={onToggleThoughtsExpanded}
-                  />
-                </label>
-                <label>
-                  <span>
-                    <strong>{t("실행 중 Enter")}</strong>
-                    <small>
-                      {t("턴이 실행 중일 때 Enter로 제출하면 보류(Queue)할지 다음 경계에서 반영(Steer)할지 고릅니다. /queue·/steer는 항상 이 설정보다 우선합니다.")} </small>
-                  </span>
-                  <Dropdown
-                    value={preferences.runningSubmission}
-                    ariaLabel={t("실행 중 Enter 동작")}
-                    options={[
-                      { value: "queue", label: t("보류 후 턴 종료 시 전송 (Queue)") },
-                      { value: "steer", label: t("다음 경계에서 바로 반영 (Steer)") },
-                    ]}
-                    onChange={(value) =>
-                      void persistRunningSubmission(value as "queue" | "steer")
-                    }
-                  />
-                </label>
-                <label className="settings-field-wide">
-                  <span>
-                    <strong>{t("GJC 실행 파일")}</strong>
-                    <small>{t("비워 두면 로컬 설치를 자동으로 찾습니다")}</small>
-                  </span>
-                  <input
-                    value={preferences.agents?.gjc?.executable ?? ""}
-                    placeholder="Auto-detect (~/.bun/bin/gjc)"
-                    onChange={(event) =>
-                      editPreferences((current) => {
-                        const { executable: _previous, ...gjc } = current.agents?.gjc ?? {};
-                        const executable = event.target.value;
-                        return {
-                          ...current,
-                          agents: { ...current.agents, gjc: { ...gjc, ...(executable ? { executable } : {}) } },
-                        };
-                      })
-                    }
-                  />
-                </label>
-                <div className="gjc-update-row">
-                  <span>
-                    <strong>{t("GJC 업데이트")}</strong>
-                    <small>
-                      {updateError ||
-                        (updateStatus
-                          ? updateStatus.updateAvailable
-                            ? t`${updateStatus.currentVersion} → ${updateStatus.latestVersion} 사용 가능`
-                            : t`최신 버전 ${updateStatus.currentVersion}`
-                          : t("업데이트 정보를 확인합니다"))}
-                    </small>
-                  </span>
-                  <span className="gjc-update-actions">
-                    <button
-                      type="button"
-                      disabled={Boolean(updateBusy)}
-                      onClick={onCheckUpdate}
-                    >
-                      {updateBusy === "checking" ? t("확인 중…") : t("다시 확인")}
-                    </button>
-                    {updateStatus?.updateAvailable && (
-                      <button
-                        type="button"
-                        className="button-primary"
-                        disabled={Boolean(updateBusy)}
-                        onClick={onInstallUpdate}
-                      >
-                        {updateBusy === "installing"
-                          ? t("업데이트 중…")
-                          : t("업데이트")}
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </div>
-              <CommandRulesPanel bridge={settingsBridge} />
-            </div>
-          )}
-          {["mcp", "skills", "usage"].includes(tab) && (
-            <div className="settings-stack">
-              {managementLoading && (
-                <p className="settings-note">{t("불러오는 중…")}</p>
-              )}
-              {managementError && (
-                <p className="diff-error">{managementError}</p>
-              )}
-              {!managementLoading &&
-                !managementError &&
-                management &&
-                managementBridge && (
-                  <ManagementPanel
-                    tab={tab as "mcp" | "skills" | "usage"}
-                    snapshot={management}
-                    workspace={preferences.workspace}
-                    bridge={managementBridge}
-                    onSnapshot={setManagement}
-                    onError={setManagementError}
-                  />
-                )}
-              {!managementLoading && !managementError && !management && (
-                <p className="settings-note">{t("데이터가 없습니다.")}</p>
-              )}
-            </div>
-          )}
-          {tab === "automations" && (
-            <AutomationPanel
-              defaultWorkspace={preferences.workspace}
-              defaultModel={preferences.modelPreset}
+          {tab === "approvals" && (
+            <ApprovalSettingsPanel
+              bridge={settingsBridge}
+              agents={preferences.agents ?? {}}
+              permissionHandling={preferences.permissionHandling}
+              onOpenAgent={openAgentCard}
+              onOpenRemote={() => setTab("remote")}
             />
           )}
 
@@ -1086,71 +1060,40 @@ export function SettingsDialog({
             </LazyViewBoundary>
           )}
 
-          {tab === "workspace" && (
+          {tab === "advanced" && <AdvancedSettingsPanel bridge={settingsBridge} onLogin={onLogin} />}
+
+          {tab === "gjcSettings" && <GjcSettingsPanel bridge={settingsBridge} />}
+          {(tab === "mcp" || tab === "skills" || tab === "usage") && (
             <div className="settings-stack">
-              <div className="workspace-card">
-                <span>
-                  <FolderOpen size={22} />
-                </span>
-                <div>
-                  <strong>
-                    {preferences.workspace.split("/").filter(Boolean).at(-1) ??
-                      preferences.workspace}
-                  </strong>
-                  <code>{preferences.workspace}</code>
-                </div>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => void chooseWorkspace()}
-                >
-                  {t("선택…")} </button>
-              </div>
-              <div className="scope-notice">
-                <ShieldCheck size={17} />
-                <span>
-                  <strong>{t("폴더 범위")}</strong>
-                  <small>
-                    {t("새 GJC 세션은 이 폴더에서 시작하며 파일 작업과 저장소 탐색의 기준으로 사용합니다.")} </small>
-                </span>
-              </div>
+              {managementLoading && (
+                <p className="settings-empty">{t("불러오는 중…")}</p>
+              )}
+              {managementError && (
+                <p className="diff-error">{managementError}</p>
+              )}
+              {!managementLoading &&
+                !managementError &&
+                management &&
+                managementBridge && (
+                  <ManagementPanel
+                    tab={tab}
+                    snapshot={management}
+                    workspace={preferences.workspace}
+                    bridge={managementBridge}
+                    onSnapshot={setManagement}
+                    onError={setManagementError}
+                  />
+                )}
+              {!managementLoading && !managementError && !management && (
+                <p className="settings-empty">{managementBridge ? t("불러오는 중…") : t("데스크톱 앱에서 볼 수 있습니다.")}</p>
+              )}
             </div>
           )}
-
-          {/* Remote access applies each change immediately and carries its own
-              footnote, and GJC advanced settings have their own apply bar, so the
-              preferences save bar would be dead weight there. */}
-          {tab !== "automations" && tab !== "remote" && tab !== "appearance" && tab !== "gjcAdvanced" && (
-            <footer className="settings-footer">
-              <span>
-                {!loaded
-                  ? t("설정을 불러온 뒤 저장할 수 있습니다.")
-                  : dirty
-                    ? runtimeDirty
-                      ? t("저장하면 GJC runtime만 다시 연결됩니다.")
-                      : t("앱 재실행 없이 바로 적용됩니다.")
-                    : t("설정이 최신 상태입니다.")}
-              </span>
-              <button
-                type="button"
-                className="button-primary"
-                disabled={
-                  !canSavePreferences(
-                    dirty,
-                    saving,
-                    Boolean(settingsBridge),
-                    loaded,
-                  )
-                }
-                onClick={() => void saveSettings()}
-              >
-                {saving
-                  ? runtimeDirty
-                    ? t("GJC 재연결 중…")
-                    : t("저장 중…")
-                  : t("저장")}
-              </button>
-            </footer>
+          {tab === "automations" && (
+            <AutomationPanel
+              defaultWorkspace={preferences.workspace}
+              defaultModel={preferences.modelPreset}
+            />
           )}
         </div>
       </section>

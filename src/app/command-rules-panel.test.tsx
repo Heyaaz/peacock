@@ -50,7 +50,7 @@ describe("CommandRulesPanel", () => {
       listCommandRules: async () => PROJECTS,
       removeCommandRule: vi.fn(),
     });
-    expect([...container.querySelectorAll(".command-rules-project h3")].map((heading) => heading.textContent))
+    expect([...container.querySelectorAll(".command-rules-project h4")].map((heading) => heading.textContent))
       .toEqual(["alpha/work/alpha", "zeta/work/zeta"]);
     const rows = [...container.querySelectorAll(".command-rule-row")].map((row) => row.textContent);
     expect(rows).toEqual(["허용git status", "거절git push", "허용npm test"]);
@@ -83,7 +83,7 @@ describe("CommandRulesPanel", () => {
 
   it("says so when no rule is saved", async () => {
     const container = await renderPanel({ listCommandRules: async () => [], removeCommandRule: vi.fn() });
-    expect(container.querySelector(".settings-note")?.textContent).toContain("저장된 명령 규칙이 없습니다");
+    expect(container.querySelector(".settings-empty")?.textContent).toContain("저장한 규칙이 없습니다");
     expect(container.querySelector(".command-rule-row")).toBeNull();
   });
 
@@ -95,7 +95,7 @@ describe("CommandRulesPanel", () => {
       removeCommandRule: vi.fn(),
     });
     expect(container.querySelector(".diff-error")?.textContent).toBe("unreadable");
-    expect(container.querySelector(".settings-note")).toBeNull();
+    expect(container.querySelector(".settings-empty")).toBeNull();
   });
 
   it("renders nothing without the desktop bridge", async () => {
@@ -106,7 +106,7 @@ describe("CommandRulesPanel", () => {
   it("is translated", async () => {
     setLanguageMode("en");
     const container = await renderPanel({ listCommandRules: async () => PROJECTS, removeCommandRule: vi.fn() });
-    expect(container.querySelector(".gjc-update-row strong")?.textContent).toBe("Command rules");
+    expect(container.querySelector(".settings-section__head h3")?.textContent).toBe("Command rules");
     expect(container.querySelector(".command-rule-decision--reject")?.textContent).toBe("Deny");
   });
 });

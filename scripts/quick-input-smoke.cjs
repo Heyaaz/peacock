@@ -173,15 +173,15 @@ function drive() {
           () =>
             main.webContents.executeJavaScript(`
               (() => {
-                const tab = [...document.querySelectorAll('.settings-dialog nav button')].find((item) => item.textContent?.trim() === '데스크톱')
+                const tab = [...document.querySelectorAll('.settings-dialog nav button')].find((item) => item.textContent?.trim() === '일반')
                 if (tab && !tab.classList.contains('is-active')) tab.click()
                 return document.querySelector('.quick-input-shortcut-row [role="alert"]')?.textContent ?? null
               })()
             `),
-          'desktop tab shows the shortcut status',
+          'the general page shows the shortcut status',
         ),
       )
-      assert(settingsAlert?.includes('등록하지 못했습니다'), 'the desktop tab shows the failure')
+      assert(settingsAlert?.includes('등록하지 못했습니다'), 'the general page shows the failure')
       await main.webContents.executeJavaScript(
         `document.querySelector('.modal-backdrop')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`,
       )

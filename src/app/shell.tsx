@@ -160,7 +160,7 @@ export default function App() {
     itemId: string;
   } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"agents" | "gjc" | "environment">("agents");
+  const [settingsTab, setSettingsTab] = useState<"general" | "agents" | "advanced">("general");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorToolId, setInspectorToolId] = useState<string>();
   const [resumingId, setResumingId] = useState<string | null>(null);
@@ -328,7 +328,7 @@ export default function App() {
       }
       const due = await settingsBridge?.environmentCheckDue().catch(() => false);
       if (!active || !due) return;
-      setSettingsTab("environment");
+      setSettingsTab("advanced");
       setSettingsOpen(true);
     })();
     return () => {
@@ -346,7 +346,7 @@ export default function App() {
   useEffect(refreshNeedsSignIn, [refreshNeedsSignIn, connection.state]);
   const openLogin = useCallback(() => {
     setSettingsOpen(false);
-    setSettingsTab("gjc");
+    setSettingsTab("agents");
     setLoginOpen(true);
   }, [setLoginOpen]);
   const loginHint = useMemo(
@@ -1812,7 +1812,7 @@ export default function App() {
           onToggleThoughtsExpanded={toggleThoughtsExpanded}
           onClose={() => {
             setSettingsOpen(false);
-            setSettingsTab("agents");
+            setSettingsTab("general");
             // Choices the dialog saves on change, such as the new-session default,
             // never pass through onSaved.
             void window.agentControlDesktop?.settings
