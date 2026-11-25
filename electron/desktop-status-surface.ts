@@ -59,9 +59,9 @@ function menuItem(
 }
 
 /**
- * The menu bar image: Gajae's antennae, straw hat and goggles on an 18px grid,
- * with the `@2x` file the same pixels doubled, so a Retina screen and a 1x monitor
- * show the same figure. Derived from the app icon it read as noise at this size.
+ * The menu bar image: Peacock's script P alone, slightly thickened so its thin strokes
+ * hold at 16-18px, with the `@2x` file drawn from the same outline. The whole app
+ * icon read as noise at this size.
  * The `Template` file name makes macOS tint it for the menu bar's appearance.
  */
 export function menuBarIcon(iconPath: string): NativeImage {

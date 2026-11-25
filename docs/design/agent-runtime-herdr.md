@@ -307,9 +307,9 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 상태: 구현(2026-11-25). 앱 이름을 Gajae에서 **Peacock**(공작갯가재, peacock mantis shrimp)으로 바꾼다. 색은 바꾸지 않는다: 모든 색 토큰(`--accent` #f06416/#b8470a, `--accent-bright`, 배경)은 그대로이고, 마크·아이콘·메뉴바 글리프는 모양만 바꿔 지금 강조색으로 그린다.
 
 **정체성**
-- 마크: 크로스바가 있는 Λ 모양의 날 선 셰브런(모크 identity2의 경로: `M12 42 L28 12 L44 42` + `M20 31h16`, viewBox 56, 둥근 끝·이음). 앱 안에서는 `currentColor`(=`--accent`)로 그리는 SVG 컴포넌트 하나(`PeacockMark`).
-- 앱 아이콘(.icns, Icon Composer `.icon`, PWA 192/512): 지금 아이콘의 배경(어두운 타일 #262628)과 주황 테두리·주황 계열은 그대로, 마스코트 대신 셰브런. PIL로 그려 `iconutil`로 묶는다(SVG 래스터라이저가 없어 같은 경로를 직접 그림).
-- 메뉴바: 셰브런만(크로스바 없음), 템플릿 PNG 18/36px.
+- 마크(2026-11-25 바꿈): 장식 없는 필기체 대문자 **P**, Google 글꼴 Satisfy(Apache-2.0, Font Diner)의 "P" 글리프를 경로 하나로 바꾼 것. 글꼴 파일은 넣지 않고 경로만 둔다(`PeacockMark`, `fill: currentColor` = `--accent`). 경로는 놓이는 타일의 100단위 정사각형 위에 그린다: 글자 크기 타일의 84%, 가운데로 보이도록 x −4%·y +6% 옮김(모크 mark-eye 3안). 크로스바 셰브런과 맨 셰브런 변형은 없앴다.
+- 앱 아이콘(.icns, Icon Composer `.icon`, PWA 192/512): 지금 아이콘의 배경(어두운 타일)과 주황 테두리·주황 그라데이션은 그대로, 글리프만 P. P는 헤드리스 Chromium으로 경로를 알파 마스크로 그리고 PIL로 합성, `iconutil`로 묶는다.
+- 메뉴바: 같은 P를 흑백 템플릿 PNG 18/36px로. 16–18px에서 획이 끊기지 않도록 높이의 3.5%만큼 굵게 그린다.
 - 글꼴: 워드마크(PEACOCK)만 Unbounded(OFL 1.1, `@fontsource/unbounded`의 latin woff2를 로컬에 둠, THIRD_PARTY_NOTICES에 기록). 본문 글꼴은 그대로.
 - 화면: 마스코트 이미지(`gajae-icon-ui.png`, 진행 스프라이트)를 마크로 바꾼다. 빈 대화: 마크 + "어디를 칠까요?" + 세션의 에이전트 칩, 폴더·모델(omp 채팅에서 모델이 "확인 중…"으로 남던 버그 수정). assistant 머리말은 "Gajae" 대신 세션의 에이전트 이름(GJC, Oh My Pi, Claude Code)과 중립 아바타.
 - 사이드바: 왼쪽 아래 프로필 카드와 "지난 세션 이어서 진행"을 지우고 "설정"만 남긴다. 카드가 하던 일의 새 자리: 설정 열기 → "설정" 줄, GJC 연결·로그인 필요·업데이트 → GJC 채팅의 상태와 설정 › GJC, 작업 공간 이름 → 설정에 이미 있는 이름(없으면 기본값 유지). 세션이 없을 때 "지난 세션 보기" 대신 "새 세션"(새 세션 대화상자). GJC 전용 이어 가기 선택기(ResumeSessionDialog)는 GJC 채팅 안의 `/resume`에서만 연다(메뉴·단축키에서는 뺌). P6의 "GJC 미사용 시 사이드바 하단 기본 에이전트 표시"는 카드와 함께 없어진다.
