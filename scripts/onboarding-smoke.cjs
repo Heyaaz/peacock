@@ -263,6 +263,10 @@ function drive() {
       'project folder chosen',
     )
     await shot('1-new-session')
+    // the same dialog in the light theme: its controls must use theme colors, not dark literals
+    await run('document.documentElement.dataset.theme = "light"')
+    await shot('1b-new-session-light')
+    await run('document.documentElement.dataset.theme = "dark"')
     assert(
       await run('(() => { const b = document.querySelector(\'.new-session-dialog button[type="submit"]\'); b?.click(); return Boolean(b); })()'),
       'create session',

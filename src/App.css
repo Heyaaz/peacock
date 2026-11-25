@@ -1420,39 +1420,112 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-kind-switch {
-  display: flex;
-  gap: 6px;
-}
-.session-kind-switch button {
-  flex: 1;
-  height: 30px;
-  border: 1px solid #353941;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-}
-.session-kind-switch button[aria-pressed="true"] {
-  background: #292d34;
-  border-color: #6b7280;
-}
+/* New-session dialog: agent picker tiles and the first-screen segmented switch.
+   Theme variables only, so both light and dark dialogs read correctly. */
 .agent-options {
   display: grid;
-  gap: 4px;
-  border: 0;
-  padding: 0;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px;
+  min-width: 0;
   margin: 0;
+  padding: 0;
+  border: 0;
+}
+.agent-options legend {
+  margin-bottom: 7px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 .agent-options label {
+  position: relative;
   display: flex;
+  min-width: 0;
+  height: 36px;
   align-items: center;
   gap: 6px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-input-strong);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.agent-options label:hover {
+  border-color: var(--border-strong);
+}
+.agent-options input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.agent-options label:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-input-strong));
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+}
+.agent-options label:has(input:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
 }
 .agent-options small {
-  color: #8b929c;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font:
+    10px ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .agent-options__unavailable {
-  opacity: 0.55;
+  opacity: 0.5;
+}
+.agent-options label.agent-options__unavailable {
+  cursor: not-allowed;
+}
+.session-kind-switch {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 3px;
+  background: var(--bg-input-strong);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.session-kind-switch button {
+  height: 28px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.session-kind-switch button:hover {
+  color: var(--text-primary);
+}
+.session-kind-switch button[aria-pressed="true"] {
+  color: var(--text-primary);
+  background: var(--bg-dialog);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.session-kind-switch button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
 }
 .terminal-pane__notice {
   flex: 0 0 auto;
@@ -6556,7 +6629,27 @@ button.diff-line-number:hover {
   border-radius: 8px;
   outline: 0;
 }
+.new-session-dialog > label > select {
+  width: 100%;
+  height: 36px;
+  padding: 0 32px 0 10px;
+  color: var(--text-primary);
+  font: inherit;
+  background-color: var(--bg-input-strong);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%),
+    linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  outline: 0;
+  appearance: none;
+}
 .new-session-dialog > label > input:focus,
+.new-session-dialog > label > select:focus,
 .new-session-dialog > label > textarea:focus {
   border-color: rgba(240, 100, 22, 0.58);
 }
