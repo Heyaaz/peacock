@@ -301,3 +301,33 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - fork·추천 입력·git·세션 정보·변경 파일 패널은 없다. 대화의 assistant 머리말은 다른 에이전트 채팅과 같이 "Gajae"로 나온다.
 - 앱이 턴 도중 끝나면 omp도 끝나고(stdin EOF), 파일에 쓰인 만큼만 다시 읽힌다. 실시간 행의 id는 턴이 끝나야 파일 id로 바뀐다.
 
+
+## 11. Peacock: 이름·정체성 바꾸기와 userData 이전
+
+상태: 계획(2026-11-25). 앱 이름을 Gajae에서 **Peacock**(공작갯가재, peacock mantis shrimp)으로 바꾼다. 색은 바꾸지 않는다: 모든 색 토큰(`--accent` #f06416/#b8470a, `--accent-bright`, 배경)은 그대로이고, 마크·아이콘·메뉴바 글리프는 모양만 바꿔 지금 강조색으로 그린다.
+
+**정체성**
+- 마크: 크로스바가 있는 Λ 모양의 날 선 셰브런(모크 identity2의 경로: `M12 42 L28 12 L44 42` + `M20 31h16`, viewBox 56, 둥근 끝·이음). 앱 안에서는 `currentColor`(=`--accent`)로 그리는 SVG 컴포넌트 하나(`PeacockMark`).
+- 앱 아이콘(.icns, Icon Composer `.icon`, PWA 192/512): 지금 아이콘의 배경(어두운 타일 #262628)과 주황 테두리·주황 계열은 그대로, 마스코트 대신 셰브런. PIL로 그려 `iconutil`로 묶는다(SVG 래스터라이저가 없어 같은 경로를 직접 그림).
+- 메뉴바: 셰브런만(크로스바 없음), 템플릿 PNG 18/36px.
+- 글꼴: 워드마크(PEACOCK)만 Unbounded(OFL 1.1, `@fontsource/unbounded`의 latin woff2를 로컬에 둠, THIRD_PARTY_NOTICES에 기록). 본문 글꼴은 그대로.
+- 화면: 마스코트 이미지(`gajae-icon-ui.png`, 진행 스프라이트)를 마크로 바꾼다. 빈 대화: 마크 + "어디를 칠까요?" + 세션의 에이전트 칩, 폴더·모델(omp 채팅에서 모델이 "확인 중…"으로 남던 버그 수정). assistant 머리말은 "Gajae" 대신 세션의 에이전트 이름(GJC, Oh My Pi, Claude Code)과 중립 아바타.
+- 사이드바: 왼쪽 아래 프로필 카드와 "지난 세션 이어서 진행"을 지우고 "설정"만 남긴다. 카드가 하던 일의 새 자리: 설정 열기 → "설정" 줄, GJC 연결·로그인 필요·업데이트 → GJC 채팅의 상태와 설정 › GJC, 작업 공간 이름 → 설정에 이미 있는 이름(없으면 기본값 유지). 세션이 없을 때 "지난 세션 보기" 대신 "새 세션"(새 세션 대화상자). GJC 전용 이어 가기 선택기(ResumeSessionDialog)는 GJC 채팅 안의 `/resume`에서만 연다(메뉴·단축키에서는 뺌). P6의 "GJC 미사용 시 사이드바 하단 기본 에이전트 표시"는 카드와 함께 없어진다.
+
+**보이는 이름**: 창 제목, 메뉴, 정보, 알림, ko/en i18n, 온보딩, 원격 PWA 이름·manifest, README·docs의 앱 이름을 Peacock으로. `productName` "Peacock", 번들 `Peacock.app`, appId `dev.peacock.app`(기존 `com.gajae.desktop`).
+- appId를 바꾸면 macOS가 다른 앱으로 본다: 알림 허용, 화면 기록(빠른 입력의 캡처), 로그인 항목, Dock 고정을 다시 해야 한다. 키체인의 "Gajae Safe Storage"는 쓰지 않으므로(앱이 safeStorage를 안 씀) 영향 없음. 첫 실행에 알림 권한을 다시 묻는다.
+
+**userData 이전** (`~/Library/Application Support/Agent Control` → `~/Library/Application Support/Peacock`)
+- 언제: 앱 시작 때 userData를 정하기 전에 한 번. 격리 실행(`GAJAE_USER_DATA_DIR`/`PEACOCK_USER_DATA_DIR`, 스모크)에서는 하지 않는다.
+- 조건: 새 폴더에 앱 데이터(`agent-control-settings.json` 등)도 이전 표시(`peacock-migration.json`)도 없고, 옛 폴더에 앱 데이터가 있을 때.
+- 옛 앱이 실행 중이면(옛 폴더의 `SingletonLock`이 살아 있는 pid를 가리킴) 복사하지 않는다: 그 실행은 임시 userData로 떠서 "Gajae를 먼저 종료하세요" 안내를 보이고 끝난다(새 폴더를 만들지 않음).
+- 방법: 옛 폴더 전체를 `Peacock.migrating-<시각>`에 복사(잠금·캐시 제외: `Singleton*`, `DevToolsActivePort`, `Cache`, `Code Cache`, `GPUCache`, `Dawn*Cache`, 그리고 첫 사용 때 앱이 다시 까는 `bin/`) → 검증(복사한 모든 파일의 크기, 핵심 파일 — 설정·세션·`terminal-sessions.json`·`omp-rpc-sessions.json`·`remote-access.json`·`agent-hooks/token`·`productivity.sqlite`(+wal/shm) — 의 sha256) → 표시 파일을 쓰고 `Peacock`으로 rename(같은 볼륨, 원자적). 새 폴더가 앱 데이터 없이 이미 있으면(크롬이 만든 빈 프로필) `Peacock.pre-migration-<시각>`으로 옮겨 둔다.
+- 실패하면: 스테이징을 `Peacock.failed-<시각>`으로 남기고 이번 실행은 옛 폴더를 그대로 쓴다. 어느 경우에도 지우지 않는다.
+- 옛 폴더는 그대로 둔다(되돌리기: 옛 Gajae.app을 다시 열면 그 폴더로 그대로 동작). 한 가지 예외: 이전 때 옛 `agent-hooks/relay.sh`를 새 소켓(`Peacock/agent-hooks/h.sock`)으로 다시 써서, 이전 전에 시작돼 herdr-core에서 계속 도는 Claude Code·omp의 훅이 Peacock에 닿게 한다(토큰은 같은 값을 복사). 옛 앱을 다시 열면 그 앱이 relay.sh를 자기 소켓으로 다시 쓴다.
+
+**유지하는 내부 식별자** (사용자 데이터·실행 중인 것·스크립트와 이어져 있어 바꾸지 않음)
+- herdr-core 세션 이름 `gajae`/`gajae-dev`(HC_SESSION): 바꾸면 이미 떠 있는 터미널 세션(앱을 닫아도 도는 셸·에이전트)이 다른 세션 서버에 남아 고아가 된다. 화면에 보이지 않는 이름이라 유지.
+- 환경 변수 `GAJAE_*`(`GAJAE_SESSION_ID`는 이미 떠 있는 에이전트의 훅이 보냄, `GAJAE_USER_DATA_DIR`·`GAJAE_HC_SESSION`·`GAJAE_SMOKE_*`는 스크립트·스모크): 유지하고 `PEACOCK_USER_DATA_DIR`만 별칭으로 추가.
+- userData 안 파일 이름(`agent-control-*.json` 등), 세션 소유 값 `ownership: "gajae"`, localStorage 키(`gajae:*`, 폰 PWA의 `gajae.remote.token` — 바꾸면 짝지은 폰이 다시 짝지어야 함), 임시 폴더 접두사(`gajae-hooks-*`, `gajae-smoke-*`), 터미널 글꼴 패밀리 이름, 소스의 Gajae* 식별자(컴포넌트·파일 이름).
+- URL 스킴: `peacock://`를 등록하고 `gajae://`를 별칭으로 계속 받는다(같은 처리).
+- 패키지 이름 `agent-control`, 저장소 폴더, 브랜치 이름, install.sh/릴리스 저장소 경로: 그대로.
