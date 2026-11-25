@@ -10,7 +10,8 @@ interface ModelControlsProps {
   thinkingOption: AgentConfigOption | undefined;
   modelDisplay: string | undefined;
   currentEffort: string;
-  usagePercent: number | undefined;
+  /** null: the context share is shown elsewhere (the turn status line), so it is left out here. */
+  usagePercent: number | null | undefined;
   fastMode: boolean;
   fastBusy: boolean;
   readOnly: boolean;
@@ -56,12 +57,16 @@ export function ModelControls({
                 </strong>
                 <i />
                 <span title={t("사고 수준")}>{currentEffort}</span>
-                <i />
-                <span title={t("이 대화가 쓴 컨텍스트 비율")}>
-                  {usagePercent === undefined
-                    ? "—"
-                    : t`컨텍스트 ${usagePercent.toFixed(1)}%`}
-                </span>
+                {usagePercent !== null && (
+                  <>
+                    <i />
+                    <span title={t("이 대화가 쓴 컨텍스트 비율")}>
+                      {usagePercent === undefined
+                        ? "—"
+                        : t`컨텍스트 ${usagePercent.toFixed(1)}%`}
+                    </span>
+                  </>
+                )}
                 {fastMode && (
                   <>
                     <i />

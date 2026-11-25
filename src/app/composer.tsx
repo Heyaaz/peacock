@@ -137,7 +137,8 @@ export interface ComposerProps {
   configOptions: AgentConfigOption[];
   modelDisplay?: string;
   thinking?: string;
-  usagePercent?: number;
+  /** null leaves the context share out: the turn status line above already shows it. */
+  usagePercent?: number | null;
   serviceTier?: string;
   /** What Enter does on a running turn when no explicit command is typed. */
   runningSubmission: LiveTurnSubmissionMode;

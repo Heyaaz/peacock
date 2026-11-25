@@ -1431,7 +1431,14 @@ export default function App() {
                     ? { workspace: selectedSession.workspace, recentWorkspaces: [selectedSession.workspace] }
                     : {
                         workspace: selectedSession.workspace,
-                        modelDisplay: selectedSession.modelDisplay,
+                        // before omp's process reports its state, the model menu already knows the model
+                        modelDisplay:
+                          selectedSession.modelDisplay ??
+                          (() => {
+                            const model = composerConfigOptions.find((option) => option.category === "model");
+                            return model?.options?.find((choice) => choice.value === model.currentValue)?.name ??
+                              (model?.currentValue !== undefined ? String(model.currentValue) : undefined);
+                          })(),
                         recentWorkspaces,
                         onWorkspaceChange: (workspace) =>
                           createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
@@ -1515,7 +1522,9 @@ export default function App() {
                   configOptions={composerConfigOptions}
                   modelDisplay={selectedSession.modelDisplay}
                   thinking={selectedSession.thinking}
-                  usagePercent={selectedSession.usagePercent}
+                  usagePercent={
+                    selectedSession.liveStatus?.contextPercent !== undefined ? null : selectedSession.usagePercent
+                  }
                   serviceTier={selectedSession.serviceTier}
                   runningSubmission={preferences.runningSubmission}
                   onSend={onComposerSend}
