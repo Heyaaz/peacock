@@ -3,6 +3,7 @@ import type {
   ArtifactContent,
   BackendConnection,
   ContextBreakdown,
+  SubagentMessage,
   CreateSessionInput,
   DiffSnapshot,
   EffectiveRuntimeState,
@@ -185,6 +186,9 @@ export type FullAgentHost = AgentHost & AgentFacets;
  */
 export interface AgentExtrasFacet {
   getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null>;
+  cancelSubagent(sessionId: string, subagentId: string): Promise<boolean>;
+  steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void>;
+  getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

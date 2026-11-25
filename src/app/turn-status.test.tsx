@@ -3,7 +3,7 @@
  */
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubagentsPanel, TurnStatusLine } from "./turn-status";
 import { ThoughtCard } from "./transcript-item-view";
 import { DiffView } from "./primitives";
@@ -90,5 +90,52 @@ describe("P6 card details", () => {
     expect(more.textContent).toBe("9줄 더 · 모두 보기");
     await act(async () => more.click());
     expect(node.querySelectorAll(".diff-line")).toHaveLength(21);
+  });
+});
+
+describe("SubagentsPanel controls", () => {
+  it("stops, tells more and shows the conversation in place of the file path", async () => {
+    const control = {
+      cancel: vi.fn(async () => true),
+      steer: vi.fn(async () => undefined),
+      messages: vi.fn(async () => [
+        { role: "user" as const, text: "find it" },
+        { role: "tool" as const, tool: "grep", text: "parse" },
+        { role: "tool" as const, tool: "read", text: "ENOENT", error: true },
+      ]),
+    };
+    const node = await mount(
+      createElement(SubagentsPanel, {
+        onClose: () => undefined,
+        control,
+        subagents: [
+          { id: "sa-1", label: "scout", status: "running", sessionFile: "/tmp/sa-1.jsonl" },
+          { id: "sa-2", label: "done", status: "completed" },
+        ],
+      }),
+    );
+    expect(node.querySelector(".subagent-file")).toBeNull();
+    const rows = node.querySelectorAll(".subagent-row");
+    expect([...rows[1]!.querySelectorAll(".subagent-action")].map((button) => button.textContent)).toEqual(["대화 보기"]);
+    const buttons = [...rows[0]!.querySelectorAll<HTMLButtonElement>(".subagent-action")];
+    expect(buttons.map((button) => button.textContent)).toEqual(["대화 보기", "지시 추가", "중지"]);
+    await act(async () => buttons[2]!.click());
+    expect(control.cancel).toHaveBeenCalledWith("sa-1");
+    await act(async () => buttons[1]!.click());
+    const input = rows[0]!.querySelector<HTMLInputElement>(".subagent-steer input")!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "check tests");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => rows[0]!.querySelector<HTMLFormElement>(".subagent-steer")!.requestSubmit());
+    expect(control.steer).toHaveBeenCalledWith("sa-1", "check tests");
+    expect(rows[0]!.querySelector(".subagent-steer")).toBeNull();
+    await act(async () => buttons[0]!.click());
+    expect([...rows[0]!.querySelectorAll(".subagent-message")].map((item) => [item.className, item.textContent])).toEqual([
+      ["subagent-message subagent-message--user", "지시find it"],
+      ["subagent-message subagent-message--tool", "grepparse"],
+      ["subagent-message subagent-message--tool is-error", "readENOENT"],
+    ]);
   });
 });

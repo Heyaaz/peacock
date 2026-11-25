@@ -24,7 +24,7 @@ import type {
   QuestionSubmission,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
-import type { ContextBreakdown, ForkSessionInput } from "../../shared/agent-contract";
+import type { ContextBreakdown, ForkSessionInput, SubagentMessage } from "../../shared/agent-contract";
 import type { RemoteAccessBridge } from "../../shared/remote-protocol";
 
 export interface AgentBackend {
@@ -93,6 +93,10 @@ export interface AgentBackend {
    * Only omp's chat answers; read it where the session's `contextBreakdown` capability is on.
    */
   getContextBreakdown?(sessionId: string): Promise<ContextBreakdown | null>;
+  /** Subagent control, where the session's `subagentControl` capability is on (omp's chat). */
+  cancelSubagent?(sessionId: string, subagentId: string): Promise<boolean>;
+  steerSubagent?(sessionId: string, subagentId: string, message: string): Promise<void>;
+  getSubagentMessages?(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

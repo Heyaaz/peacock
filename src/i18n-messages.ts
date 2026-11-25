@@ -1284,4 +1284,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "시스템 컨텍스트": "System context",
   "지침 파일": "Instruction files",
   "대화 메시지": "Messages",
+  "서브에이전트 대화": "Subagent conversation",
+  "대화 보기": "Show conversation",
+  "지시 추가": "Tell it more",
+  "서브에이전트에게 더 알릴 내용": "What else the subagent should know",
+  "대화를 읽는 중…": "Reading the conversation…",
+  "아직 대화가 없습니다": "No conversation yet",
+  "지시": "Instruction",
+  "응답": "Reply",
 };

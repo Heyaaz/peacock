@@ -371,6 +371,12 @@ const gjc: GjcDesktopBridge = Object.freeze({
     ipcRenderer.invoke(GJC_IPC.compactSession, sessionId),
   getContextBreakdown: (sessionId: string) =>
     ipcRenderer.invoke(GJC_IPC.getContextBreakdown, sessionId),
+  cancelSubagent: (sessionId: string, subagentId: string) =>
+    ipcRenderer.invoke(GJC_IPC.cancelSubagent, sessionId, subagentId),
+  steerSubagent: (sessionId: string, subagentId: string, message: string) =>
+    ipcRenderer.invoke(GJC_IPC.steerSubagent, sessionId, subagentId, message),
+  getSubagentMessages: (sessionId: string, subagentId: string) =>
+    ipcRenderer.invoke(GJC_IPC.getSubagentMessages, sessionId, subagentId),
   queueFollowUp: (sessionId: string, input: MessageInput) =>
     ipcRenderer.invoke(GJC_IPC.queueFollowUp, sessionId, input),
   listQueuedMessages: (sessionId: string) =>

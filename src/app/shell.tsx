@@ -1603,7 +1603,23 @@ export default function App() {
               />
             )}
             {viewSurface === "chat" && ompChat && subagentsOpen && (
-              <SubagentsPanel subagents={ompSubagents} onClose={() => setSubagentsOpen(false)} />
+              <SubagentsPanel
+                subagents={ompSubagents}
+                onClose={() => setSubagentsOpen(false)}
+                control={
+                  selectedCapabilities?.subagentControl &&
+                  !remoteViewOnly &&
+                  backend.cancelSubagent &&
+                  backend.steerSubagent &&
+                  backend.getSubagentMessages
+                    ? {
+                        cancel: (subagentId) => backend.cancelSubagent!(selectedSession.id, subagentId),
+                        steer: (subagentId, message) => backend.steerSubagent!(selectedSession.id, subagentId, message),
+                        messages: (subagentId) => backend.getSubagentMessages!(selectedSession.id, subagentId),
+                      }
+                    : undefined
+                }
+              />
             )}
             {surface === "chat" && !agentChat && !ompChat && inspectorOpen && (
               <Inspector

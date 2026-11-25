@@ -91,6 +91,8 @@ export interface SessionCapabilities {
   streaming: boolean;
   /** What fills the context window, by category (omp's `/context`). */
   contextBreakdown: boolean;
+  /** Stopping a subagent, telling it more, and reading its conversation. */
+  subagentControl: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -110,6 +112,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     attachments: value,
     streaming: value,
     contextBreakdown: value,
+    subagentControl: value,
   };
 }
 
@@ -126,12 +129,18 @@ export const SESSION_CAPABILITY_KEYS: readonly (keyof SessionCapabilities)[] =
  * its agent and on what the agent reports at run time, so its controller sets
  * `AgentSession.capabilities` and nothing is assumed here.
  */
+/** Capabilities added after the GJC chat's set; only other runtimes offer them so far. */
+const LATER_CAPABILITIES = {
+  contextBreakdown: false,
+  subagentControl: false,
+} satisfies Partial<SessionCapabilities>;
+
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
   switch (runtime) {
     case "gjc":
     case "hermes":
       // every feature a GJC chat had before capabilities existed; what came later is another runtime's
-      return { ...uniformCapabilities(true), contextBreakdown: false };
+      return { ...uniformCapabilities(true), ...LATER_CAPABILITIES };
     default:
       return uniformCapabilities(false);
   }
@@ -497,6 +506,16 @@ export interface SessionLiveStatus {
   /** The tokens that share is of, and the window's size. */
   contextTokens?: number;
   contextWindow?: number;
+}
+
+/** One message of a subagent's conversation, as the subagents panel lists it. */
+export interface SubagentMessage {
+  role: "user" | "assistant" | "tool";
+  text: string;
+  /** The tool a call or a result belongs to. */
+  tool?: string;
+  /** A tool result that failed. */
+  error?: boolean;
 }
 
 /** The kinds of content omp counts in a context window. */
@@ -1361,6 +1380,12 @@ export interface GjcDesktopBridge {
   compactSession(sessionId: string): Promise<void>;
   /** What fills the context window, by category; null when omp cannot tell. Only omp's chat answers. */
   getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null>;
+  /** Stops one of the session's subagents; false when it had already ended. Only omp's chat answers. */
+  cancelSubagent(sessionId: string, subagentId: string): Promise<boolean>;
+  /** Tells a running subagent more. Only omp's chat answers. */
+  steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void>;
+  /** A subagent's conversation so far. Only omp's chat answers. */
+  getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

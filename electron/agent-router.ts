@@ -16,6 +16,7 @@ import type {
   QuestionActivity,
   QuestionSubmission,
   RuntimeKind,
+  SubagentMessage,
   SubagentSnapshot,
   ToolDecision,
   TranscriptChange,
@@ -408,6 +409,18 @@ export class AgentRouter implements RoutingAgentHost {
 
   getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
     return this.facet(sessionId, "getContextBreakdown")(sessionId);
+  }
+
+  cancelSubagent(sessionId: string, subagentId: string): Promise<boolean> {
+    return this.facet(sessionId, "cancelSubagent")(sessionId, subagentId);
+  }
+
+  steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void> {
+    return this.facet(sessionId, "steerSubagent")(sessionId, subagentId, message);
+  }
+
+  getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]> {
+    return this.facet(sessionId, "getSubagentMessages")(sessionId, subagentId);
   }
 
   openHistorySession(sessionId: string): Promise<AgentSession> {

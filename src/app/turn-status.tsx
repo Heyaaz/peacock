@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Check, Circle, CircleDot, ListChecks, Timer, X } from "lucide-react";
-import type { SessionLiveStatus, SubagentSnapshot, TodoSnapshotTask } from "../../shared/agent-contract";
+import { useEffect, useState, type FormEvent } from "react";
+import { Check, ChevronRight, Circle, CircleDot, ListChecks, MessageSquarePlus, Square, Timer, X } from "lucide-react";
+import type { SessionLiveStatus, SubagentMessage, SubagentSnapshot, TodoSnapshotTask } from "../../shared/agent-contract";
 import { t } from "../i18n";
 
 const DONE = new Set(["completed", "done", "complete"]);
@@ -120,8 +120,170 @@ function tokens(value: number): string {
   return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
 }
 
+/** What the panel may do to a subagent, where the session offers it (omp's chat). */
+export interface SubagentControl {
+  cancel(subagentId: string): Promise<unknown>;
+  steer(subagentId: string, message: string): Promise<unknown>;
+  messages(subagentId: string): Promise<SubagentMessage[]>;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+type Transcript = { state: "loading" } | { state: "ready"; messages: SubagentMessage[] } | { state: "failed"; error: string };
+
+function SubagentRow({ agent, control }: { agent: SubagentSnapshot; control?: SubagentControl }) {
+  const [steering, setSteering] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const live = agent.status === "running" || agent.status === "waiting";
+  const meta = [
+    agent.model,
+    agent.costUsd !== undefined ? money(agent.costUsd) : undefined,
+    agent.elapsedMs !== undefined ? elapsedLabel(agent.elapsedMs) : undefined,
+    agent.toolCount !== undefined ? t`도구 ${agent.toolCount}` : undefined,
+    agent.contextTokens !== undefined
+      ? agent.contextWindow
+        ? t`컨텍스트 ${Math.round((agent.contextTokens / agent.contextWindow) * 100)}%`
+        : t`토큰 ${tokens(agent.contextTokens)}`
+      : undefined,
+  ].filter(Boolean);
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+      return true;
+    } catch (failure) {
+      setError(errorText(failure));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggleTranscript = () => {
+    if (!control) return;
+    if (transcript) {
+      setTranscript(null);
+      return;
+    }
+    setTranscript({ state: "loading" });
+    control.messages(agent.id).then(
+      (messages) => setTranscript({ state: "ready", messages }),
+      (failure: unknown) => setTranscript({ state: "failed", error: errorText(failure) }),
+    );
+  };
+  const submitSteer = async (event: FormEvent) => {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!control || !message) return;
+    if (await run(() => control.steer(agent.id, message))) {
+      setDraft("");
+      setSteering(false);
+    }
+  };
+  return (
+    <li className={`subagent-row subagent-row--${agent.status}`}>
+      <span className="subagent-row-head">
+        <strong>{agent.label}</strong>
+        <span className={`subagent-status subagent-status--${agent.status}`}>{t(SUBAGENT_STATUS[agent.status])}</span>
+      </span>
+      {agent.objective && <p className="subagent-objective">{agent.objective}</p>}
+      {meta.length > 0 && <small className="subagent-meta">{meta.join(" · ")}</small>}
+      {agent.recent && <small className="subagent-recent">{agent.recent}</small>}
+      {control ? (
+        <span className="subagent-actions">
+          <button
+            type="button"
+            className="subagent-action"
+            aria-expanded={transcript !== null}
+            title={agent.sessionFile ?? t("서브에이전트 대화")}
+            onClick={toggleTranscript}
+          >
+            <ChevronRight size={12} className="subagent-action-chevron" aria-hidden="true" />
+            {t("대화 보기")}
+          </button>
+          {live && (
+            <button type="button" className="subagent-action" aria-expanded={steering} onClick={() => setSteering((open) => !open)}>
+              <MessageSquarePlus size={12} aria-hidden="true" />
+              {t("지시 추가")}
+            </button>
+          )}
+          {live && (
+            <button
+              type="button"
+              className="subagent-action subagent-action--stop"
+              disabled={busy}
+              onClick={() => void run(() => control.cancel(agent.id))}
+            >
+              <Square size={10} aria-hidden="true" />
+              {t("중지")}
+            </button>
+          )}
+        </span>
+      ) : (
+        agent.sessionFile && (
+          <code className="subagent-file" title={t("서브에이전트 기록 파일")}>
+            {agent.sessionFile}
+          </code>
+        )
+      )}
+      {steering && control && (
+        <form className="subagent-steer" onSubmit={(event) => void submitSteer(event)}>
+          <input
+            autoFocus
+            value={draft}
+            placeholder={t("서브에이전트에게 더 알릴 내용")}
+            aria-label={t("서브에이전트에게 더 알릴 내용")}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button type="submit" disabled={busy || !draft.trim()}>
+            {t("보내기")}
+          </button>
+        </form>
+      )}
+      {error && <small className="subagent-error">{error}</small>}
+      {transcript && (
+        <div className="subagent-transcript">
+          {transcript.state === "loading" && <small>{t("대화를 읽는 중…")}</small>}
+          {transcript.state === "failed" && <small className="subagent-error">{transcript.error}</small>}
+          {transcript.state === "ready" &&
+            (transcript.messages.length === 0 ? (
+              <small>{t("아직 대화가 없습니다")}</small>
+            ) : (
+              <ol>
+                {transcript.messages.map((message, index) => (
+                  <li
+                    key={index}
+                    className={`subagent-message subagent-message--${message.role}${message.error ? " is-error" : ""}`}
+                  >
+                    <span className="subagent-message-role">
+                      {message.role === "tool" ? message.tool : message.role === "user" ? t("지시") : t("응답")}
+                    </span>
+                    {message.text && <p>{message.text}</p>}
+                  </li>
+                ))}
+              </ol>
+            ))}
+        </div>
+      )}
+    </li>
+  );
+}
+
 /** omp's subagents in this chat: running, done and parked ones, with what each reports of its work. */
-export function SubagentsPanel({ subagents, onClose }: { subagents: readonly SubagentSnapshot[]; onClose: () => void }) {
+export function SubagentsPanel({
+  subagents,
+  onClose,
+  control,
+}: {
+  subagents: readonly SubagentSnapshot[];
+  onClose: () => void;
+  control?: SubagentControl;
+}) {
   const order: SubagentSnapshot["status"][] = ["running", "waiting", "completed", "failed"];
   const sorted = [...subagents].sort((left, right) => order.indexOf(left.status) - order.indexOf(right.status));
   return (
@@ -137,35 +299,9 @@ export function SubagentsPanel({ subagents, onClose }: { subagents: readonly Sub
         <p className="subagents-empty">{t("이 대화에서 실행된 서브에이전트가 없습니다")}</p>
       ) : (
         <ul>
-          {sorted.map((agent) => {
-            const meta = [
-              agent.model,
-              agent.costUsd !== undefined ? money(agent.costUsd) : undefined,
-              agent.elapsedMs !== undefined ? elapsedLabel(agent.elapsedMs) : undefined,
-              agent.toolCount !== undefined ? t`도구 ${agent.toolCount}` : undefined,
-              agent.contextTokens !== undefined
-                ? agent.contextWindow
-                  ? t`컨텍스트 ${Math.round((agent.contextTokens / agent.contextWindow) * 100)}%`
-                  : t`토큰 ${tokens(agent.contextTokens)}`
-                : undefined,
-            ].filter(Boolean);
-            return (
-              <li key={agent.id} className={`subagent-row subagent-row--${agent.status}`}>
-                <span className="subagent-row-head">
-                  <strong>{agent.label}</strong>
-                  <span className={`subagent-status subagent-status--${agent.status}`}>{t(SUBAGENT_STATUS[agent.status])}</span>
-                </span>
-                {agent.objective && <p className="subagent-objective">{agent.objective}</p>}
-                {meta.length > 0 && <small className="subagent-meta">{meta.join(" · ")}</small>}
-                {agent.recent && <small className="subagent-recent">{agent.recent}</small>}
-                {agent.sessionFile && (
-                  <code className="subagent-file" title={t("서브에이전트 기록 파일")}>
-                    {agent.sessionFile}
-                  </code>
-                )}
-              </li>
-            );
-          })}
+          {sorted.map((agent) => (
+            <SubagentRow key={agent.id} agent={agent} control={control} />
+          ))}
         </ul>
       )}
     </aside>

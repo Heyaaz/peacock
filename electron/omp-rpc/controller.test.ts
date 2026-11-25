@@ -112,6 +112,21 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "cancel_subagent") answer({ cancelled: frame.subagentId === "sa-1" });
+      else if (frame.type === "get_subagent_messages")
+        answer({
+          sessionFile: "/tmp/sa-1.jsonl",
+          fromByte: 0,
+          nextByte: 100,
+          reset: false,
+          entries: [],
+          messages: [
+            { role: "user", content: "find the parser" },
+            { role: "assistant", content: [{ type: "thinking", thinking: "hm" }, { type: "text", text: "Looking." }, { type: "toolCall", id: "c1", name: "grep", arguments: { pattern: "parse" } }] },
+            { role: "toolResult", toolCallId: "c1", toolName: "grep", content: [{ type: "text", text: "src/parse.ts" }], isError: false },
+            { role: "toolResult", toolCallId: "c2", toolName: "read", content: [{ type: "text", text: "ENOENT" }], isError: true },
+          ],
+        });
       else if (frame.type === "goal") {
         if (frame.op === "create") goal = { id: "g1", objective: frame.objective, status: "active", tokensUsed: 0, timeUsedSeconds: 0, createdAt: 1, updatedAt: 1 };
         else if (frame.op === "pause" && goal) goal = { ...goal, status: "paused" };
@@ -738,5 +753,29 @@ describe("OmpRpcController goal mode", () => {
     await expect(context.controller.sendMessage(session.id, { text: "/goal budget 5000", images: [], files: [] })).resolves.toMatchObject({ kind: "not_executed" });
     await expect(context.controller.operateGoal(session.id, "drop")).resolves.toMatchObject({ enabled: false });
     expect(context.prompts()).toBe(0);
+  });
+});
+
+describe("OmpRpcController subagent control", () => {
+  it("stops a subagent, tells it more, and reads its conversation as the panel's rows", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    // no omp yet: nothing to stop, nothing to tell
+    await expect(context.controller.cancelSubagent(session.id, "sa-1")).resolves.toBe(false);
+    await expect(context.controller.steerSubagent(session.id, "sa-1", "x")).rejects.toThrow("not running");
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    await expect(context.controller.cancelSubagent(session.id, "sa-1")).resolves.toBe(true);
+    await expect(context.controller.cancelSubagent(session.id, "sa-2")).resolves.toBe(false);
+    await context.controller.steerSubagent(session.id, "sa-1", "  also check tests  ");
+    expect(child.sent("steer_subagent")[0]).toMatchObject({ subagentId: "sa-1", message: "also check tests" });
+    await expect(context.controller.getSubagentMessages(session.id, "sa-1")).resolves.toEqual([
+      { role: "user", text: "find the parser" },
+      { role: "assistant", text: "Looking." },
+      { role: "tool", tool: "grep", text: "parse" },
+      { role: "tool", tool: "grep", text: "src/parse.ts" },
+      { role: "tool", tool: "read", text: "ENOENT", error: true },
+    ]);
+    expect(child.sent("get_subagent_messages")[0]).toMatchObject({ subagentId: "sa-1" });
   });
 });

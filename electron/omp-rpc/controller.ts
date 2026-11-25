@@ -18,6 +18,7 @@ import type {
   QueuedMessage,
   QuestionActivity,
   SessionLiveStatus,
+  SubagentMessage,
   SubagentSnapshot,
   TodoSnapshotPhase,
   QuestionSubmission,
@@ -408,6 +409,28 @@ export class OmpRpcController implements AgentRuntimeController {
     chat.turnStartedAt ??= Date.now();
     if (!wasWorking) this.applyStatus(sessionId, "running");
     return wasWorking && steer ? "steer" : "prompt";
+  }
+
+  // ---- subagents (19.1.1 `cancel_subagent`, `steer_subagent`, `get_subagent_messages`)
+
+  async cancelSubagent(sessionId: string, subagentId: string): Promise<boolean> {
+    const client = this.client(sessionId);
+    if (!client) return false;
+    const data = record(await client.call({ type: "cancel_subagent", subagentId }));
+    return data.cancelled === true;
+  }
+
+  async steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void> {
+    const client = this.client(sessionId);
+    if (!client) throw new Error("omp is not running for this chat");
+    await client.call({ type: "steer_subagent", subagentId, message: message.trim() });
+  }
+
+  /** The subagent's session file as omp reads it, its messages cut to what a panel shows. */
+  async getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "get_subagent_messages", subagentId }));
+    return subagentMessages(data.messages);
   }
 
   // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)
@@ -1590,6 +1613,44 @@ function todoPhases(value: unknown): TodoSnapshotPhase[] {
     });
     const name = string(phase.name, phase.phase, phase.title);
     return tasks.length > 0 ? [{ ...(name ? { name } : {}), tasks }] : [];
+  });
+}
+
+/** How much of one message the subagents panel shows. */
+const SUBAGENT_MESSAGE_CHARS = 2000;
+
+/** omp's `AgentMessage`s (`get_subagent_messages`) as the panel's rows: text, tool calls and results. */
+export function subagentMessages(value: unknown): SubagentMessage[] {
+  const cut = (text: string) => (text.length > SUBAGENT_MESSAGE_CHARS ? `${text.slice(0, SUBAGENT_MESSAGE_CHARS)}…` : text);
+  const textOf = (content: unknown): string =>
+    typeof content === "string"
+      ? content
+      : (Array.isArray(content) ? content.map(record) : [])
+          .filter((block) => block.type === "text")
+          .map((block) => string(block.text) ?? "")
+          .join("\n");
+  return (Array.isArray(value) ? value.map(record) : []).flatMap((message): SubagentMessage[] => {
+    if (message.role === "user") {
+      const text = textOf(message.content).trim();
+      return text ? [{ role: "user", text: cut(text) }] : [];
+    }
+    if (message.role === "assistant") {
+      const blocks = Array.isArray(message.content) ? message.content.map(record) : [];
+      return blocks.flatMap((block): SubagentMessage[] => {
+        if (block.type === "text" && string(block.text)?.trim()) return [{ role: "assistant", text: cut(string(block.text)!.trim()) }];
+        if (block.type === "toolCall" && string(block.name)) {
+          const args = record(block.arguments);
+          const summary = string(args.command, args.path, args.file_path, args.pattern, args.description, args.url) ?? "";
+          return [{ role: "tool", tool: string(block.name)!, text: cut(summary) }];
+        }
+        return [];
+      });
+    }
+    if (message.role === "toolResult") {
+      const text = textOf(message.content).trim();
+      return [{ role: "tool", tool: string(message.toolName) ?? "tool", text: cut(text), ...(message.isError === true ? { error: true } : {}) }];
+    }
+    return [];
   });
 }
 

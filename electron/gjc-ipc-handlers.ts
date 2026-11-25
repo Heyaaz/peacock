@@ -403,6 +403,22 @@ export function registerGjcIpcHandlers(
     if (!controller.getContextBreakdown) throw new AgentUnsupportedError("getContextBreakdown", id);
     return controller.getContextBreakdown(id);
   });
+  handle(GJC_IPC.cancelSubagent, (_event, sessionId: unknown, subagentId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.cancelSubagent) throw new AgentUnsupportedError("cancelSubagent", id);
+    return controller.cancelSubagent(id, requiredId(subagentId, "Subagent ID"));
+  });
+  handle(GJC_IPC.steerSubagent, (_event, sessionId: unknown, subagentId: unknown, message: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (typeof message !== "string" || !message.trim()) throw new Error("Subagent message must be a nonempty string");
+    if (!controller.steerSubagent) throw new AgentUnsupportedError("steerSubagent", id);
+    return controller.steerSubagent(id, requiredId(subagentId, "Subagent ID"), message);
+  });
+  handle(GJC_IPC.getSubagentMessages, (_event, sessionId: unknown, subagentId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.getSubagentMessages) throw new AgentUnsupportedError("getSubagentMessages", id);
+    return controller.getSubagentMessages(id, requiredId(subagentId, "Subagent ID"));
+  });
   handle(
     GJC_IPC.queueFollowUp,
     (event, sessionId: unknown, input: unknown) => deliver(event, sessionId, input, "queueFollowUp"),

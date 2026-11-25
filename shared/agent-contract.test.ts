@@ -17,7 +17,7 @@ const every = (value: boolean): SessionCapabilities =>
   ) as unknown as SessionCapabilities;
 
 /** A GJC chat's default: everything it had before capabilities existed, nothing that came later. */
-const gjcChat = (): SessionCapabilities => ({ ...every(true), contextBreakdown: false });
+const gjcChat = (): SessionCapabilities => ({ ...every(true), contextBreakdown: false, subagentControl: false });
 
 const session = (
   runtime: RuntimeKind,
@@ -46,6 +46,7 @@ describe("session capability keys", () => {
         "attachments",
         "streaming",
         "contextBreakdown",
+        "subagentControl",
       ].sort(),
     );
   });
