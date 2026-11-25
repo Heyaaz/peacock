@@ -30,6 +30,7 @@ import type {
   ContextBreakdown,
   ForkSessionInput,
   RuntimeModeId,
+  SessionTreeEntry,
   SessionUsageStats,
   SubagentMessage,
 } from "../../shared/agent-contract";
@@ -226,6 +227,14 @@ export class GjcAgentBackend implements AgentBackend {
 
   exportSessionHtml(sessionId: string): Promise<string | null> {
     return this.bridge.exportSessionHtml(sessionId);
+  }
+
+  getSessionTree(sessionId: string): Promise<SessionTreeEntry[]> {
+    return this.bridge.getSessionTree(sessionId);
+  }
+
+  branchSession(sessionId: string, entryId: string): Promise<string> {
+    return this.bridge.branchSession(sessionId, entryId);
   }
 
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {

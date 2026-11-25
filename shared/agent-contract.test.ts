@@ -17,7 +17,7 @@ const every = (value: boolean): SessionCapabilities =>
   ) as unknown as SessionCapabilities;
 
 /** A GJC chat's default: everything it had before capabilities existed, nothing that came later. */
-const gjcChat = (): SessionCapabilities => ({ ...every(true), contextBreakdown: false, subagentControl: false, queueEdit: false, runtimeModes: false, exportHtml: false });
+const gjcChat = (): SessionCapabilities => ({ ...every(true), contextBreakdown: false, subagentControl: false, queueEdit: false, runtimeModes: false, exportHtml: false, sessionTree: false });
 
 const session = (
   runtime: RuntimeKind,
@@ -50,6 +50,7 @@ describe("session capability keys", () => {
         "queueEdit",
         "runtimeModes",
         "exportHtml",
+        "sessionTree",
       ].sort(),
     );
   });

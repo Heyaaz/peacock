@@ -217,12 +217,14 @@ export function registerGjcIpcHandlers(
   handle(GJC_IPC.forkSession, (_event, input: unknown) => {
     if (!input || typeof input !== "object" || Array.isArray(input))
       throw new Error("Fork input is required");
-    const candidate = input as { sourceSessionId?: unknown; title?: unknown };
+    const candidate = input as { sourceSessionId?: unknown; title?: unknown; entryId?: unknown };
     if (
       candidate.title !== undefined &&
       (typeof candidate.title !== "string" || candidate.title.length > 256)
     )
       throw new Error("Fork title is invalid");
+    if (candidate.entryId !== undefined && (typeof candidate.entryId !== "string" || !/^[\w-]{1,128}$/u.test(candidate.entryId)))
+      throw new Error("Fork entry is invalid");
     return controller.forkSession({
       sourceSessionId: requiredId(
         candidate.sourceSessionId,
@@ -231,6 +233,7 @@ export function registerGjcIpcHandlers(
       ...(typeof candidate.title === "string" && candidate.title.trim()
         ? { title: candidate.title.trim() }
         : {}),
+      ...(typeof candidate.entryId === "string" ? { entryId: candidate.entryId } : {}),
     });
   });
   handle(
@@ -450,6 +453,16 @@ export function registerGjcIpcHandlers(
     const written = await controller.exportSessionHtml(id, choice.filePath);
     shell.showItemInFolder(written);
     return written;
+  });
+  handle(GJC_IPC.getSessionTree, (_event, sessionId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.getSessionTree) throw new AgentUnsupportedError("getSessionTree", id);
+    return controller.getSessionTree(id);
+  });
+  handle(GJC_IPC.branchSession, (_event, sessionId: unknown, entryId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.branchSession) throw new AgentUnsupportedError("branchSession", id);
+    return controller.branchSession(id, requiredId(entryId, "Entry ID"));
   });
   handle(GJC_IPC.getSessionStats, (_event, sessionId: unknown) => {
     const id = requiredId(sessionId, "Session ID");

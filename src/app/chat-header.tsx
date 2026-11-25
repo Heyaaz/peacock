@@ -1,4 +1,4 @@
-import { Bot, FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal, Users } from "lucide-react";
+import { Bot, FolderGit2, GitBranch, Layers, ListTree, MessageCircleQuestion, PanelRight, SquareTerminal, Users } from "lucide-react";
 import type { GitStatusSnapshot } from "../../shared/agent-contract";
 import type { AgentSession, ToolViewMode } from "../backend/types";
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
@@ -33,6 +33,8 @@ interface ChatHeaderProps {
   /** The subagents panel of a chat that lists them (omp's); absent elsewhere. */
   subagentsOpen?: boolean;
   setSubagentsOpen?: (update: (open: boolean) => boolean) => void;
+  /** Opens the conversation's tree, where the session has one (omp's chat). */
+  onOpenTree?: () => void;
 }
 
 export function ChatHeader({
@@ -54,6 +56,7 @@ export function ChatHeader({
   surfaceToggle = true,
   subagentsOpen = false,
   setSubagentsOpen,
+  onOpenTree,
 }: ChatHeaderProps) {
   return (
   <header className="chat-header">
@@ -135,6 +138,11 @@ export function ChatHeader({
             { value: "detailed", label: t("상세"), description: t("추론까지 펼침") },
           ]} />
       </div>
+      {onOpenTree && (
+        <button className="icon-button" type="button" title={t("대화 트리")} onClick={onOpenTree}>
+          <ListTree size={18} />
+        </button>
+      )}
       {setSubagentsOpen && (
         <button
           className={`icon-button ${subagentsOpen ? "is-active" : ""}`}

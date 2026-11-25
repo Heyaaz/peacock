@@ -77,6 +77,8 @@ const EXTRA_CALLS = new Set([
   "setRuntimeMode",
   "getSessionStats",
   "exportSessionHtml",
+  "getSessionTree",
+  "branchSession",
 ]);
 
 /** Router members that place calls rather than forward them. */

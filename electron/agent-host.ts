@@ -4,6 +4,7 @@ import type {
   BackendConnection,
   ContextBreakdown,
   RuntimeModeId,
+  SessionTreeEntry,
   SessionUsageStats,
   SubagentMessage,
   CreateSessionInput,
@@ -140,6 +141,8 @@ export interface AgentHistoryFacet {
   forkSession(input: {
     sourceSessionId: string;
     title?: string;
+    /** omp's entry to fork from; a runtime without entry ids forks the whole session. */
+    entryId?: string;
   }): Promise<AgentSession>;
   /** Another process holding the session open, which deleting it would have to stop. */
   sessionHostElsewhere(
@@ -197,6 +200,8 @@ export interface AgentExtrasFacet {
   getSessionStats(sessionId: string): Promise<SessionUsageStats>;
   /** Writes the conversation as an HTML page at `outputPath`; the path it wrote. */
   exportSessionHtml(sessionId: string, outputPath: string): Promise<string>;
+  getSessionTree(sessionId: string): Promise<SessionTreeEntry[]>;
+  branchSession(sessionId: string, entryId: string): Promise<string>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

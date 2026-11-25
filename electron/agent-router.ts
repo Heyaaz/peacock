@@ -17,6 +17,7 @@ import type {
   QuestionSubmission,
   RuntimeKind,
   RuntimeModeId,
+  SessionTreeEntry,
   SessionUsageStats,
   SubagentMessage,
   SubagentSnapshot,
@@ -445,6 +446,14 @@ export class AgentRouter implements RoutingAgentHost {
     return this.facet(sessionId, "exportSessionHtml")(sessionId, outputPath);
   }
 
+  getSessionTree(sessionId: string): Promise<SessionTreeEntry[]> {
+    return this.facet(sessionId, "getSessionTree")(sessionId);
+  }
+
+  branchSession(sessionId: string, entryId: string): Promise<string> {
+    return this.facet(sessionId, "branchSession")(sessionId, entryId);
+  }
+
   openHistorySession(sessionId: string): Promise<AgentSession> {
     return this.adopt(
       this.controllerFor(sessionId),
@@ -462,6 +471,7 @@ export class AgentRouter implements RoutingAgentHost {
   forkSession(input: {
     sourceSessionId: string;
     title?: string;
+    entryId?: string;
   }): Promise<AgentSession> {
     return this.adopt(
       this.controllerFor(input.sourceSessionId),

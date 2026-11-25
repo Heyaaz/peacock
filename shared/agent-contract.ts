@@ -99,6 +99,8 @@ export interface SessionCapabilities {
   runtimeModes: boolean;
   /** Saving the conversation as an HTML page. */
   exportHtml: boolean;
+  /** The conversation's tree: forking or rewriting from an earlier message. */
+  sessionTree: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -122,6 +124,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     queueEdit: value,
     runtimeModes: value,
     exportHtml: value,
+    sessionTree: value,
   };
 }
 
@@ -145,6 +148,7 @@ const LATER_CAPABILITIES = {
   queueEdit: false,
   runtimeModes: false,
   exportHtml: false,
+  sessionTree: false,
 } satisfies Partial<SessionCapabilities>;
 
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
@@ -1247,6 +1251,24 @@ export interface WorktreePull {
 export interface ForkSessionInput {
   sourceSessionId: string;
   title?: string;
+  /** Fork from this entry of the conversation instead of its end (omp's entry ids). */
+  entryId?: string;
+}
+
+/** One entry of a conversation's tree (omp's `get_tree`), flattened in reading order. */
+export interface SessionTreeEntry {
+  id: string;
+  role: "user" | "assistant" | "tool" | "compaction" | "branch_summary";
+  /** A short preview of what it says. */
+  text: string;
+  /** How far it sits from the main line: one step for each branch it lies in. */
+  depth: number;
+  /** On the branch the conversation is on now. */
+  onPath: boolean;
+  /** The entry the conversation continues from. */
+  current: boolean;
+  /** omp's label for it, if any. */
+  label?: string;
 }
 
 export interface ToolDecision {
@@ -1439,6 +1461,13 @@ export interface GjcDesktopBridge {
    * it in Finder; the saved path, or null when the dialog was cancelled. Only omp's chat answers.
    */
   exportSessionHtml(sessionId: string): Promise<string | null>;
+  /** The conversation's tree, flattened. Only omp's chat answers. */
+  getSessionTree(sessionId: string): Promise<SessionTreeEntry[]>;
+  /**
+   * Moves the chat to a new branch that ends before `entryId` (a user message) and returns
+   * that message's text, for the composer to edit and send again. Only omp's chat answers.
+   */
+  branchSession(sessionId: string, entryId: string): Promise<string>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

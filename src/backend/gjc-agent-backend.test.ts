@@ -183,6 +183,14 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async exportSessionHtml(_sessionId: string): Promise<null> {
     return null;
   }
+
+  async getSessionTree(_sessionId: string): Promise<[]> {
+    return [];
+  }
+
+  async branchSession(_sessionId: string, _entryId: string): Promise<string> {
+    return "";
+  }
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

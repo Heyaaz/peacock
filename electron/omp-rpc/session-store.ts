@@ -29,6 +29,8 @@ export interface OmpRpcSessionRecord {
   ompSessionId?: string;
   /** The model and approval mode the chat starts omp with. */
   launch?: AgentLaunchOptions;
+  /** The chat this one was forked from. */
+  parentId?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ export class OmpRpcSessionStore {
     return session ? { ...session } : undefined;
   }
 
-  create(input: { title: string; workspace: string; launch?: AgentLaunchOptions }): OmpRpcSessionRecord {
+  create(input: { title: string; workspace: string; launch?: AgentLaunchOptions; parentId?: string }): OmpRpcSessionRecord {
     const launch = launchOptions("omp", input.launch);
     const session: OmpRpcSessionRecord = {
       id: `${OMP_RPC_SESSION_PREFIX}${randomUUID()}`,
@@ -64,6 +66,7 @@ export class OmpRpcSessionStore {
       workspace: path.resolve(input.workspace),
       createdAt: this.now().toISOString(),
       ...(launch ? { launch } : {}),
+      ...(input.parentId ? { parentId: input.parentId } : {}),
     };
     this.sessions = [session, ...this.sessions];
     this.write();
@@ -165,6 +168,7 @@ function parseRecord(raw: unknown): OmpRpcSessionRecord[] {
       ...(validPath(value.sessionFile) ? { sessionFile: value.sessionFile } : {}),
       ...(typeof value.ompSessionId === "string" && OMP_SESSION_ID.test(value.ompSessionId) ? { ompSessionId: value.ompSessionId } : {}),
       ...(launch ? { launch } : {}),
+      ...(typeof value.parentId === "string" && SESSION_ID.test(value.parentId) ? { parentId: value.parentId } : {}),
     },
   ];
 }

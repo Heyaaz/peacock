@@ -20,6 +20,7 @@ import type {
   RuntimeModeId,
   RuntimeModeState,
   SessionLiveStatus,
+  SessionTreeEntry,
   SessionUsageStats,
   SubagentMessage,
   SubagentSnapshot,
@@ -496,6 +497,62 @@ export class OmpRpcController implements AgentRuntimeController {
       toolCalls: count(data.toolCalls),
       premiumRequests: count(data.premiumRequests),
     };
+  }
+
+  // ---- the conversation's tree (19.1.1 `get_tree`, `fork`, `branch`)
+
+  async getSessionTree(sessionId: string): Promise<SessionTreeEntry[]> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "get_tree" }));
+    return flattenSessionTree(data.tree, string(data.leafId));
+  }
+
+  /**
+   * A new chat on a copy of this one, to its end or to `entryId`. omp forks the session it has
+   * open into a new file and moves to it, so the copy is made by an omp of the new chat's own,
+   * started on the source file; the source chat's omp is not touched.
+   */
+  async forkSession(input: { sourceSessionId: string; title?: string; entryId?: string }): Promise<AgentSession> {
+    const source = this.options.store.get(input.sourceSessionId);
+    if (!source) throw new AgentUnsupportedError("forking", input.sourceSessionId);
+    // omp writes its file with the first message; before that there is nothing to copy
+    if (!source.sessionFile || !(await exists(source.sessionFile))) throw new Error("This chat has nothing to fork yet");
+    const created = this.options.store.create({
+      title: input.title?.trim() || `${source.title} (포크)`,
+      workspace: source.workspace,
+      ...(source.launch ? { launch: source.launch } : {}),
+      parentId: source.id,
+    });
+    this.options.store.reportSession(created.id, { sessionFile: source.sessionFile });
+    try {
+      const client = await this.ensureProcess(created.id);
+      const data = record(await client.call({ type: "fork", ...(input.entryId ? { entryId: input.entryId } : {}) }));
+      if (data.cancelled === true) throw new Error("omp did not fork the chat");
+      await this.refreshState(created.id, client);
+      if (this.options.store.get(created.id)?.sessionFile === source.sessionFile) throw new Error("omp stayed on the source session");
+    } catch (error) {
+      this.stopProcess(created.id);
+      this.chats.delete(created.id);
+      this.options.store.delete(created.id);
+      throw error;
+    }
+    this.options.claim?.(created.id);
+    const session = this.row(this.options.store.get(created.id)!);
+    this.options.emit({ type: "session.created", session });
+    return session;
+  }
+
+  /**
+   * `branch`: omp moves this chat to a new file that ends before the user message `entryId`,
+   * and hands back that message's text to edit. The chat reads its new file from then on.
+   */
+  async branchSession(sessionId: string, entryId: string): Promise<string> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "branch", entryId }));
+    if (data.cancelled === true) throw new Error("omp did not branch the chat");
+    await this.refreshState(sessionId, client);
+    this.scheduleResync(sessionId);
+    return string(data.text) ?? "";
   }
 
   /** `export_html`: omp renders the session file as one HTML page at the path given. */
@@ -1644,6 +1701,7 @@ export class OmpRpcController implements AgentRuntimeController {
     return {
       id: record.id,
       title: record.title,
+      ...(record.parentId ? { parentId: record.parentId } : {}),
       subtitle: `${agentCatalogEntry("omp").name} · ${folder}`,
       workspace: record.workspace,
       runtime: "omp-rpc",
@@ -1703,6 +1761,77 @@ function todoPhases(value: unknown): TodoSnapshotPhase[] {
     const name = string(phase.name, phase.phase, phase.title);
     return tasks.length > 0 ? [{ ...(name ? { name } : {}), tasks }] : [];
   });
+}
+
+/** How much of an entry the tree shows. */
+const TREE_PREVIEW_CHARS = 140;
+
+/**
+ * omp's `get_tree` (`SessionTreeNode`: an entry and its children) as the tree view's rows, in
+ * reading order: messages, compactions and branch summaries, each with how many branches deep it
+ * lies, whether it is on the branch from the root to `leafId`, and which entry that is. omp's
+ * bookkeeping entries (model changes, custom records) are left out; their children are not.
+ */
+export function flattenSessionTree(value: unknown, leafId: string | undefined): SessionTreeEntry[] {
+  const parents = new Map<string, string | undefined>();
+  const visit = (nodes: unknown, parent: string | undefined): void => {
+    for (const node of Array.isArray(nodes) ? nodes.map(record) : []) {
+      const id = string(record(node.entry).id);
+      if (id) parents.set(id, parent);
+      visit(node.children, id ?? parent);
+    }
+  };
+  visit(value, undefined);
+  const path = new Set<string>();
+  for (let id = leafId; id !== undefined && !path.has(id); id = parents.get(id)) path.add(id);
+  const preview = (text: string) => {
+    const line = text.replace(/\s+/gu, " ").trim();
+    return line.length > TREE_PREVIEW_CHARS ? `${line.slice(0, TREE_PREVIEW_CHARS)}…` : line;
+  };
+  const textOf = (content: unknown): string =>
+    typeof content === "string"
+      ? content
+      : (Array.isArray(content) ? content.map(record) : [])
+          .filter((block) => block.type === "text")
+          .map((block) => string(block.text) ?? "")
+          .join(" ");
+  const rows: SessionTreeEntry[] = [];
+  const walk = (nodes: unknown, depth: number): void => {
+    const list = Array.isArray(nodes) ? nodes.map(record) : [];
+    // the branch the conversation is on reads first; the others indent under the fork point
+    const ordered = [...list].sort((left, right) => Number(path.has(string(record(right.entry).id) ?? "")) - Number(path.has(string(record(left.entry).id) ?? "")));
+    ordered.forEach((node, index) => {
+      const entry = record(node.entry);
+      const id = string(entry.id);
+      const childDepth = depth + (list.length > 1 && index > 0 ? 1 : 0);
+      const message = record(entry.message);
+      let row: Omit<SessionTreeEntry, "depth" | "onPath" | "current" | "id"> | undefined;
+      if (entry.type === "message" && message.role === "user") row = { role: "user", text: preview(textOf(message.content)) };
+      else if (entry.type === "message" && message.role === "assistant") {
+        const text = preview(textOf(message.content));
+        const tools = (Array.isArray(message.content) ? message.content.map(record) : []).filter((block) => block.type === "toolCall").map((block) => string(block.name) ?? "tool");
+        row = text ? { role: "assistant", text } : tools.length > 0 ? { role: "tool", text: tools.join(", ") } : undefined;
+      } else if (entry.type === "compaction") row = { role: "compaction", text: preview(string(entry.summary) ?? "") };
+      else if (entry.type === "branch_summary") row = { role: "branch_summary", text: preview(string(entry.summary) ?? "") };
+      if (row && id)
+        rows.push({
+          id,
+          ...row,
+          depth: childDepth,
+          onPath: path.has(id),
+          current: id === leafId,
+          ...(string(node.label) ? { label: string(node.label)! } : {}),
+        });
+      walk(node.children, childDepth);
+    });
+  };
+  walk(value, 0);
+  // the leaf is often a bookkeeping entry: mark the last shown entry on the path as where the chat is
+  if (!rows.some((row) => row.current)) {
+    const last = [...rows].reverse().find((row) => row.onPath);
+    if (last) last.current = true;
+  }
+  return rows;
 }
 
 /** omp's switches as `get_state` reports them; auto-retry is not in it (omp's default is on). */

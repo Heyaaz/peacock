@@ -79,6 +79,7 @@ import { useSendMessage } from "./use-send-message";
 import { SubagentsPanel, TurnStatusLine } from "./turn-status";
 import { ContextBar, ContextDialog } from "./context-usage";
 import { RuntimeQueue } from "./runtime-queue";
+import { SessionTreeDialog } from "./session-tree";
 import { useInbox } from "./use-inbox";
 import { useShellShortcuts } from "./use-shell-shortcuts";
 import { useSessionSync } from "./use-session-sync";
@@ -183,6 +184,13 @@ export default function App() {
     [backend, contextDialogFor],
   );
   const closeContextDialog = useCallback(() => setContextDialogFor(null), []);
+  // the session whose "대화 트리" is open (omp's chat)
+  const [treeDialogFor, setTreeDialogFor] = useState<string | null>(null);
+  const loadSessionTree = useCallback(
+    () => (treeDialogFor && backend.getSessionTree ? backend.getSessionTree(treeDialogFor) : Promise.resolve([])),
+    [backend, treeDialogFor],
+  );
+  const closeTreeDialog = useCallback(() => setTreeDialogFor(null), []);
 
   // Each open is its own request: a second prefill while the dialog is up
   // remounts it with the new values instead of being dropped.
@@ -996,12 +1004,14 @@ export default function App() {
     }
   }
 
-  async function forkSession(session: AgentSession): Promise<void> {
+  /** Forks a session, at one of omp's entries when `entryId` is given; `rethrow` lets a dialog show the failure. */
+  async function forkSession(session: AgentSession, entryId?: string, rethrow = false): Promise<void> {
     const navigationGeneration = navigationGenerationRef.current;
     try {
       const fork = await backend.forkSession({
         sourceSessionId: await resolveSessionId(session.id),
         title: t`${sessionTitleText(session.title)} (포크)`,
+        ...(entryId ? { entryId } : {}),
       });
       setSessions((current) => [
         fork,
@@ -1012,6 +1022,7 @@ export default function App() {
       setTranscripts((current) => cacheTranscript(current, fork.id, []));
       setSearchQuery("");
     } catch (error) {
+      if (rethrow) throw error;
       setAppError(error instanceof Error ? error.message : String(error));
     }
   }
@@ -1388,8 +1399,30 @@ export default function App() {
             terminalAgent={agentChat !== null || ompChat !== null}
             agentIcon={ompChat ? "chat" : "terminal"}
             {...(ompChat ? { subagentsOpen, setSubagentsOpen } : {})}
+            {...(selectedCapabilities?.sessionTree && backend.getSessionTree
+              ? { onOpenTree: () => setTreeDialogFor(selectedSession.id) }
+              : {})}
             surfaceToggle={!ompChat && (!agentChat || agentTerminalReachable)}
           />
+          {treeDialogFor === selectedSession.id && (
+            <SessionTreeDialog
+              load={loadSessionTree}
+              onClose={closeTreeDialog}
+              {...(remoteViewOnly
+                ? {}
+                : {
+                    ...(selectedCapabilities?.fork ? { onFork: (entry) => forkSession(selectedSession, entry.id, true) } : {}),
+                    ...(backend.branchSession
+                      ? {
+                          onRewrite: async (entry) => {
+                            const text = await backend.branchSession!(selectedSession.id, entry.id);
+                            if (text) prefillComposerDraft(selectedSession.id, text);
+                          },
+                        }
+                      : {}),
+                  })}
+            />
+          )}
 
           <div className="workspace-body">
             <section

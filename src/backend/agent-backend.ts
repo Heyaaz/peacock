@@ -28,6 +28,7 @@ import type {
   ContextBreakdown,
   ForkSessionInput,
   RuntimeModeId,
+  SessionTreeEntry,
   SessionUsageStats,
   SubagentMessage,
 } from "../../shared/agent-contract";
@@ -112,6 +113,9 @@ export interface AgentBackend {
   getSessionStats?(sessionId: string): Promise<SessionUsageStats>;
   /** Saves the conversation as HTML through a save dialog; null when cancelled (omp's chat). */
   exportSessionHtml?(sessionId: string): Promise<string | null>;
+  /** The conversation's tree and rewriting from an earlier message (`sessionTree` capability, omp's chat). */
+  getSessionTree?(sessionId: string): Promise<SessionTreeEntry[]>;
+  branchSession?(sessionId: string, entryId: string): Promise<string>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

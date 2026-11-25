@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -61,13 +61,14 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
   const spawn = vi.fn((command: string, args: readonly string[], spawnOptions: { cwd: string; env: Record<string, string> }) => {
     const child = new FakeRpcProcess();
     processes.push({ child, command, args, env: spawnOptions.env });
+    let openFile = sessionFile;
     child.respond((frame) => {
       if (typeof frame.id !== "string") return;
       const answer = (data?: unknown) =>
         queueMicrotask(() => child.emitFrames({ id: frame.id, type: "response", command: frame.type, success: true, ...(data === undefined ? {} : { data }) }));
       if (frame.type === "get_state")
         answer({
-          sessionFile,
+          sessionFile: openFile,
           sessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3",
           model: { provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash" },
           thinkingLevel: "low",
@@ -124,6 +125,34 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "fork") {
+        openFile = path.join(workspace, `fork-${String(frame.entryId ?? "end")}.jsonl`);
+        answer({ cancelled: false });
+      } else if (frame.type === "branch") {
+        openFile = path.join(workspace, "branch.jsonl");
+        answer({ text: "rewrite me", cancelled: false });
+      } else if (frame.type === "get_tree")
+        answer({
+          leafId: "c2",
+          tree: [
+            {
+              entry: { type: "model_change", id: "m0", parentId: null },
+              children: [
+                {
+                  entry: { type: "message", id: "u1", parentId: "m0", message: { role: "user", content: "first question" } },
+                  children: [
+                    { entry: { type: "message", id: "a1", parentId: "u1", message: { role: "assistant", content: [{ type: "text", text: "old answer" }] } }, children: [] },
+                    {
+                      entry: { type: "message", id: "a2", parentId: "u1", message: { role: "assistant", content: [{ type: "toolCall", name: "bash" }] } },
+                      label: "retry",
+                      children: [{ entry: { type: "custom", id: "c2", parentId: "a2" }, children: [] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
       else if (frame.type === "export_html") answer({ path: frame.outputPath });
       else if (frame.type === "get_session_stats")
         answer({
@@ -200,7 +229,7 @@ describe("OmpRpcController", () => {
     });
     expect(session.id).toMatch(/^omp-[0-9a-f-]{36}$/u);
     expect(runsInTerminal(session)).toBe(false);
-    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: true, fork: false, git: false });
+    expect(session.capabilities).toMatchObject({ send: true, cancel: true, streaming: true, goal: true, fork: true, git: false });
     expect(context.claim).toHaveBeenCalledWith(session.id);
     expect(context.events).toEqual([{ type: "session.created", session }]);
     expect(await context.controller.listSessions()).toEqual([session]);
@@ -896,5 +925,41 @@ describe("OmpRpcController HTML export", () => {
     const session = await newChat(context);
     await expect(context.controller.exportSessionHtml(session.id, "/tmp/out/chat.html")).resolves.toBe("/tmp/out/chat.html");
     expect(context.processes[0]!.child.sent("export_html")[0]).toMatchObject({ outputPath: "/tmp/out/chat.html" });
+  });
+});
+
+describe("OmpRpcController tree, fork and branch", () => {
+  it("flattens omp's tree with the current branch first and marked", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.getSessionTree(session.id)).resolves.toEqual([
+      { id: "u1", role: "user", text: "first question", depth: 0, onPath: true, current: false },
+      { id: "a2", role: "tool", text: "bash", depth: 0, onPath: true, current: true, label: "retry" },
+      { id: "a1", role: "assistant", text: "old answer", depth: 1, onPath: false, current: false },
+    ]);
+  });
+
+  it("forks into a new chat with an omp of its own, and rewrites from a message in place", async () => {
+    const context = setup();
+    const source = await newChat(context, "source");
+    await context.controller.refreshSessionContext(source.id);
+    writeFileSync(context.sessionFile, "{}\n");
+    const fork = await context.controller.forkSession({ sourceSessionId: source.id, entryId: "u1" });
+    expect(fork).toMatchObject({ title: "source (포크)", parentId: source.id, runtime: "omp-rpc" });
+    expect(context.processes).toHaveLength(2);
+    expect(context.processes[1]!.args).toContain("--resume");
+    expect(context.processes[1]!.child.sent("fork")[0]).toMatchObject({ entryId: "u1" });
+    expect(context.store.get(fork.id)?.sessionFile).toBe(path.join(context.workspace, "fork-u1.jsonl"));
+    expect(context.store.get(source.id)?.sessionFile).toBe(context.sessionFile);
+    expect(context.events).toContainEqual({ type: "session.created", session: expect.objectContaining({ id: fork.id }) });
+    await expect(context.controller.branchSession(source.id, "u1")).resolves.toBe("rewrite me");
+    expect(context.store.get(source.id)?.sessionFile).toBe(path.join(context.workspace, "branch.jsonl"));
+  });
+
+  it("drops the new chat when omp cannot fork", async () => {
+    const context = setup();
+    const source = await newChat(context, "source");
+    await expect(context.controller.forkSession({ sourceSessionId: source.id })).rejects.toThrow("nothing to fork");
+    expect(context.store.list()).toHaveLength(1);
   });
 });
