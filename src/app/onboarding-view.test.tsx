@@ -117,7 +117,7 @@ describe("OnboardingView", () => {
     await click(container, "GJC");
     await click(container, "이 에이전트로 시작");
     expect(fake.bridge.chooseAgent).toHaveBeenCalledExactlyOnceWith("gjc");
-    expect(container.textContent).toContain("Peacock을 쓰려면 GJC가 필요합니다");
+    expect(container.textContent).toContain("GJC를 설치할까요?");
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -133,13 +133,13 @@ describe("OnboardingView", () => {
   it("takes a Mac without GJC from install through an API-key sign-in to the first conversation", async () => {
     const fake = fakeBridge();
     const { container, onClose, onStartConversation } = await render(fake.bridge, "install");
-    expect(container.textContent).toContain("Peacock을 쓰려면 GJC가 필요합니다");
+    expect(container.textContent).toContain("GJC를 설치할까요?");
 
     await click(container, "GJC 설치");
     fake.emit({ type: "install-progress", receivedBytes: 70_000_000, totalBytes: 140_000_000 });
     expect(container.textContent).toContain("받는 중 70MB / 140MB");
     await act(async () => fake.install.resolve({ version: "0.19.2" }));
-    expect(container.textContent).toContain("어떤 AI를 쓰시나요?");
+    expect(container.textContent).toContain("GJC에서 어떤 AI를 쓸까요?");
 
     await click(container, "Z.AI GLM Coding Plan");
     expect(fake.bridge.signIn).toHaveBeenCalledWith("zai");
@@ -179,7 +179,7 @@ describe("OnboardingView", () => {
     expect(fake.bridge.signIn).toHaveBeenCalledTimes(2);
     await click(container, "다른 AI 고르기");
     expect(fake.bridge.cancelSignIn).toHaveBeenCalled();
-    expect(container.textContent).toContain("어떤 AI를 쓰시나요?");
+    expect(container.textContent).toContain("GJC에서 어떤 AI를 쓸까요?");
   });
 
   it("lets someone who sets GJC up from the terminal leave for good", async () => {
@@ -193,7 +193,7 @@ describe("OnboardingView", () => {
   it("reopens later as a plain sign-in that closes without ending first-run setup", async () => {
     const fake = fakeBridge();
     const { container, onClose, onStartConversation } = await render(fake.bridge, "sign-in", true);
-    expect(container.textContent).toContain("어떤 AI를 쓰시나요?");
+    expect(container.textContent).toContain("GJC에서 어떤 AI를 쓸까요?");
     await click(container, "닫기");
     expect(fake.bridge.cancelSignIn).toHaveBeenCalled();
     expect(fake.bridge.dismiss).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe("OnboardingView", () => {
     expect(signup?.target).toBe("_blank");
     expect(fake.bridge.signIn).not.toHaveBeenCalled();
     await click(container, "가입했어요, 로그인할게요");
-    expect(container.textContent).toContain("어떤 AI를 쓰시나요?");
+    expect(container.textContent).toContain("GJC에서 어떤 AI를 쓸까요?");
   });
 
   it("only waits while a browser sign-in is running, with the paste-code field folded away", async () => {

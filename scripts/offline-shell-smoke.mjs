@@ -77,9 +77,9 @@ app.whenReady().then(async () => {
         return {
           shellMounted: Boolean(document.querySelector('.app-shell')),
           offlineScreenRendered: Boolean(document.querySelector('.workspace--offline')),
-          showsFailureHeadline: text.includes('GJC runtime에 연결되지 않았습니다'),
+          showsFailureHeadline: text.includes('GJC에 연결하지 못했습니다'),
           showsRuntimeDetail: text.includes(${JSON.stringify(FAILURE_DETAIL)}),
-          hasReconnectAction: Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.trim() === '재연결'),
+          hasReconnectAction: Array.from(document.querySelectorAll('button')).some((button) => button.textContent?.trim() === '다시 연결'),
           fabricatedSessionRows: document.querySelectorAll('.session-row').length,
           claimsConnected: text.includes('연결됨'),
           rendersComposer: Boolean(document.querySelector('.composer textarea')),

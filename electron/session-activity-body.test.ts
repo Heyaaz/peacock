@@ -39,15 +39,15 @@ describe("sessionActivityBody", () => {
     // sessions to open.
     expect(
       sessionActivityBody({ title: "gjc-bot", category: "completed" }),
-    ).toBe("gjc-bot 작업이 완료되었습니다.");
+    ).toBe("gjc-bot: 작업을 마쳤습니다.");
   });
 
   it("names the session for every category", () => {
     const cases = [
-      ["failed", "moa 작업이 실패했습니다."],
-      ["permission", "moa 승인 또는 질문을 기다립니다."],
-      ["recovered", "moa 연결이 복구되었습니다."],
-      ["message", "moa 새 응답이 도착했습니다."],
+      ["failed", "moa: 오류로 멈췄습니다."],
+      ["permission", "moa: 승인이나 답을 기다립니다."],
+      ["recovered", "moa: 다시 연결됐습니다."],
+      ["message", "moa: 새 응답이 왔습니다."],
     ] as const;
     for (const [category, expected] of cases)
       expect(sessionActivityBody({ title: "moa", category })).toBe(expected);
@@ -55,17 +55,17 @@ describe("sessionActivityBody", () => {
 
   it("falls back when a session has no title yet", () => {
     expect(sessionActivityBody({ title: "   ", category: "completed" })).toBe(
-      "세션 작업이 완료되었습니다.",
+      "세션: 작업을 마쳤습니다.",
     );
   });
 
   it("writes the body in the resolved English language", () => {
     expect(
       sessionActivityBody({ title: "gjc-bot", category: "completed" }, "en"),
-    ).toBe("gjc-bot completed.");
+    ).toBe("gjc-bot is done.");
     expect(
       sessionActivityBody({ title: "  ", category: "permission" }, "en"),
-    ).toBe("Session is waiting for approval or an answer.");
+    ).toBe("Session needs your approval or an answer.");
   });
 });
 

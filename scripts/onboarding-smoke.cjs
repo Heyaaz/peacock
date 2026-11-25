@@ -246,7 +246,7 @@ function drive() {
     step('dialog', await run(`({
       agent: document.querySelector('.new-session-dialog input[name="session-agent"]:checked').value,
       screen: document.querySelector('.new-session-dialog .session-kind-switch [aria-pressed="true"]')?.textContent,
-      permissionMode: document.querySelector('.new-session-dialog select[aria-label="권한 모드"]')?.value,
+      permissionMode: document.querySelector('.new-session-dialog button.dropdown-trigger[aria-label="승인 방식"] > span')?.textContent,
     })`))
     const report = await run('window.agentControlDesktop.settings.checkEnvironment()')
     const gjcRows = report.rows.filter((row) => ['bun', 'gjc', 'provider-login', 'model-preset'].includes(row.id))
@@ -335,7 +335,7 @@ function drive() {
       assert(await pick('GJC'), 'choose GJC')
       assert(await click('이 에이전트로 시작'), 'start with GJC')
       await until(
-        async () => (await text()).includes('Peacock을 쓰려면 GJC가 필요합니다'),
+        async () => (await text()).includes('GJC를 설치할까요?'),
         'install step after choosing GJC',
       )
       step('install step shown', await text())
@@ -344,7 +344,7 @@ function drive() {
 
       assert(await click('GJC 설치'), 'install button')
       await until(
-        async () => (await text()).includes('어떤 AI를 쓰시나요?'),
+        async () => (await text()).includes('GJC에서 어떤 AI를 쓸까요?'),
         'provider list after install',
         real ? 480_000 : 15_000,
       )
@@ -380,7 +380,7 @@ function drive() {
         await shot('3-real-sign-in')
         assert(await click('다른 AI 고르기'), 'cancel the real login')
         await until(
-          async () => (await text()).includes('어떤 AI를 쓰시나요?'),
+          async () => (await text()).includes('GJC에서 어떤 AI를 쓸까요?'),
           'back to providers after cancel',
         )
         step('real login cancelled')

@@ -6235,12 +6235,24 @@ button.diff-line-number:hover {
   color: var(--text-tertiary);
   font-size: 10.5px;
 }
-.new-session-dialog > label {
+.new-session-dialog > label,
+.new-session-dialog > .new-session-field {
   display: grid;
   gap: 7px;
   margin-top: 14px;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 12px;
+}
+.new-session-field .dropdown {
+  width: 100%;
+}
+.new-session-field .dropdown-trigger {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  background: var(--bg-input-strong);
+  border-radius: 8px;
 }
 .new-session-dialog > label > input {
   width: 100%;

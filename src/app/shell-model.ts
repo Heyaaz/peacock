@@ -11,7 +11,7 @@ import type {
 import type { MessageDeliverySessionState } from "../message-delivery";
 import { t } from "../i18n";
 import type { InvalidLinkReason } from "../../shared/settings-ipc";
-import { agentCatalogEntry } from "../../shared/agent-catalog";
+import { agentCatalogEntry, sessionAgentKind } from "../../shared/agent-catalog";
 
 export type CenterView =
   | "conversation"
@@ -259,8 +259,8 @@ export function syncAppBadge(
  * label and the empty conversation call it. Hermes is its own runtime, named as such.
  */
 export function sessionAgentName(session: Pick<AgentSession, "runtime" | "agentKind">): string {
-  if (session.runtime === "hermes" && !session.agentKind) return "Hermes";
-  const kind = session.agentKind ?? (session.runtime === "omp-rpc" ? "omp" : session.runtime === "herdr" ? "shell" : "gjc");
+  const kind = sessionAgentKind(session);
+  if (!kind) return session.runtime === "hermes" ? "Hermes" : "GJC";
   return kind === "shell" ? t("셸") : agentCatalogEntry(kind).name;
 }
 

@@ -18,6 +18,7 @@ export function endWorkflowMessage(skill: string): string {
  */
 const ENGLISH: Readonly<Record<string, string>> = {
   "세션을 삭제할까요?": "Delete this session?",
+  "셸": "Shell",
   "omp에서 이 계정을 로그아웃할까요?": "Sign this account out of omp?",
   "omp가 저장한 자격 증명을 지웁니다.": "Removes the credential omp stored.",
   "로그아웃": "Sign out",

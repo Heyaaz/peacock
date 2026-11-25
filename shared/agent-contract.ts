@@ -1679,27 +1679,27 @@ export function sessionActivityBody(event: {
   if (language === "en") {
     switch (event.category) {
       case "permission":
-        return `${name} is waiting for approval or an answer.`;
+        return `${name} needs your approval or an answer.`;
       case "failed":
-        return `${name} failed.`;
+        return `${name} stopped with an error.`;
       case "recovered":
-        return `${name} reconnected.`;
+        return `${name} is connected again.`;
       case "completed":
-        return `${name} completed.`;
+        return `${name} is done.`;
       default:
-        return `${name} sent a new response.`;
+        return `${name} has a new reply.`;
     }
   }
   switch (event.category) {
     case "permission":
-      return `${name} 승인 또는 질문을 기다립니다.`;
+      return `${name}: 승인이나 답을 기다립니다.`;
     case "failed":
-      return `${name} 작업이 실패했습니다.`;
+      return `${name}: 오류로 멈췄습니다.`;
     case "recovered":
-      return `${name} 연결이 복구되었습니다.`;
+      return `${name}: 다시 연결됐습니다.`;
     case "completed":
-      return `${name} 작업이 완료되었습니다.`;
+      return `${name}: 작업을 마쳤습니다.`;
     default:
-      return `${name} 새 응답이 도착했습니다.`;
+      return `${name}: 새 응답이 왔습니다.`;
   }
 }

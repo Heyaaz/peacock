@@ -130,8 +130,10 @@ describe("shell rendering while the runtime is unreachable", () => {
 
   it("renders the failure branch ahead of the session branch", () => {
     // Order matters: a stale selected session would otherwise win and paint a normal
-    // conversation over a runtime that is gone.
-    const offline = shellSource.indexOf("runtimeUnavailable ? (");
+    // conversation over a runtime that is gone. Only GJC's sessions depend on GJC: one of
+    // another agent stays open.
+    expect(shellSource).toContain('runtimeUnavailable && (!selectedSession || selectedSession.runtime === "gjc")');
+    const offline = shellSource.indexOf("gjcOffline ? (");
     const selected = shellSource.indexOf("selectedSession ? (");
     expect(offline).toBeGreaterThan(-1);
     expect(selected).toBeGreaterThan(-1);

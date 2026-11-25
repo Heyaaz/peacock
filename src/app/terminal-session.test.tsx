@@ -51,6 +51,10 @@ function row(id: string, overrides: Partial<AgentSession> = {}): AgentSession {
   };
 }
 
+/** What the new-session dialog's approval dropdown shows. */
+const modeLabel = (node: HTMLElement): string | null | undefined =>
+  node.querySelector('button.dropdown-trigger[aria-label="승인 방식"] > span')?.textContent;
+
 describe("new session dialog", () => {
   const submit = (node: HTMLElement) =>
     act(async () =>
@@ -135,7 +139,7 @@ describe("new session dialog", () => {
     await act(async () => undefined);
     Reflect.deleteProperty(window, "agentControlDesktop");
     expect(node.querySelector('[aria-pressed="true"]')?.textContent).toBe("채팅");
-    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')?.options[0]?.textContent).toBe("기본: 매번 묻기");
+    expect(modeLabel(node)).toBe("기본: 매번 묻기");
     await submit(node);
     expect(onCreate).toHaveBeenCalledExactlyOnceWith({
       title: "repo",
@@ -148,7 +152,7 @@ describe("new session dialog", () => {
     // the terminal screen keeps omp's own setting
     const terminalButton = [...node.querySelectorAll("button")].find((button) => button.textContent === "터미널")!;
     await act(async () => terminalButton.click());
-    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')?.options[0]?.textContent).toBe("에이전트 설정 따름");
+    expect(modeLabel(node)).toBe("에이전트 설정 따름");
   });
 
   it("keeps a handed-over request on a GJC session whatever was chosen before", async () => {
@@ -209,12 +213,11 @@ describe("terminal agents in the new session dialog", () => {
     act(async () =>
       node.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
     );
-  const select = (node: HTMLElement, value: string) =>
-    act(async () => {
-      const field = node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!;
-      field.value = value;
-      field.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+  const select = async (node: HTMLElement, label: string) => {
+    await act(async () => node.querySelector<HTMLButtonElement>('button.dropdown-trigger[aria-label="승인 방식"]')!.click());
+    const option = [...node.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((button) => button.textContent === label)!;
+    await act(async () => option.click());
+  };
 
   it("starts on the first installed of Claude Code, omp, codex and GJC, with its screen and permission mode", async () => {
     const onCreate = vi.fn<(input: NewSessionInput) => Promise<void>>().mockResolvedValue();
@@ -239,7 +242,7 @@ describe("terminal agents in the new session dialog", () => {
     expect(node.textContent).toContain("설치되어 있지 않습니다");
     // Claude Code has only its terminal: no screen switch
     expect(node.querySelector(".session-kind-switch")).toBeNull();
-    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!.value).toBe("");
+    expect(modeLabel(node)).toBe("에이전트 설정 따름");
     await select(node, "plan");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
@@ -268,8 +271,8 @@ describe("terminal agents in the new session dialog", () => {
       }),
     );
     await act(async () => undefined);
-    expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!.value).toBe("default");
-    await select(node, "");
+    expect(modeLabel(node)).toBe("default");
+    await select(node, "에이전트 설정 따름");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
     expect(onCreate.mock.calls[0]![0]).toMatchObject({ agentKind: "claude", surface: "terminal", launch: { model: "haiku" } });

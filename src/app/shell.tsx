@@ -509,6 +509,9 @@ export default function App() {
   // an omp chat (design §10) is a conversation like GJC's, with omp's own features: GJC's reads
   // (goal, subagents, git) follow what the session says it offers
   const ompChat = selectedSession?.runtime === "omp-rpc" ? selectedSession : null;
+  // GJC down takes over the window only where GJC is needed: with nothing selected, or on a
+  // GJC session. Another agent's session stays open, its runtime is not GJC's.
+  const gjcOffline = runtimeUnavailable && (!selectedSession || selectedSession.runtime === "gjc");
   const selectedCapabilities = selectedSession ? capabilitiesOf(selectedSession) : null;
   const selectedSessionId = terminalRuntime || !selectedCapabilities?.goal ? undefined : selectedSession?.id;
   const gitSessionId = terminalRuntime || !selectedCapabilities?.git ? undefined : selectedSession?.id;
@@ -1297,15 +1300,16 @@ export default function App() {
         onOpenParallelGroup={openParallelGroup}
       />
 
-      {runtimeUnavailable ? (
+      {gjcOffline ? (
         <main className="workspace workspace--empty workspace--offline">
           <span className="workspace-empty__mark">
             <PeacockMark />
           </span>
-          <h1>{t("GJC runtime에 연결되지 않았습니다")}</h1>
-          <p className="workspace-offline__detail">{connection.detail}</p>
+          <h1>{t("GJC에 연결하지 못했습니다")}</h1>
+          {connection.detail && <p className="workspace-offline__detail">{connection.detail}</p>}
           <p className="workspace-offline__hint">
-            {t("연결되지 않은 동안에는 세션 목록과 대화 내용을 표시할 수 없습니다.")} </p>
+            {t("GJC 세션은 다시 연결될 때까지 열 수 없습니다. 다른 에이전트는 그대로 쓸 수 있습니다.")}
+          </p>
           <div className="workspace-offline__actions">
             <button
               className="button-primary"
@@ -1314,14 +1318,14 @@ export default function App() {
               onClick={() => void reconnect()}
             >
               {reconnecting ? <span className="mini-spinner" /> : null}
-              {reconnecting ? t("재연결 중") : t("재연결")}
+              {reconnecting ? t("다시 연결하는 중") : t("다시 연결")}
             </button>
-            <button
-              className="button-secondary"
-              type="button"
-              onClick={openSettings}
-            >
-              {t("설정 열기")} </button>
+            <button className="button-secondary" type="button" onClick={openNewSession}>
+              <Plus size={15} aria-hidden="true" /> {t("새 세션")}
+            </button>
+            <button className="button-secondary" type="button" onClick={openSettings}>
+              {t("설정")}
+            </button>
           </div>
         </main>
       ) : centerView === "inbox" ? (

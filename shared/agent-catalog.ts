@@ -231,6 +231,18 @@ export function sessionRuntimeFor(id: AgentKindId, surface: SessionSurface): "gj
   return surface === "chat" && entry.chatRuntime ? entry.chatRuntime : "herdr";
 }
 
+/**
+ * The agent a session talks to, from its runtime when it names none: a herdr session without
+ * one is a shell, an omp RPC chat is omp's. Hermes is no agent of the catalog.
+ */
+export function sessionAgentKind(session: { runtime?: string; agentKind?: AgentKindId }): AgentKindId | undefined {
+  if (session.agentKind) return session.agentKind;
+  if (session.runtime === "omp-rpc") return "omp";
+  if (session.runtime === "herdr") return "shell";
+  if (session.runtime === "gjc") return "gjc";
+  return undefined;
+}
+
 /** Whether sessions of this agent can be shown on the given screen. */
 export function agentSupportsSurface(
   id: AgentKindId,

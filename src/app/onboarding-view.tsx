@@ -181,7 +181,7 @@ export function OnboardingView({
           <>
             <h1 id="onboarding-title">{t("어떤 에이전트로 시작할까요?")}</h1>
             <p className="onboarding-lead">
-              {t("이 Mac에서 찾은 에이전트입니다. 고른 에이전트로 새 세션이 열리고, 설정에서 언제든 바꿀 수 있습니다.")}
+              {t("이 Mac에서 찾은 에이전트입니다. 새 세션은 고른 에이전트로 열리고, 나중에 설정에서 바꿀 수 있습니다.")}
             </p>
             {stage.agents === null ? (
               <p className="onboarding-hint" role="status">
@@ -207,8 +207,8 @@ export function OnboardingView({
                             {agent.installed
                               ? (agent.version ?? t("설치됨"))
                               : agent.id === "gjc"
-                                ? t("설치되어 있지 않습니다 · 고르면 설치합니다")
-                                : (agent.reason ?? t("사용할 수 없음"))}
+                                ? t("설치 안 됨 · 고르면 여기서 설치합니다")
+                                : (agent.reason ?? t("이 Mac에 없음"))}
                           </small>
                         </span>
                         {stage.selected === agent.id && <Check size={15} aria-hidden="true" />}
@@ -236,9 +236,9 @@ export function OnboardingView({
 
         {stage.stage === "install" && (
           <>
-            <h1 id="onboarding-title">{t("Peacock을 쓰려면 GJC가 필요합니다")}</h1>
+            <h1 id="onboarding-title">{t("GJC를 설치할까요?")}</h1>
             <p className="onboarding-lead">
-              {t("GJC는 Peacock이 AI와 일할 때 쓰는 엔진입니다. 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다.")}
+              {t("GJC 공식 배포본(약 140MB)을 받아 이 Mac에 설치합니다. GJC가 없어도 다른 에이전트는 그대로 쓸 수 있습니다.")}
             </p>
             {stage.running ? (
               <div className="onboarding-progress" role="status">
@@ -265,6 +265,15 @@ export function OnboardingView({
                 <button className="button-primary onboarding-primary" type="button" onClick={install}>
                   {stage.error ? t("다시 시도") : t("GJC 설치")}
                 </button>
+                {!reentry && (
+                  <button
+                    className="onboarding-text-button"
+                    type="button"
+                    onClick={() => setStage({ stage: "agent", agents: null, busy: false })}
+                  >
+                    {t("다른 에이전트 고르기")}
+                  </button>
+                )}
               </>
             )}
           </>
@@ -272,8 +281,8 @@ export function OnboardingView({
 
         {stage.stage === "choose" && (
           <>
-            <h1 id="onboarding-title">{t("어떤 AI를 쓰시나요?")}</h1>
-            <p className="onboarding-lead">{t("이미 쓰고 있는 구독 계정이나 API 키로 로그인하세요.")}</p>
+            <h1 id="onboarding-title">{t("GJC에서 어떤 AI를 쓸까요?")}</h1>
+            <p className="onboarding-lead">{t("이미 쓰는 구독 계정이나 API 키로 로그인하세요.")}</p>
             <ul className="onboarding-providers">
               {SIGN_IN_PROVIDERS.map((provider) => (
                 <li key={provider.id}>

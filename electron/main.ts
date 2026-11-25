@@ -110,6 +110,7 @@ import {
   type UserDataMigration,
 } from "./user-data-migration.js";
 import type { SystemInfo } from "../shared/settings-ipc.js";
+import { agentCatalogEntry, sessionAgentKind } from "../shared/agent-catalog.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const {
@@ -306,8 +307,11 @@ function broadcastAgentEvent(event: AgentEvent): void {
   if (!preference.enabled) return;
   if (!Notification.isSupported()) return;
   const delivery = notificationDelivery(preference);
+  // the agent in the title: with several agents at work, who finished matters as much as what
+  const tracked = desktopIntegration.state().sessions.find((session) => session.id === event.sessionId);
+  const agent = tracked ? sessionAgentKind(tracked) : undefined;
   const notification = new Notification({
-    title: "Peacock",
+    title: agent ? (agent === "shell" ? hostText("셸") : agentCatalogEntry(agent).name) : "Peacock",
     body: sessionActivityBody(event, settingsStore.get().language),
     silent: delivery.silent,
     ...(delivery.sound ? { sound: delivery.sound } : {}),

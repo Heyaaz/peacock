@@ -27,6 +27,7 @@ import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { t } from "../i18n";
 import { directoryName, sessionTitleText } from "./format";
+import { Dropdown } from "./primitives";
 
 
 /** What a new session opens: GJC in the app, or a terminal for any other agent. */
@@ -90,17 +91,27 @@ export function NewSessionDialog({
 }: NewSessionDialogProps) {
   const defaultTitle = t("새 세션");
   const terminalBridge = window.agentControlDesktop?.terminal;
-  // A handed-over request is GJC work; otherwise any agent installed here can be picked
-  // when the backend runs terminal sessions (not a remote device, not the sample data).
-  // The last choice only comes first.
-  const canPick = !prefill && terminalSessions && typeof terminalBridge?.listAgents === "function";
+  // A request handed over with a prompt, screenshots or a worktree is GJC's: only GJC takes
+  // them. A folder alone (a project's 새 세션) opens in any agent installed here, when the
+  // backend runs terminal sessions (not a remote device, not the sample data). The last
+  // choice comes first.
+  const gjcOnly = Boolean(
+    prefill &&
+      (prefill.prompt?.trim() ||
+        (prefill.images?.length ?? 0) > 0 ||
+        prefill.isolation === "worktree" ||
+        prefill.worktreeBranch ||
+        prefill.workLink ||
+        prefill.mainCheckout),
+  );
+  const canPick = !gjcOnly && terminalSessions && typeof terminalBridge?.listAgents === "function";
   const [agents, setAgents] = useState<AgentAvailability[]>([]);
-  const [agentKind, setAgentKind] = useState<AgentKindId>(prefill || !canPick ? "gjc" : (choice?.agentKind ?? "gjc"));
+  const [agentKind, setAgentKind] = useState<AgentKindId>(!canPick ? "gjc" : (choice?.agentKind ?? "gjc"));
   const [surface, setSurface] = useState<SessionSurface>(choice?.surface ?? "chat");
   const [permissionMode, setPermissionMode] = useState<string>(
     choice ? (agentDefaults[choice.agentKind]?.launch?.permissionMode ?? "") : "",
   );
-  const terminal = agentKind !== "gjc" && !prefill;
+  const terminal = agentKind !== "gjc" && !gjcOnly;
   const [title, setTitle] = useState(prefill?.title || defaultTitle);
   const [workspace, setWorkspace] = useState(
     prefill?.workspace || defaultWorkspace,
@@ -258,7 +269,7 @@ export function NewSessionDialog({
       initialPrompt: prefill?.prompt?.trim() || undefined,
       initialImages: images.length > 0 ? images : undefined,
       // a handed-over request is GJC work, not a choice of what new sessions open
-      ...(canPick ? { remember: true } : {}),
+      ...(canPick && !prefill ? { remember: true } : {}),
     });
   }
 
@@ -277,9 +288,11 @@ export function NewSessionDialog({
           <div>
             <h2>{t("새 세션")}</h2>
             <p>
-              {terminal
-                ? t`${agentKind === "shell" ? t("셸") : agentEntry.name}을(를) 실행할 폴더를 선택하세요.`
-                : t("Peacock이 확인하고 수정할 프로젝트를 선택하세요.")}
+              {gjcOnly
+                ? t("넘겨받은 요청이라 GJC로 엽니다. 프롬프트, 스크린샷, 작업 복사본은 GJC만 받습니다.")
+                : canPick
+                  ? t("에이전트와 작업할 폴더를 고르세요.")
+                  : t("여기서는 GJC 세션만 시작할 수 있습니다. 작업할 폴더를 고르세요.")}
             </p>
           </div>
           <button className="icon-button" type="button" onClick={cancel}>
@@ -336,22 +349,19 @@ export function NewSessionDialog({
           />
         </label>
         {terminal && modes.length > 0 && (
-          <label>
-            <span>{t("권한 모드")}</span>
-            <select
-              aria-label={t("권한 모드")}
+          <div className="new-session-field">
+            <span>{t("승인 방식")}</span>
+            <Dropdown
+              ariaLabel={t("승인 방식")}
               value={permissionMode}
-              onChange={(event) => setPermissionMode(event.target.value)}
-            >
-              {/* omp's chat asks before each tool unless told otherwise: its cards are how it asks (design §10) */}
-              <option value="">{agentEntry.chatRuntime && surface === "chat" ? t("기본: 매번 묻기") : t("에이전트 설정 따름")}</option>
-              {modes.map((mode) => (
-                <option key={mode} value={mode}>
-                  {mode}
-                </option>
-              ))}
-            </select>
-          </label>
+              options={[
+                // omp's chat asks before each tool unless told otherwise: its cards are how it asks (design §10)
+                { value: "", label: agentEntry.chatRuntime && surface === "chat" ? t("기본: 매번 묻기") : t("에이전트 설정 따름") },
+                ...modes.map((mode) => ({ value: mode, label: mode })),
+              ]}
+              onChange={setPermissionMode}
+            />
+          </div>
         )}
         {showIsolation && (
           <fieldset className="isolation-options">
