@@ -9,6 +9,19 @@ import { DiffView } from "./primitives";
 import { summarizeTool } from "./tool-summary";
 import { t } from "../i18n";
 import { permissionOptionLabel } from "../../shared/permission-options";
+import type { PermissionOption } from "../../shared/agent-contract";
+
+/** A choice's label in the window's language; a grant names the folder it covers. */
+function permissionChoiceLabel(option: PermissionOption): string {
+  const grant = option.grant;
+  if (grant && (option.kind === "allow_session" || option.kind === "allow_always")) {
+    const always = option.kind === "allow_always";
+    if (grant.scope === "folder") return always ? t`폴더 항상 허용: ${grant.target ?? ""}` : t`이 세션 동안 폴더 허용: ${grant.target ?? ""}`;
+    if (grant.files) return always ? t("이 파일 항상 허용") : t("이 세션 동안 이 파일 허용");
+    return always ? t("이 대상 항상 허용") : t("이 세션 동안 이 대상 허용");
+  }
+  return t(permissionOptionLabel(option));
+}
 
 export interface ToolCardProps {
   tool: ToolActivity;
@@ -480,12 +493,12 @@ export function ToolCard({
                   <button
                     key={option.optionId}
                     type="button"
-                    className={reject ? "button-secondary" : "button-primary"}
+                    className={option.kind === "allow_once" || (!reject && !allowOnce) ? "button-primary" : "button-secondary"}
                     onClick={() =>
                       onResolve(tool.id, option.optionId, reject ? rejectComment.trim() || undefined : undefined)
                     }
                   >
-                    {t(permissionOptionLabel(option))}
+                    {permissionChoiceLabel(option)}
                   </button>
                 );
               })}

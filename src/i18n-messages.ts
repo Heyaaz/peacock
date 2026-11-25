@@ -1346,4 +1346,11 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "도구": "Tool",
   "프로필": "Profiles",
   "프로필이나 모델 이름, provider로 찾기": "Search profiles, models or providers",
+  "이 세션 동안 허용": "Allow for this session",
+  "폴더 항상 허용: {0}": "Always allow folder: {0}",
+  "이 세션 동안 폴더 허용: {0}": "Allow folder for this session: {0}",
+  "이 파일 항상 허용": "Always allow this file",
+  "이 세션 동안 이 파일 허용": "Allow this file for this session",
+  "이 대상 항상 허용": "Always allow this target",
+  "이 세션 동안 이 대상 허용": "Allow this target for this session",
 };

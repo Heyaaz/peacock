@@ -38,12 +38,29 @@ describe("approval prompts", () => {
     expect(pairApproval("not an approval", calls, new Set())).toBeUndefined();
   });
 
-  it("offers this call and Deny of omp's options, and reads the tool and detail", () => {
+  it("offers this call, the tool for this session, omp's grants and Deny, and reads the tool and detail", () => {
     expect(approvalChoices(["Approve", "Approve bash for this session", "Deny"])).toEqual([
       { option: { optionId: "allow_once", kind: "allow_once", name: "Allow once" }, label: "Approve" },
+      { option: { optionId: "allow_session", kind: "allow_session", name: "Allow for this session" }, label: "Approve bash for this session" },
       { option: { optionId: "reject_once", kind: "reject_once", name: "Reject" }, label: "Deny" },
     ]);
-    expect(approvalChoices(["Approve Directory: src", "Always Approve Directory: src", "Approve Once", "Deny"]).map((choice) => choice.label)).toEqual(["Approve Once", "Deny"]);
+    // always-ask-cached: grants first, then this call ("Approve Once"), then Deny
+    const cached = approvalChoices(["Approve Directory: src", "Approve File", "Always Approve Directory: src", "Always Approve File", "Approve Once", "Deny"]);
+    expect(cached.map((choice) => [choice.label, choice.option.optionId, choice.option.kind, choice.option.grant])).toEqual([
+      ["Approve Directory: src", "grant-folder", "allow_session", { scope: "folder", target: "src" }],
+      ["Approve File", "grant-target", "allow_session", { scope: "target", files: true }],
+      ["Always Approve Directory: src", "grant-folder-always", "allow_always", { scope: "folder", target: "src" }],
+      ["Always Approve File", "grant-target-always", "allow_always", { scope: "target", files: true }],
+      ["Approve Once", "allow_once", "allow_once", undefined],
+      ["Deny", "reject_once", "reject_once", undefined],
+    ]);
+    // a target grant that is not a file is "Approve" beside "Approve Once"
+    expect(approvalChoices(["Approve", "Always Approve", "Approve Once", "Deny"]).map((choice) => choice.option.optionId)).toEqual([
+      "grant-target",
+      "grant-target-always",
+      "allow_once",
+      "reject_once",
+    ]);
     expect(approvalToolName("Allow tool: mcp__github_get_issue\nOrigin: MCP server tool")).toBe("mcp__github_get_issue");
     expect(approvalDetail("Allow tool: bash\nReason: writes\nCommand: rm x")).toBe("Reason: writes · Command: rm x");
   });

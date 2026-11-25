@@ -781,12 +781,18 @@ export interface ToolImage {
 }
 
 export type PermissionOptionKind =
-  "allow_once" | "allow_always" | "reject_once" | "reject_always";
+  "allow_once" | "allow_session" | "allow_always" | "reject_once" | "reject_always";
 
 export interface PermissionOption {
   optionId: string;
   kind: PermissionOptionKind;
   name: string;
+  /**
+   * What an approval beyond this call covers, where the runtime grants by target (omp's
+   * `always-ask-cached`): the folder around the call, or its exact targets. Absent for a
+   * grant of the whole tool ("이 세션 동안 허용").
+   */
+  grant?: { scope: "folder" | "target"; target?: string; files?: boolean };
 }
 
 export const TRANSCRIPT_BODY_ARTIFACT_PREFIX = "gajae-transcript-body-";

@@ -466,7 +466,14 @@ describe("OmpRpcController approvals and questions (P3)", () => {
     await settle();
     const rows = await context.controller.getTranscript(session.id);
     const card = (callId: string) => rows.find((item) => item.id === `${session.id}:${callId}`);
-    expect(card("call_a")).toMatchObject({ status: "approval-required", permissionOptions: [{ optionId: "allow_once" }, { optionId: "reject_once" }] });
+    expect(card("call_a")).toMatchObject({
+      status: "approval-required",
+      permissionOptions: [{ optionId: "allow_once" }, { optionId: "allow_session", kind: "allow_session" }, { optionId: "reject_once" }],
+    });
+    expect(context.controller.toolDecisionInfo(`${session.id}:call_a`, { optionId: "allow_session" })).toEqual({
+      name: "이 세션 동안 허용\n이 세션에서 bash는 다시 묻지 않습니다.",
+      requiresConfirmation: true,
+    });
     expect(card("call_b")).toMatchObject({ status: "approval-required" });
     expect(await statusOf(context)).toBe("waiting");
     expect(context.events).toContainEqual(expect.objectContaining({ type: "session.activity", category: "permission" }));
@@ -480,12 +487,27 @@ describe("OmpRpcController approvals and questions (P3)", () => {
       { type: "extension_ui_response", id: "req-a", value: "Approve" },
       { type: "extension_ui_response", id: "req-b", value: "Deny" },
     ]);
+    // omp's select takes no words: the reason goes to the agent as a steer, after the refusal
+    expect(child.sent("steer").at(-1)).toMatchObject({ message: "[bash 거절 사유] not now" });
     const after = await context.controller.getTranscript(session.id);
     expect(after.find((item) => item.id === `${session.id}:call_a`)).toMatchObject({ status: "approved" });
     expect(after.find((item) => item.id === `${session.id}:call_b`)).toMatchObject({ status: "denied" });
     expect(after.find((item) => item.id === `${session.id}:call_b`)).not.toHaveProperty("permissionOptions");
     expect(await statusOf(context)).toBe("running");
     await expect(context.controller.resolveToolCall(`${session.id}:call_a`, { optionId: "allow_once" })).rejects.toThrow("No pending permission");
+  });
+
+  it("answers a card with omp's session grant label, wherever the answer comes from", async () => {
+    const context = setup();
+    const { session, child } = await working(context);
+    child.emitFrames(
+      { type: "tool_execution_start", toolCallId: "call_s", toolName: "bash", args: { command: "echo s" } },
+      { type: "extension_ui_request", id: "req-s", method: "select", title: "Allow tool: bash\nCommand: echo s", options: ["Approve", "Approve bash for this session", "Deny"] },
+    );
+    await settle();
+    await context.controller.resolveToolCall(`${session.id}:call_s`, { optionId: "allow_session" });
+    expect(uiResponses(child).at(-1)).toEqual({ type: "extension_ui_response", id: "req-s", value: "Approve bash for this session" });
+    expect(child.sent("steer")).toEqual([]);
   });
 
   it("answers from a project command rule without a card, and saves a rule a card asks for", async () => {

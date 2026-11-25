@@ -40,6 +40,13 @@ describe("remote access and terminal shells", () => {
     expect(host.resolveToolCall).toHaveBeenCalledTimes(2);
   });
 
+  it("passes a phone's session grant and rejection reason on as the window would (omp's chat)", async () => {
+    await runRemoteOperation(host, "resolve-tool-call", { toolId: "omp-1:call_a" }, { decision: { optionId: "allow_session" } });
+    expect(host.resolveToolCall).toHaveBeenLastCalledWith("omp-1:call_a", { optionId: "allow_session" });
+    await runRemoteOperation(host, "resolve-tool-call", { toolId: "omp-1:call_b" }, { decision: { optionId: "reject_once", comment: " use ls " } });
+    expect(host.resolveToolCall).toHaveBeenLastCalledWith("omp-1:call_b", { optionId: "reject_once", comment: "use ls" });
+  });
+
   it("names a herdr session's runtime \"terminal\" on the wire, as a PWA from before P5 reads it", async () => {
     const state = (await runRemoteOperation(host, "state", {}, undefined)) as { sessions: AgentSession[] };
     expect(state.sessions.map((session) => session.runtime as string)).toEqual(["gjc", "terminal"]);

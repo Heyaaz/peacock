@@ -912,17 +912,22 @@ export class OmpRpcController implements AgentRuntimeController {
     const { choice } = this.approvalChoice(toolId, decision);
     const allows = choice.option.kind.startsWith("allow");
     const label = permissionOptionLabel(choice.option);
-    return {
-      name: decision.rule && allows ? `${label}\n"${decision.rule.prefix}"로 시작하는 명령은 이 프로젝트에서 앞으로 묻지 않고 허용합니다.` : label,
-      requiresConfirmation: allows,
-    };
+    const note =
+      decision.rule && allows
+        ? `"${decision.rule.prefix}"로 시작하는 명령은 이 프로젝트에서 앞으로 묻지 않고 허용합니다.`
+        : choice.option.kind === "allow_session" && !choice.option.grant
+          ? `이 세션에서 ${this.pendingApprovalTool(toolId)}는 다시 묻지 않습니다.`
+          : undefined;
+    return { name: note ? `${label}\n${note}` : label, requiresConfirmation: allows };
   }
 
   /**
    * Answers an approval card with omp's own option, remembering a command prefix for the project
    * first when asked to. A rule that cannot be saved must not leave omp waiting: the call is
-   * answered either way and the save error is thrown afterwards. omp's select takes no words for a
-   * rejection, so a comment is not passed on.
+   * answered either way and the save error is thrown afterwards. omp's select takes only a label,
+   * so a rejection's comment reaches the agent as a steering message, read right after the call
+   * omp refuses ("Tool call denied by user"). A session or grant answer is omp's to remember: it
+   * asks no more for what it covers, whichever window or phone gave the answer.
    */
   async resolveToolCall(toolId: string, decision: ToolDecision): Promise<void> {
     const { pending, choice } = this.approvalChoice(toolId, decision);
@@ -946,7 +951,15 @@ export class OmpRpcController implements AgentRuntimeController {
     const chat = this.chat(pending.sessionId);
     this.emitLive(pending.sessionId, chat.live.updateTool(pending.rowId, (tool) => ({ ...dropOptions(tool), status: allows ? "approved" : "denied" })));
     this.settleWaiting(pending.sessionId);
+    if (!allows && decision.comment)
+      await pending.client
+        .call({ type: "steer", message: `[${pending.toolName} 거절 사유] ${decision.comment}` })
+        .catch((error: unknown) => this.log(`could not pass the rejection reason to ${pending.sessionId}`, error));
     if (ruleFailure) throw ruleFailure;
+  }
+
+  private pendingApprovalTool(toolId: string): string {
+    return [...this.pendingUi.values()].find((entry): entry is PendingApproval => entry.kind === "approval" && entry.rowId === toolId)?.toolName ?? "이 도구";
   }
 
   private approvalChoice(toolId: string, decision: ToolDecision): { pending: PendingApproval; choice: ApprovalChoice } {

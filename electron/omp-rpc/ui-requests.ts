@@ -63,15 +63,55 @@ export interface ApprovalChoice {
 }
 
 /**
- * The choices a card offers for omp's options: this call ("Approve", "Approve Once") and "Deny".
- * Grants and the "for this session" answer are omp's to offer in its own UI: the card's choices
- * mean what they say everywhere (allow once, reject), and project command rules cover the rest.
+ * The choices a card offers for omp's approval options (19.1.1 tools/approval.ts
+ * `approvalChoiceLabels`): this call ("Approve", or "Approve Once" beside grants), the whole tool
+ * for this session ("Approve <tool> for this session", which omp offers for a prompt its approval
+ * mode raised), the `always-ask-cached` grants ("Approve Directory: <folder>", "Approve File" or
+ * "Approve", each also as "Always …"), and "Deny". Each answers with omp's own label.
  */
 export function approvalChoices(options: readonly string[]): ApprovalChoice[] {
   const choices: ApprovalChoice[] = [];
-  const once = options.find((option) => option === "Approve" || option === "Approve Once");
-  if (once) choices.push({ option: { optionId: "allow_once", kind: "allow_once", name: "Allow once" }, label: once });
-  if (options.includes("Deny")) choices.push({ option: { optionId: "reject_once", kind: "reject_once", name: "Reject" }, label: "Deny" });
+  // with grants on offer "Approve" is the target grant and "Approve Once" this call; without, "Approve" is this call
+  const hasOnce = options.includes("Approve Once");
+  for (const label of options) {
+    if (label === (hasOnce ? "Approve Once" : "Approve")) {
+      choices.push({ option: { optionId: "allow_once", kind: "allow_once", name: "Allow once" }, label });
+      continue;
+    }
+    if (/^Approve \S.* for this session$/u.test(label)) {
+      choices.push({ option: { optionId: "allow_session", kind: "allow_session", name: "Allow for this session" }, label });
+      continue;
+    }
+    const directory = /^(Always )?Approve Directory: (.+)$/u.exec(label);
+    if (directory) {
+      const always = Boolean(directory[1]);
+      choices.push({
+        option: {
+          optionId: always ? "grant-folder-always" : "grant-folder",
+          kind: always ? "allow_always" : "allow_session",
+          name: label,
+          grant: { scope: "folder", target: directory[2]! },
+        },
+        label,
+      });
+      continue;
+    }
+    const target = /^(Always )?Approve( File)?$/u.exec(label);
+    if (target && hasOnce) {
+      const always = Boolean(target[1]);
+      choices.push({
+        option: {
+          optionId: always ? "grant-target-always" : "grant-target",
+          kind: always ? "allow_always" : "allow_session",
+          name: label,
+          grant: { scope: "target", ...(target[2] ? { files: true } : {}) },
+        },
+        label,
+      });
+      continue;
+    }
+    if (label === "Deny") choices.push({ option: { optionId: "reject_once", kind: "reject_once", name: "Reject" }, label });
+  }
   return choices;
 }
 
