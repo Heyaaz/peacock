@@ -991,10 +991,10 @@ function createWindow(): BrowserWindow {
                       modelStatus.click();
                       const profileDeadline = Date.now() + 3_000;
                       while (Date.now() < profileDeadline) {
-                        const pickerText = document.querySelector('.config-option-menu--model')?.textContent ?? '';
+                        const pickerText = document.querySelector('.model-catalog-picker')?.textContent ?? '';
                         customProfiles = pickerText.includes('Custom profiles');
                         builtInProfiles = pickerText.includes('Built-in profiles');
-                        modelOptionMarked = Boolean(document.querySelector('.config-option-menu--model .is-current'));
+                        modelOptionMarked = Boolean(document.querySelector('.model-catalog-picker .model-catalog-row.is-current'));
                         // gjc/0.18.11 reports every profile row with source
                         // "configured" (measured: 70 configured, 0 builtin), so the
                         // built-in group is not something this smoke may require.
@@ -1293,11 +1293,11 @@ function createWindow(): BrowserWindow {
             await wait(50);
             Array.from(document.querySelectorAll('.command-palette button')).find((button) => button.textContent?.includes('/model'))?.click();
             await wait(50);
-            assert(document.querySelector('.config-option-menu--model'), 'Model command did not open the custom model picker');
-            assert(!document.querySelector('.config-option-menu--model select'), 'Model picker fell back to a native select');
+            assert(document.querySelector('.model-catalog-picker'), 'Model command did not open the custom model picker');
+            assert(!document.querySelector('.model-catalog-picker select'), 'Model picker fell back to a native select');
             assert(document.body.textContent?.includes('Custom profiles'), 'Custom model profile group did not render');
             assert(document.body.textContent?.includes('Built-in profiles'), 'Built-in model profile group did not render');
-            document.querySelector('.config-option-menu--model .is-current')?.click();
+            document.querySelector('.model-catalog-picker .model-catalog-row.is-current')?.click();
             commandValueSetter.call(commandTextarea, '');
             commandTextarea.dispatchEvent(new Event('input', { bubbles: true }));
 
