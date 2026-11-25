@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GitFork, ListTree, PencilLine, X } from "lucide-react";
+import { CornerDownRight, GitFork, ListTree, PencilLine, X } from "lucide-react";
 import type { SessionTreeEntry } from "../../shared/agent-contract";
 import { t } from "../i18n";
 
@@ -20,18 +20,20 @@ function errorText(error: unknown): string {
 
 /**
  * "대화 트리": the conversation's entries as omp keeps them, branches indented under the point
- * they left, the current branch marked. From a message of yours: fork a new chat that ends there,
- * or rewrite it (this chat moves to a branch before it, with its text in the composer).
+ * they left, the current branch marked. Any entry: move the conversation there, in the same file
+ * (the chat then shows that branch only). A message of yours: rewrite it (the conversation moves to
+ * before it, its text in the composer), or fork a new chat that ends there.
  */
 export function SessionTreeDialog({
   load,
   onFork,
-  onRewrite,
+  onNavigate,
   onClose,
 }: {
   load: () => Promise<SessionTreeEntry[]>;
   onFork?: (entry: SessionTreeEntry) => Promise<unknown>;
-  onRewrite?: (entry: SessionTreeEntry) => Promise<unknown>;
+  /** Moves the conversation to the entry; a user message's text goes to the composer. */
+  onNavigate?: (entry: SessionTreeEntry) => Promise<unknown>;
   onClose: () => void;
 }) {
   const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
@@ -107,14 +109,19 @@ export function SessionTreeDialog({
                     {entry.text || "…"}
                   </span>
                   {entry.current && <span className="session-tree-here">{t("지금 여기")}</span>}
-                  {entry.role === "user" && (onFork || onRewrite) && (
+                  {(onFork || onNavigate) && (entry.role === "user" || !entry.current) && (
                     <span className="session-tree-actions">
-                      {onRewrite && entry.onPath && (
-                        <button type="button" disabled={busy !== null} title={t("이 메시지 앞에서 새 갈래로 옮기고 내용을 입력창에 넣습니다")} onClick={() => void act(entry, onRewrite)}>
+                      {onNavigate && entry.role === "user" && entry.rewritable && (
+                        <button type="button" disabled={busy !== null} title={t("이 메시지 전으로 대화를 옮기고 내용을 입력창에 넣습니다")} onClick={() => void act(entry, onNavigate)}>
                           <PencilLine size={12} aria-hidden="true" /> {t("여기서 다시 쓰기")}
                         </button>
                       )}
-                      {onFork && (
+                      {onNavigate && entry.role !== "user" && !entry.current && (
+                        <button type="button" disabled={busy !== null} title={t("대화를 이 지점으로 옮깁니다 (같은 세션 파일 안에서)")} onClick={() => void act(entry, onNavigate)}>
+                          <CornerDownRight size={12} aria-hidden="true" /> {t("여기로 이동")}
+                        </button>
+                      )}
+                      {onFork && entry.role === "user" && (
                         <button type="button" disabled={busy !== null} title={t("이 메시지까지를 새 채팅으로 복사합니다")} onClick={() => void act(entry, onFork)}>
                           <GitFork size={12} aria-hidden="true" /> {t("여기까지 포크")}
                         </button>

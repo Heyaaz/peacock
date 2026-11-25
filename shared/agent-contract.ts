@@ -1283,6 +1283,8 @@ export interface SessionTreeEntry {
   current: boolean;
   /** omp's label for it, if any. */
   label?: string;
+  /** A message of the user's that omp can rewrite from (`get_branch_messages`). */
+  rewritable?: boolean;
 }
 
 export interface ToolDecision {
@@ -1478,10 +1480,11 @@ export interface GjcDesktopBridge {
   /** The conversation's tree, flattened. Only omp's chat answers. */
   getSessionTree(sessionId: string): Promise<SessionTreeEntry[]>;
   /**
-   * Moves the chat to a new branch that ends before `entryId` (a user message) and returns
-   * that message's text, for the composer to edit and send again. Only omp's chat answers.
+   * Moves the conversation to `entryId` in the same session file (omp's tree navigation): the
+   * chat then shows that branch. A user message's own text comes back for the composer (the leaf
+   * moves to before it). Only omp's chat answers.
    */
-  branchSession(sessionId: string, entryId: string): Promise<string>;
+  navigateSessionTree(sessionId: string, entryId: string): Promise<string>;
   /** Stops the shell command the user ran from the composer. Only omp's chat answers. */
   abortUserShell(sessionId: string): Promise<void>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;

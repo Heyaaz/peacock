@@ -450,8 +450,8 @@ export class AgentRouter implements RoutingAgentHost {
     return this.facet(sessionId, "getSessionTree")(sessionId);
   }
 
-  branchSession(sessionId: string, entryId: string): Promise<string> {
-    return this.facet(sessionId, "branchSession")(sessionId, entryId);
+  navigateSessionTree(sessionId: string, entryId: string): Promise<string> {
+    return this.facet(sessionId, "navigateSessionTree")(sessionId, entryId);
   }
 
   abortUserShell(sessionId: string): Promise<void> {

@@ -201,7 +201,7 @@ export interface AgentExtrasFacet {
   /** Writes the conversation as an HTML page at `outputPath`; the path it wrote. */
   exportSessionHtml(sessionId: string, outputPath: string): Promise<string>;
   getSessionTree(sessionId: string): Promise<SessionTreeEntry[]>;
-  branchSession(sessionId: string, entryId: string): Promise<string>;
+  navigateSessionTree(sessionId: string, entryId: string): Promise<string>;
   abortUserShell(sessionId: string): Promise<void>;
 }
 

@@ -563,8 +563,12 @@ export class OmpRpcController implements AgentRuntimeController {
 
   async getSessionTree(sessionId: string): Promise<SessionTreeEntry[]> {
     const client = await this.ensureProcess(sessionId);
-    const data = record(await client.call({ type: "get_tree" }));
-    return flattenSessionTree(data.tree, string(data.leafId));
+    const [data, branch] = await Promise.all([client.call({ type: "get_tree" }), client.call({ type: "get_branch_messages" })]);
+    // omp's own list of the user messages a rewrite can start from (every branch: getUserMessagesForBranching)
+    const onBranch = new Set(
+      (Array.isArray(record(branch).messages) ? (record(branch).messages as unknown[]).map(record) : []).flatMap((message) => (string(message.entryId) ? [string(message.entryId)!] : [])),
+    );
+    return flattenSessionTree(record(data).tree, string(record(data).leafId), onBranch);
   }
 
   /**
@@ -603,16 +607,20 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   /**
-   * `branch`: omp moves this chat to a new file that ends before the user message `entryId`,
-   * and hands back that message's text to edit. The chat reads its new file from then on.
+   * `navigate_tree`: omp moves the leaf of this chat's tree to `entryId` without writing a line
+   * until the next record, so the file's reader is told the leaf omp now holds (`get_tree`) and
+   * shows that branch only. A user message moves the leaf to before it and hands back its text.
    */
-  async branchSession(sessionId: string, entryId: string): Promise<string> {
+  async navigateSessionTree(sessionId: string, entryId: string): Promise<string> {
     const client = await this.ensureProcess(sessionId);
-    const data = record(await client.call({ type: "branch", entryId }));
-    if (data.cancelled === true) throw new Error("omp did not branch the chat");
-    await this.refreshState(sessionId, client);
+    const data = record(await client.call({ type: "navigate_tree", entryId }));
+    if (data.cancelled === true) throw new Error("omp did not move in the tree");
+    const tree = record(await client.call({ type: "get_tree" }));
+    const chat = this.chat(sessionId);
+    chat.follower.setLeaf(typeof tree.leafId === "string" ? tree.leafId : null);
+    await this.refreshState(sessionId, client).catch(() => undefined);
     this.scheduleResync(sessionId);
-    return string(data.text) ?? "";
+    return string(data.editorText) ?? "";
   }
 
   /** `export_html`: omp renders the session file as one HTML page at the path given. */
@@ -738,6 +746,8 @@ export class OmpRpcController implements AgentRuntimeController {
     const client = new OmpRpcClient(child, { log: (message) => this.log(`${sessionId}: ${message}`) });
     const chat = this.chat(sessionId);
     chat.client = client;
+    // a fresh omp holds the file's leaf: a navigation the last one made is gone with it
+    chat.follower.setLeaf(undefined);
     client.onFrame((frame) => this.onFrame(sessionId, client, frame));
     client.onExit((info) => this.onExit(sessionId, client, info));
     try {
@@ -1861,7 +1871,7 @@ const TREE_PREVIEW_CHARS = 140;
  * lies, whether it is on the branch from the root to `leafId`, and which entry that is. omp's
  * bookkeeping entries (model changes, custom records) are left out; their children are not.
  */
-export function flattenSessionTree(value: unknown, leafId: string | undefined): SessionTreeEntry[] {
+export function flattenSessionTree(value: unknown, leafId: string | undefined, branchable?: ReadonlySet<string>): SessionTreeEntry[] {
   const parents = new Map<string, string | undefined>();
   const visit = (nodes: unknown, parent: string | undefined): void => {
     for (const node of Array.isArray(nodes) ? nodes.map(record) : []) {
@@ -1908,6 +1918,7 @@ export function flattenSessionTree(value: unknown, leafId: string | undefined): 
           ...row,
           depth: childDepth,
           onPath: path.has(id),
+          ...(row.role === "user" && branchable?.has(id) ? { rewritable: true } : {}),
           current: id === leafId,
           ...(string(node.label) ? { label: string(node.label)! } : {}),
         });

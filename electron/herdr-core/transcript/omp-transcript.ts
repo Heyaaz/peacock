@@ -95,6 +95,46 @@ export function ompLineMayHoldRow(line: string): boolean {
 export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
   const rows = new TranscriptRows(sessionId);
   const pending = new Map<string, string>();
+  // omp keeps a tree (pi's format): each entry names its parent, and the conversation is the path
+  // from the root to the active leaf. A navigation moves the leaf without a line of its own until the
+  // next entry, so the controller can name the leaf omp holds (`setLeaf`) meanwhile.
+  const parents = new Map<string, string | null>();
+  const children = new Map<string | null, number>();
+  const rowEntry = new Map<string, string>();
+  let branched = false;
+  let entries = 0;
+  let fileLeaf: string | null | undefined;
+  let lastSelfSelected: string | undefined;
+  let override: { leaf: string | null; at: number } | undefined;
+  let current: string | undefined;
+  let previous: string | null = null;
+  const link = (id: string, parentId: unknown, activeLeafId: unknown): void => {
+    entries += 1;
+    if (!parents.has(id)) {
+      // a record that names no parent at all (older writers) follows the one before it
+      const parent = typeof parentId === "string" && parentId ? parentId : parentId === undefined ? previous : null;
+      parents.set(id, parent);
+      const siblings = (children.get(parent) ?? 0) + 1;
+      children.set(parent, siblings);
+      if (siblings > 1) branched = true;
+    }
+    previous = id;
+    // an off-branch record (late usage) carries the leaf that was active when it was written
+    if (typeof activeLeafId === "string" || activeLeafId === null) fileLeaf = activeLeafId;
+    else {
+      fileLeaf = id;
+      lastSelfSelected = id;
+    }
+  };
+  const putRow = (item: Parameters<TranscriptRows["put"]>[0]): void => {
+    rows.put(item);
+    if (current && !rowEntry.has(item.id)) rowEntry.set(item.id, current);
+  };
+  const activeLeaf = (): string | null | undefined => {
+    if (override && override.at === entries) return override.leaf;
+    if (typeof fileLeaf === "string" && !parents.has(fileLeaf)) return lastSelfSelected;
+    return fileLeaf;
+  };
 
   const applyResults = (message: Row): void => {
     for (const result of piResults(message)) {
@@ -118,17 +158,19 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
     }
     const entryId = typeof entry.id === "string" && entry.id.length > 0 ? entry.id : undefined;
     if (!entryId) return;
+    link(entryId, entry.parentId, entry.activeLeafId);
+    current = entryId;
     const ts = entry.timestamp;
     const notice = piNotice(entry);
     if (notice) {
-      rows.put(systemRow(rows, rows.id(entryId), AGENT_NAME, notice.text, notice.source, ts));
+      putRow(systemRow(rows, rows.id(entryId), AGENT_NAME, notice.text, notice.source, ts));
       return;
     }
     // pi folds old context into a summary of its own accord and on /compact
     if (entry.type === "compaction") {
       const summary = typeof entry.summary === "string" ? entry.summary.trim() : "";
       if (summary)
-        rows.put({
+        putRow({
           id: rows.id(entryId),
           kind: "compaction",
           sessionId,
@@ -144,7 +186,7 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
     if (message.role === "bashExecution" && typeof message.command === "string") {
       const exitCode = typeof message.exitCode === "number" ? message.exitCode : undefined;
       const tool = toolRow(rows, rows.id(entryId), "bash", { command: message.command }, message.command.slice(0, 120), ts);
-      rows.put({
+      putRow({
         ...tool,
         status: message.cancelled === true ? "cancelled" : exitCode !== undefined && exitCode !== 0 ? "failed" : "completed",
         ...(typeof message.output === "string" && message.output ? { output: bounded(message.output) } : {}),
@@ -164,8 +206,8 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
       // a new prompt means the calls of the turn before it will never answer
       for (const id of pending.values()) rows.update<ToolActivity>(id, (tool) => ({ ...tool, status: "cancelled" }));
       pending.clear();
-      if (prompt.length > 0) rows.put(messageRow(rows, rows.id(entryId), "user", prompt, ts));
-      else if (pictures > 0) rows.put(messageRow(rows, rows.id(entryId), "user", pictures === 1 ? "[image]" : `[${pictures} images]`, ts));
+      if (prompt.length > 0) putRow(messageRow(rows, rows.id(entryId), "user", prompt, ts));
+      else if (pictures > 0) putRow(messageRow(rows, rows.id(entryId), "user", pictures === 1 ? "[image]" : `[${pictures} images]`, ts));
       return;
     }
 
@@ -173,18 +215,18 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
       message.content.forEach((value, index) => {
         const block = record(value);
         if (block.type === "text" && typeof block.text === "string" && block.text.length > 0) {
-          rows.put(messageRow(rows, rows.id(entryId, index), "assistant", block.text, ts));
+          putRow(messageRow(rows, rows.id(entryId, index), "assistant", block.text, ts));
         } else if (block.type === "thinking") {
           // a provider that hides its reasoning leaves `thinking` empty and writes a summary beside it
           const thinking = [block.thinking, block.text, block.summary].map(resultText).find((text) => text.trim().length > 0) ?? "";
-          if (thinking) rows.put(thoughtRow(rows, rows.id(entryId, index), thinking, ts));
+          if (thinking) putRow(thoughtRow(rows, rows.id(entryId, index), thinking, ts));
         } else if (block.type === "toolCall" && typeof block.name === "string") {
           const input = record(block.arguments);
           const callId = typeof block.id === "string" && block.id.length > 0 ? block.id : undefined;
           const id = callId ? rows.id(callIdPart(callId)) : rows.id(entryId, index);
           if (rows.has(id)) return;
           const summary = typeof block.intent === "string" && block.intent.length > 0 ? block.intent.slice(0, 120) : toolSummary(block.name, input);
-          rows.put(toolRow(rows, id, block.name, input, summary, ts));
+          putRow(toolRow(rows, id, block.name, input, summary, ts));
           if (callId) pending.set(callId, id);
         }
       });
@@ -192,12 +234,12 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
       applyResults(message);
       // a failed request (a 401, an overloaded provider) leaves an empty message: its error is the answer
       if (message.stopReason === "error" && typeof message.errorMessage === "string" && message.errorMessage.length > 0)
-        rows.put(noticeRow(rows, rows.id(entryId, "error"), "작업 실패", message.errorMessage, "warning", ts));
+        putRow(noticeRow(rows, rows.id(entryId, "error"), "작업 실패", message.errorMessage, "warning", ts));
       else if (message.stopReason === "aborted") {
         for (const id of pending.values()) rows.update<ToolActivity>(id, (tool) => ({ ...tool, status: "cancelled" }));
         pending.clear();
         const reason = typeof message.errorMessage === "string" ? message.errorMessage : "";
-        rows.put(noticeRow(rows, rows.id(entryId, "aborted"), "작업 취소됨", reason, "warning", ts));
+        putRow(noticeRow(rows, rows.id(entryId, "aborted"), "작업 취소됨", reason, "warning", ts));
       }
     }
   };
@@ -205,7 +247,13 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
   return {
     write(text: string): void {
       for (const line of text.split("\n")) {
-        if (line.trim().length === 0 || !ompLineMayHoldRow(line)) continue;
+        if (line.trim().length === 0) continue;
+        if (!ompLineMayHoldRow(line)) {
+          // a record with no row (a model change, usage) is still a node of the tree
+          const node = /"id":"([^"]+)","parentId":(?:null|"([^"]*)")/u.exec(line);
+          if (node) link(node[1]!, node[2] ?? null, /"activeLeafId":"([^"]+)"/u.exec(line)?.[1] ?? (/"activeLeafId":null/u.test(line) ? null : undefined));
+          continue;
+        }
         let entry: unknown;
         try {
           entry = JSON.parse(line);
@@ -215,6 +263,22 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
         if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) fold(entry as Row);
       }
     },
-    items: () => rows.items(),
+    items: () => {
+      const all = rows.items();
+      const leaf = activeLeaf();
+      if ((!branched && !(override && override.at === entries)) || leaf === undefined) return all;
+      const path = new Set<string>();
+      for (let id = leaf; id !== null && !path.has(id); id = parents.get(id) ?? null) {
+        path.add(id);
+        if (!parents.has(id)) break;
+      }
+      return all.filter((item) => {
+        const entry = rowEntry.get(item.id);
+        return entry === undefined || path.has(entry);
+      });
+    },
+    setLeaf(leaf: string | null | undefined): void {
+      override = leaf === undefined ? undefined : { leaf, at: entries };
+    },
   };
 }

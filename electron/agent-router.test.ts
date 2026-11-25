@@ -78,7 +78,7 @@ const EXTRA_CALLS = new Set([
   "getSessionStats",
   "exportSessionHtml",
   "getSessionTree",
-  "branchSession",
+  "navigateSessionTree",
   "abortUserShell",
 ]);
 

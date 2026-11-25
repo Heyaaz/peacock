@@ -233,8 +233,8 @@ export class GjcAgentBackend implements AgentBackend {
     return this.bridge.getSessionTree(sessionId);
   }
 
-  branchSession(sessionId: string, entryId: string): Promise<string> {
-    return this.bridge.branchSession(sessionId, entryId);
+  navigateSessionTree(sessionId: string, entryId: string): Promise<string> {
+    return this.bridge.navigateSessionTree(sessionId, entryId);
   }
 
   abortUserShell(sessionId: string): Promise<void> {

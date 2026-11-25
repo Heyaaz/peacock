@@ -115,7 +115,7 @@ export interface AgentBackend {
   exportSessionHtml?(sessionId: string): Promise<string | null>;
   /** The conversation's tree and rewriting from an earlier message (`sessionTree` capability, omp's chat). */
   getSessionTree?(sessionId: string): Promise<SessionTreeEntry[]>;
-  branchSession?(sessionId: string, entryId: string): Promise<string>;
+  navigateSessionTree?(sessionId: string, entryId: string): Promise<string>;
   /** Stops the user's `!` shell command (`userShell` capability, omp's chat). */
   abortUserShell?(sessionId: string): Promise<void>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;

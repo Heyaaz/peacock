@@ -1357,4 +1357,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "직접 실행 · 컨텍스트 제외": "Run by you · kept out of context",
   "직접 실행": "Run by you",
   "이 명령만 멈춥니다": "Stops just this command",
+  "이 메시지 전으로 대화를 옮기고 내용을 입력창에 넣습니다": "Moves the conversation to before this message and puts it in the composer",
+  "대화를 이 지점으로 옮깁니다 (같은 세션 파일 안에서)": "Moves the conversation to this point (within the same session file)",
+  "여기로 이동": "Move here",
 };

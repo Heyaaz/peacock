@@ -335,4 +335,9 @@ export interface TranscriptParser {
   /** Whole lines, each ending in a newline; a torn last line is the caller's to keep. */
   write(text: string): void;
   items(): TranscriptItem[];
+  /**
+   * The leaf the agent holds when the file does not say it yet (omp after a tree navigation),
+   * until the next record; undefined goes back to the file's. Only a tree-shaped format has it.
+   */
+  setLeaf?(leaf: string | null | undefined): void;
 }

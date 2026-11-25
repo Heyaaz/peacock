@@ -188,7 +188,7 @@ class FakeGjcBridge implements GjcDesktopBridge {
     return [];
   }
 
-  async branchSession(_sessionId: string, _entryId: string): Promise<string> {
+  async navigateSessionTree(_sessionId: string, _entryId: string): Promise<string> {
     return "";
   }
 

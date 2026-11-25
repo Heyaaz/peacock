@@ -95,6 +95,11 @@ export class TranscriptFollower {
     return this.parser.items();
   }
 
+  /** The leaf the agent moved to without a record of it yet (omp's tree navigation). */
+  setLeaf(leaf: string | null | undefined): void {
+    this.parser.setLeaf?.(leaf);
+  }
+
   /** Changes whenever the rows may have: the file, and how far into it reading has come. */
   revision(): string | undefined {
     return this.identity === undefined ? undefined : `${this.location?.path ?? ""}:${this.identity}:${this.offset}`;

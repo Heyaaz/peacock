@@ -59,6 +59,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
   let goal: Record<string, unknown> | null = null;
   const modes = { fast: false, autoCompaction: true };
   const bashCalls: { child: FakeRpcProcess; frame: Record<string, unknown> }[] = [];
+  let treeLeaf: string | undefined;
   const spawn = vi.fn((command: string, args: readonly string[], spawnOptions: { cwd: string; env: Record<string, string> }) => {
     const child = new FakeRpcProcess();
     processes.push({ child, command, args, env: spawnOptions.env });
@@ -129,12 +130,11 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "fork") {
         openFile = path.join(workspace, `fork-${String(frame.entryId ?? "end")}.jsonl`);
         answer({ cancelled: false });
-      } else if (frame.type === "branch") {
-        openFile = path.join(workspace, "branch.jsonl");
-        answer({ text: "rewrite me", cancelled: false });
-      } else if (frame.type === "get_tree")
+      } else if (frame.type === "navigate_tree" && (treeLeaf = frame.entryId === "u1" ? "c0" : String(frame.entryId)) !== undefined) answer({ cancelled: false, editorText: frame.entryId === "u1" ? "first question" : undefined });
+      else if (frame.type === "get_branch_messages") answer({ messages: [{ entryId: "u1", text: "first question" }] });
+      else if (frame.type === "get_tree")
         answer({
-          leafId: "c2",
+          leafId: treeLeaf ?? "c2",
           tree: [
             {
               entry: { type: "model_change", id: "m0", parentId: null },
@@ -963,7 +963,7 @@ describe("OmpRpcController tree, fork and branch", () => {
     const context = setup();
     const session = await newChat(context);
     await expect(context.controller.getSessionTree(session.id)).resolves.toEqual([
-      { id: "u1", role: "user", text: "first question", depth: 0, onPath: true, current: false },
+      { id: "u1", role: "user", text: "first question", depth: 0, onPath: true, current: false, rewritable: true },
       { id: "a2", role: "tool", text: "bash", depth: 0, onPath: true, current: true, label: "retry" },
       { id: "a1", role: "assistant", text: "old answer", depth: 1, onPath: false, current: false },
     ]);
@@ -982,8 +982,11 @@ describe("OmpRpcController tree, fork and branch", () => {
     expect(context.store.get(fork.id)?.sessionFile).toBe(path.join(context.workspace, "fork-u1.jsonl"));
     expect(context.store.get(source.id)?.sessionFile).toBe(context.sessionFile);
     expect(context.events).toContainEqual({ type: "session.created", session: expect.objectContaining({ id: fork.id }) });
-    await expect(context.controller.branchSession(source.id, "u1")).resolves.toBe("rewrite me");
-    expect(context.store.get(source.id)?.sessionFile).toBe(path.join(context.workspace, "branch.jsonl"));
+    // a move in the tree stays in the same file
+    await expect(context.controller.navigateSessionTree(source.id, "u1")).resolves.toBe("first question");
+    expect(context.processes[0]!.child.sent("navigate_tree").at(-1)).toMatchObject({ entryId: "u1" });
+    expect(context.store.get(source.id)?.sessionFile).toBe(context.sessionFile);
+    await expect(context.controller.navigateSessionTree(source.id, "a1")).resolves.toBe("");
   });
 
   it("drops the new chat when omp cannot fork", async () => {
@@ -1055,5 +1058,36 @@ describe("OmpRpcController user shell", () => {
     await settle();
     const commands = context.events.filter((event) => event.type === "session.commands").at(-1) as { commands: { name: string }[] };
     expect(commands.commands.some((command) => command.name === "!")).toBe(true);
+  });
+});
+
+describe("OmpRpcController tree navigation in one file", () => {
+  it("shows the branch omp moved to, without the one it left, and goes back", async () => {
+    const context = setup();
+    const at = "2026-11-25T00:00:00Z";
+    const entry = (id: string, parentId: string, message: Record<string, unknown>) => JSON.stringify({ type: "message", id, parentId, timestamp: at, message: { timestamp: 1, ...message } });
+    writeFileSync(
+      context.sessionFile,
+      [
+        JSON.stringify({ type: "session", version: 3, id: "x", timestamp: at, cwd: context.workspace }),
+        JSON.stringify({ type: "custom", customType: "date-cwd-reminder", data: {}, id: "c0", parentId: null, timestamp: at }),
+        entry("u1", "c0", { role: "user", content: [{ type: "text", text: "first question" }] }),
+        entry("a1", "u1", { role: "assistant", content: [{ type: "text", text: "old answer" }], stopReason: "stop" }),
+        entry("u2", "c0", { role: "user", content: [{ type: "text", text: "second question" }] }),
+        entry("a2", "u2", { role: "assistant", content: [{ type: "text", text: "new answer" }], stopReason: "stop" }),
+      ].join("\n") + "\n",
+    );
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    const texts = async () => (await context.controller.getTranscript(session.id)).flatMap((item) => (item.kind === "message" ? [item.content] : []));
+    expect(await texts()).toEqual(["second question", "new answer"]);
+    await context.controller.navigateSessionTree(session.id, "a1");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(await texts()).toEqual(["first question", "old answer"]);
+    const ids = (await context.controller.getTranscript(session.id)).map((item) => item.id.slice(session.id.length + 1));
+    expect(ids).toEqual(["u1", "a1:0"]);
+    await expect(context.controller.navigateSessionTree(session.id, "u1")).resolves.toBe("first question");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(await texts()).toEqual([]);
   });
 });

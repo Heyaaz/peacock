@@ -135,3 +135,43 @@ describe("omp's user shell records", () => {
     expect(tools[0]!.command).toContain("echo hi");
   });
 });
+
+describe("omp's tree", () => {
+  // root c0 → u1 (first question) → a1; u1 rewritten: c0 → u2 → a2 (the leaf, written last)
+  const BRANCHED =
+    HEAD +
+    entry("u1", "c0", { role: "user", content: [{ type: "text", text: "first question" }] }) +
+    entry("a1", "u1", { role: "assistant", content: [{ type: "text", text: "old answer" }], stopReason: "stop" }) +
+    entry("u2", "c0", { role: "user", content: [{ type: "text", text: "second question" }] }) +
+    entry("a2", "u2", { role: "assistant", content: [{ type: "text", text: "new answer" }], stopReason: "stop" }) +
+    line({ type: "model_usage", id: "mu", parentId: "a2", timestamp: AT, activeLeafId: "a2" });
+  const texts = (items: TranscriptItem[]) => items.flatMap((item) => (item.kind === "message" ? [item.content] : []));
+
+  it("shows the path to the active leaf, not the branch it left, with the rows' ids kept", () => {
+    const parser = createOmpTranscriptParser(SID);
+    parser.write(BRANCHED);
+    expect(texts(parser.items())).toEqual(["second question", "new answer"]);
+    expect(parser.items().map((item) => item.id)).toEqual([`${SID}:u2`, `${SID}:a2:0`]);
+  });
+
+  it("follows a leaf the agent moved to until the next record, then the file's again", () => {
+    const parser = createOmpTranscriptParser(SID);
+    parser.write(BRANCHED);
+    parser.setLeaf?.("a1");
+    expect(texts(parser.items())).toEqual(["first question", "old answer"]);
+    // a navigation to a first prompt leaves nothing on the path
+    parser.setLeaf?.("c0");
+    expect(texts(parser.items())).toEqual([]);
+    parser.setLeaf?.("a1");
+    parser.write(entry("u3", "a1", { role: "user", content: [{ type: "text", text: "follow-up" }] }));
+    expect(texts(parser.items())).toEqual(["first question", "old answer", "follow-up"]);
+  });
+
+  it("reads a linear file as before", () => {
+    const parser = createOmpTranscriptParser(SID);
+    parser.write(TURN);
+    expect(parser.items().length).toBeGreaterThan(0);
+    parser.setLeaf?.(undefined);
+    expect(parser.items().length).toBeGreaterThan(0);
+  });
+});

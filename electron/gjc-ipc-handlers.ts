@@ -459,10 +459,10 @@ export function registerGjcIpcHandlers(
     if (!controller.getSessionTree) throw new AgentUnsupportedError("getSessionTree", id);
     return controller.getSessionTree(id);
   });
-  handle(GJC_IPC.branchSession, (_event, sessionId: unknown, entryId: unknown) => {
+  handle(GJC_IPC.navigateSessionTree, (_event, sessionId: unknown, entryId: unknown) => {
     const id = requiredId(sessionId, "Session ID");
-    if (!controller.branchSession) throw new AgentUnsupportedError("branchSession", id);
-    return controller.branchSession(id, requiredId(entryId, "Entry ID"));
+    if (!controller.navigateSessionTree) throw new AgentUnsupportedError("navigateSessionTree", id);
+    return controller.navigateSessionTree(id, requiredId(entryId, "Entry ID"));
   });
   handle(GJC_IPC.abortUserShell, (_event, sessionId: unknown) => {
     const id = requiredId(sessionId, "Session ID");

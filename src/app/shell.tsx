@@ -1421,10 +1421,10 @@ export default function App() {
                 ? {}
                 : {
                     ...(selectedCapabilities?.fork ? { onFork: (entry) => forkSession(selectedSession, entry.id, true) } : {}),
-                    ...(backend.branchSession
+                    ...(backend.navigateSessionTree
                       ? {
-                          onRewrite: async (entry) => {
-                            const text = await backend.branchSession!(selectedSession.id, entry.id);
+                          onNavigate: async (entry) => {
+                            const text = await backend.navigateSessionTree!(selectedSession.id, entry.id);
                             if (text) prefillComposerDraft(selectedSession.id, text);
                           },
                         }
