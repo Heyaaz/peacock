@@ -168,6 +168,13 @@ The installer downloads the latest release, checks its SHA-256, puts
 `Peacock.app` in `/Applications` (or `~/Applications` if that is not writable)
 and opens it. Run it again to update.
 
+Peacock was called Gajae before. On its first launch it copies Gajae's data
+folder (`~/Library/Application Support/Agent Control`) to
+`~/Library/Application Support/Peacock`, checks the copy, and leaves the old
+folder and `Gajae.app` as they are. Quit Gajae first: Peacock does not start
+while it runs. macOS sees Peacock as a new app, so notifications and screen
+recording are allowed again, and `gajae://` links keep working.
+
 The app is not notarized yet. macOS blocks a copy downloaded in a browser, so
 use the installer rather than the ZIP on the releases page.
 

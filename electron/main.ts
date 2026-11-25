@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -101,6 +102,7 @@ import { QuickInputShortcut } from "./quick-input.js";
 import { QuickInputWindow, type QuickInputHandoff } from "./quick-input-window.js";
 import { quickInputProjects } from "../shared/quick-input.js";
 import { launchCheckSatisfied } from "../shared/environment-check.js";
+import { developmentUserData, migrateUserData, type UserDataMigration } from "./user-data-migration.js";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const {
@@ -130,13 +132,33 @@ const mockBackend =
   !process.argv.some((argument) => argument.startsWith("--hc-agent-smoke="));
 
 app.setName("Peacock");
-const isolatedUserData = process.env.GAJAE_USER_DATA_DIR?.trim();
-app.setPath(
-  "userData",
-  isolatedUserData && path.isAbsolute(isolatedUserData)
-    ? path.resolve(isolatedUserData)
-    : path.join(app.getPath("appData"), "Agent Control"),
-);
+// PEACOCK_USER_DATA_DIR, or GAJAE_USER_DATA_DIR from before the rename (scripts and smokes set it)
+const isolatedUserData = (process.env.PEACOCK_USER_DATA_DIR?.trim() || process.env.GAJAE_USER_DATA_DIR?.trim()) ?? "";
+// The data folder moved with the rename (design §11): the installed app copies `Agent Control`
+// into `Peacock` once, verified, and keeps the old folder. A run from source copies nothing.
+let userDataMigration: UserDataMigration | undefined;
+if (isolatedUserData && path.isAbsolute(isolatedUserData)) {
+  app.setPath("userData", path.resolve(isolatedUserData));
+} else if (!app.isPackaged) {
+  app.setPath("userData", developmentUserData(app.getPath("appData")));
+} else {
+  userDataMigration = migrateUserData({
+    appData: app.getPath("appData"),
+    log: (message) => console.log(`userData migration: ${message}`),
+  });
+  if (userDataMigration.kind === "legacy-running") {
+    // a throwaway folder: nothing of this launch may land in either data folder
+    app.setPath("userData", mkdtempSync(path.join(tmpdir(), "peacock-wait-")));
+    dialog.showErrorBox(
+      "Gajae를 먼저 종료하세요 · Quit Gajae first",
+      "Gajae가 실행 중입니다. Gajae를 종료한 뒤 Peacock을 다시 여세요. 처음 열 때 Gajae의 데이터를 복사해 오고, 원래 폴더는 그대로 둡니다.\n\n" +
+        "Gajae is running. Quit it, then open Peacock again. On its first launch Peacock copies Gajae's data and leaves the original folder as it is.",
+    );
+    app.exit(0);
+  } else {
+    app.setPath("userData", userDataMigration.userData);
+  }
+}
 // The lock lives in userData, so it is taken only after that path is final: an
 // isolated GAJAE_USER_DATA_DIR run has its own lock. The UI smokes skip it so a
 // developer's running Gajae cannot make them exit before they start.
@@ -1665,6 +1687,9 @@ app.whenReady().then(() => {
     ?.start()
     .then(() => {
       agentHooksReady = true;
+      // agents started by Gajae before the move still run its relay: it now reaches this app
+      if (userDataMigration?.kind === "migrated" && agentHooks.redirectRelay(path.join(userDataMigration.legacy, "agent-hooks", "relay.sh")))
+        console.log("userData migration: the old folder's hook relay now reaches this app");
     })
     .catch((error: unknown) => console.error("Agent hook channel could not start", error));
   herdrAgents?.start();

@@ -40,7 +40,7 @@ Portions of the desktop terminal are adapted from
 
 The chat screen's terminal, and a terminal session's shell when herdr-core is
 unavailable, run through `node-pty` in the Electron main process. Terminal
-sessions otherwise run in herdr-core (see below). Gajae does not ship herdr's
+sessions otherwise run in herdr-core (see below). Peacock does not ship herdr's
 web-UI sidecar or the herdr app itself.
 
 ```
@@ -74,7 +74,7 @@ Portions of the agent runtime are adapted from
 
 - `shared/agent-catalog.ts` and `shared/supported-agents.ts` — the agent
   names, the executables that mean an agent is installed, where each vendor's
-  installer puts them, and the version flag, in Gajae's `shared/agent-catalog.ts`
+  installer puts them, and the version flag, in Peacock's `shared/agent-catalog.ts`
 - `server/herdr-core/connection.ts` — herdr-core's framed protocol connection,
   in `electron/herdr-core/connection.ts`
 - `server/herdr-core/attach-session.ts` and its tests — one viewer's attach

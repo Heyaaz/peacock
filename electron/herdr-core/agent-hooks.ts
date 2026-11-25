@@ -324,6 +324,17 @@ export class AgentHooks {
     this.tokenPath = path.join(directory, "token");
   }
 
+  /**
+   * Points a relay left in another data folder (the one before the rename, design §11) at this
+   * socket, so agents started with that folder's hooks, still running in herdr-core, keep reaching
+   * this app. Only a relay that is there is rewritten; call it after `start`.
+   */
+  redirectRelay(relayPath: string): boolean {
+    if (!existsSync(relayPath)) return false;
+    writePrivate(relayPath, relayScript(this.socketPath, this.tokenPath), 0o700);
+    return true;
+  }
+
   /** Whether the app is listening: hooks reach it and an approval can be answered. */
   get listening(): boolean {
     return this.server?.listening === true;

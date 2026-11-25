@@ -304,7 +304,7 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 
 ## 11. Peacock: 이름·정체성 바꾸기와 userData 이전
 
-상태: 계획(2026-11-25). 앱 이름을 Gajae에서 **Peacock**(공작갯가재, peacock mantis shrimp)으로 바꾼다. 색은 바꾸지 않는다: 모든 색 토큰(`--accent` #f06416/#b8470a, `--accent-bright`, 배경)은 그대로이고, 마크·아이콘·메뉴바 글리프는 모양만 바꿔 지금 강조색으로 그린다.
+상태: 구현(2026-11-25). 앱 이름을 Gajae에서 **Peacock**(공작갯가재, peacock mantis shrimp)으로 바꾼다. 색은 바꾸지 않는다: 모든 색 토큰(`--accent` #f06416/#b8470a, `--accent-bright`, 배경)은 그대로이고, 마크·아이콘·메뉴바 글리프는 모양만 바꿔 지금 강조색으로 그린다.
 
 **정체성**
 - 마크: 크로스바가 있는 Λ 모양의 날 선 셰브런(모크 identity2의 경로: `M12 42 L28 12 L44 42` + `M20 31h16`, viewBox 56, 둥근 끝·이음). 앱 안에서는 `currentColor`(=`--accent`)로 그리는 SVG 컴포넌트 하나(`PeacockMark`).
@@ -323,7 +323,9 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 옛 앱이 실행 중이면(옛 폴더의 `SingletonLock`이 살아 있는 pid를 가리킴) 복사하지 않는다: 그 실행은 임시 userData로 떠서 "Gajae를 먼저 종료하세요" 안내를 보이고 끝난다(새 폴더를 만들지 않음).
 - 방법: 옛 폴더 전체를 `Peacock.migrating-<시각>`에 복사(잠금·캐시 제외: `Singleton*`, `DevToolsActivePort`, `Cache`, `Code Cache`, `GPUCache`, `Dawn*Cache`, 그리고 첫 사용 때 앱이 다시 까는 `bin/`) → 검증(복사한 모든 파일의 크기, 핵심 파일 — 설정·세션·`terminal-sessions.json`·`omp-rpc-sessions.json`·`remote-access.json`·`agent-hooks/token`·`productivity.sqlite`(+wal/shm) — 의 sha256) → 표시 파일을 쓰고 `Peacock`으로 rename(같은 볼륨, 원자적). 새 폴더가 앱 데이터 없이 이미 있으면(크롬이 만든 빈 프로필) `Peacock.pre-migration-<시각>`으로 옮겨 둔다.
 - 실패하면: 스테이징을 `Peacock.failed-<시각>`으로 남기고 이번 실행은 옛 폴더를 그대로 쓴다. 어느 경우에도 지우지 않는다.
-- 옛 폴더는 그대로 둔다(되돌리기: 옛 Gajae.app을 다시 열면 그 폴더로 그대로 동작). 한 가지 예외: 이전 때 옛 `agent-hooks/relay.sh`를 새 소켓(`Peacock/agent-hooks/h.sock`)으로 다시 써서, 이전 전에 시작돼 herdr-core에서 계속 도는 Claude Code·omp의 훅이 Peacock에 닿게 한다(토큰은 같은 값을 복사). 옛 앱을 다시 열면 그 앱이 relay.sh를 자기 소켓으로 다시 쓴다.
+- 구현: `electron/user-data-migration.ts`(`migrateUserData`, 테스트는 임시 폴더에서 복사·검증·실패·실행 중을 확인). 소스 실행(`electron .`, `app.isPackaged`가 아님)은 복사하지 않는다: 새 폴더에 앱 데이터가 있으면 새 폴더, 없으면 옛 폴더를 쓴다(`developmentUserData`).
+- 옛 앱이 실행 중이면 이전 뒤에도 Peacock은 뜨지 않는다(같은 안내 후 종료): 두 앱이 같은 herdr-core 세션(`gajae`)의 터미널을 두 폴더에서 따로 다루게 되기 때문.
+- 옛 폴더는 그대로 둔다(되돌리기: 옛 Gajae.app을 다시 열면 그 폴더로 그대로 동작). 다만 되돌린 Gajae는 자기 `terminal-sessions.json`에 없는 터미널(Peacock에서 만든 것)을 고아로 보고 끝낸다. 되돌리기 전에 Peacock에서 만든 터미널 세션의 일을 마무리해야 한다. 한 가지 예외: 이전 때 옛 `agent-hooks/relay.sh`를 새 소켓(`Peacock/agent-hooks/h.sock`)으로 다시 써서, 이전 전에 시작돼 herdr-core에서 계속 도는 Claude Code·omp의 훅이 Peacock에 닿게 한다(토큰은 같은 값을 복사). 옛 앱을 다시 열면 그 앱이 relay.sh를 자기 소켓으로 다시 쓴다.
 
 **유지하는 내부 식별자** (사용자 데이터·실행 중인 것·스크립트와 이어져 있어 바꾸지 않음)
 - herdr-core 세션 이름 `gajae`/`gajae-dev`(HC_SESSION): 바꾸면 이미 떠 있는 터미널 세션(앱을 닫아도 도는 셸·에이전트)이 다른 세션 서버에 남아 고아가 된다. 화면에 보이지 않는 이름이라 유지.

@@ -47,7 +47,11 @@ describe("SDK session CLI architecture", () => {
     const ipc = await source("shared/gjc-ipc.ts");
     expect(manifest.productName).toBe("Peacock");
     expect(main).toContain('app.setName("Peacock")');
-    expect(main).toContain('path.join(app.getPath("appData"), "Agent Control")');
+    // the data folder moved with a verified copy, never in place (design §11)
+    expect(main).toContain("migrateUserData({");
+    const migration = await source("electron/user-data-migration.ts");
+    expect(migration).toContain('LEGACY_USER_DATA_NAME = "Agent Control"');
+    expect(migration).toContain('USER_DATA_NAME = "Peacock"');
     expect(ipc).toContain('"agent-control:gjc:');
   });
 
