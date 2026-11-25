@@ -105,10 +105,13 @@ import {
   DEFAULT_DESKTOP_INTEGRATION,
 } from "../../shared/desktop-integration";
 import type { NewSessionPrefill } from "../../shared/settings-ipc";
+import type { NewSessionChoice } from "../../shared/agent-contract";
+import { EmptyWorkspaceAgents } from "./empty-workspace-agents";
 import {
   EMPTY_TRANSCRIPT_PAGE_STATE,
   composerTurnLive,
   invalidLinkMessage,
+  sessionAgentName,
   syncAppBadge,
   unreadBadgeCount,
 } from "./shell-model";
@@ -196,6 +199,8 @@ export default function App() {
   // remounts it with the new values instead of being dropped.
   const [newSessionRequest, setNewSessionRequest] = useState<{
     prefill?: NewSessionPrefill;
+    /** The agent the request starts on (an empty workspace's agent chip), over the last choice. */
+    choice?: NewSessionChoice;
     serial: number;
   } | null>(null);
   // Bumped for every request this window sends into the open session. The transcript
@@ -810,7 +815,7 @@ export default function App() {
   newSessionRequestRef.current = newSessionRequest;
 
   const openNewSessionDialog = useCallback(
-    (prefill?: NewSessionPrefill): void => {
+    (prefill?: NewSessionPrefill, choice?: NewSessionChoice): void => {
       // A second request remounts the dialog, which never runs its own cancel;
       // the first request's screenshots are given back here instead.
       const abandoned = (newSessionRequestRef.current?.prefill?.images ?? []).flatMap(
@@ -822,6 +827,7 @@ export default function App() {
           .catch(() => undefined);
       setNewSessionRequest((current) => ({
         prefill,
+        ...(choice ? { choice } : {}),
         serial: (current?.serial ?? 0) + 1,
       }));
     },
@@ -1467,12 +1473,14 @@ export default function App() {
                     ? undefined
                     : (text) => prefillComposerDraft(selectedSession.id, text)
                 }
+                assistantName={sessionAgentName(selectedSession)}
                 emptyStateMeta={
-                  agentChat || ompChat
-                    ? { workspace: selectedSession.workspace, recentWorkspaces: [selectedSession.workspace] }
+                  agentChat
+                    ? // a terminal agent's chat reads its terminal: the app knows neither its model nor its commands
+                      { workspace: selectedSession.workspace, recentWorkspaces: [selectedSession.workspace] }
                     : {
                         workspace: selectedSession.workspace,
-                        // before omp's process reports its state, the model menu already knows the model
+                        // before the runtime reports its state, the model menu already knows the model
                         modelDisplay:
                           selectedSession.modelDisplay ??
                           (() => {
@@ -1480,9 +1488,16 @@ export default function App() {
                             return model?.options?.find((choice) => choice.value === model.currentValue)?.name ??
                               (model?.currentValue !== undefined ? String(model.currentValue) : undefined);
                           })(),
-                        recentWorkspaces,
-                        onWorkspaceChange: (workspace) =>
-                          createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
+                        modelPending: true,
+                        commandExamples: ompChat ? "/compact, /model" : "/compact, /resume",
+                        // an omp chat's folder is its process's: another folder is another session, from 새 세션
+                        recentWorkspaces: ompChat ? [selectedSession.workspace] : recentWorkspaces,
+                        ...(ompChat
+                          ? {}
+                          : {
+                              onWorkspaceChange: (workspace: string) =>
+                                createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
+                            }),
                       }
                 }
               />
@@ -1711,7 +1726,23 @@ export default function App() {
             <PeacockMark />
           </span>
           <PeacockWordmark className="workspace-empty__wordmark" />
-          <h1>{t("선택된 세션이 없습니다")}</h1>
+          <h1>{t("어디를 칠까요?")}</h1>
+          <p className="workspace-empty__lede">{t("선택된 세션이 없습니다. 에이전트를 골라 새 세션을 시작하세요.")}</p>
+          {backend.terminalSessions === true && (
+            <EmptyWorkspaceAgents
+              onPick={(agentKind) => {
+                const remembered = preferences.newSession;
+                const entry = agentCatalogEntry(agentKind);
+                openNewSessionDialog(undefined, {
+                  agentKind,
+                  surface:
+                    remembered?.agentKind === agentKind && entry.surfaces.includes(remembered.surface)
+                      ? remembered.surface
+                      : entry.defaultSurface,
+                });
+              }}
+            />
+          )}
           <button
             className="button-primary"
             type="button"
@@ -1757,7 +1788,7 @@ export default function App() {
           key={newSessionRequest.serial}
           defaultWorkspace={connection.workspace}
           prefill={newSessionRequest.prefill}
-          {...(preferences.newSession ? { choice: preferences.newSession } : {})}
+          {...((newSessionRequest.choice ?? preferences.newSession) ? { choice: newSessionRequest.choice ?? preferences.newSession } : {})}
           agentDefaults={preferences.agents}
           terminalSessions={backend.terminalSessions === true}
           onCancel={() => setNewSessionRequest(null)}

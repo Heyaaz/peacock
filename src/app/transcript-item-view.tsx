@@ -6,7 +6,7 @@ import {
   parseSkillInvocation,
 } from "../transcript-utils";
 import { Bot, Brain, Check, ListChecks, Paperclip } from "lucide-react";
-import { memo } from "react";
+import { memo, useContext } from "react";
 import { httpUrls } from "./format";
 import { LinkPreviewCard, MessageCopyButton } from "./primitives";
 import { SkillInvocation, SkillPromptCard, type SkillArgsView } from "./skill-activity";
@@ -16,6 +16,7 @@ import { MarkdownBody, StreamingMarkdown } from "./transcript-markdown";
 import { TodoCard } from "./transcript-todo";
 import { ToolCard } from "./transcript-tool-card";
 import type { TranscriptProps } from "./transcript";
+import { AssistantNameContext } from "./assistant-name";
 
 /**
  * A reasoning card. Whether it is open is not the card's own business: the transcript
@@ -32,11 +33,12 @@ export function ThoughtCard({
   expanded: boolean;
   onToggle?: () => void;
 }) {
+  const assistant = useContext(AssistantNameContext) || t("에이전트");
   return (
     <article className={`thought-card ${item.streaming ? "is-streaming" : ""}`}>
       <header>
         <Brain size={15} />
-        <strong>Gajae</strong>
+        <strong>{assistant}</strong>
         <span>
           {!item.streaming && item.durationMs !== undefined
             ? t`${Math.max(1, Math.round(item.durationMs / 1000))}초 생각함`
@@ -94,6 +96,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
   onStopTool?: TranscriptProps["onStopTool"];
 }) {
   useLanguage();
+  const assistant = useContext(AssistantNameContext) || t("에이전트");
   if (item.kind === "message") {
     const copyText = copyableMessageText(item.content);
     const attachments = attachmentSummaryText(item.content);
@@ -105,7 +108,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
             <span className="assistant-mark">
               <Bot size={14} aria-hidden="true" />
             </span>
-            <strong>Gajae</strong>
+            <strong>{assistant}</strong>
             <time>{item.createdAt}</time>
           </div>
         )}

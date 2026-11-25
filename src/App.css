@@ -6464,6 +6464,39 @@ button.diff-line-number:hover {
   color: var(--text-primary);
   font-size: 18px;
 }
+.workspace-empty__lede {
+  margin: -4px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+/* one chip per installed agent: the new-session dialog opens on it */
+.workspace-empty__agents {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 420px;
+  margin: 2px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+.workspace-empty__agents button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--overlay) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.workspace-empty__agents button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
 
 .workspace--offline {
   max-width: 520px;

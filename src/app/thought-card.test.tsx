@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ThoughtActivity } from "../../shared/agent-contract";
+import { AssistantNameContext } from "./assistant-name";
 import { TranscriptItemView } from "./transcript";
 
 /**
@@ -53,7 +54,9 @@ describe("thought card", () => {
     const markup = render(thoughtItem({}), false);
 
     expect(markup).toContain("thought-card");
-    expect(markup).toContain("Gajae");
+    // without a session's agent the card names no brand
+    expect(markup).toContain("<strong>에이전트</strong>");
+    expect(markup).not.toContain("Gajae");
     expect(markup).toContain("추론");
     expect(markup).toContain("펼치기");
     expect(markup).not.toContain("thought-content");
@@ -124,5 +127,22 @@ describe("thought card", () => {
     expect(view).toContain("onToggleThoughtsExpanded");
     expect(view).toContain("expanded={thoughtsExpanded}");
     expect(view).toContain("onToggle={onToggleThoughtsExpanded}");
+  });
+});
+
+describe("the assistant's label", () => {
+  it("is the session's agent, on reasoning cards and messages alike", () => {
+    const labelled = (item: Parameters<typeof TranscriptItemView>[0]["item"]) =>
+      renderToStaticMarkup(
+        createElement(
+          AssistantNameContext.Provider,
+          { value: "Oh My Pi" },
+          createElement(TranscriptItemView, { item, onResolveTool: () => undefined, onReadArtifact: undefined }),
+        ),
+      );
+    expect(labelled(thoughtItem({}))).toContain("<strong>Oh My Pi</strong>");
+    const message = labelled({ id: "m1", kind: "message", role: "assistant", sessionId: "session-1", content: "끝났습니다", createdAt: "now" });
+    expect(message).toContain("<strong>Oh My Pi</strong>");
+    expect(message).not.toContain("Gajae");
   });
 });

@@ -24,9 +24,7 @@ import {
 } from "../transcript-utils";
 import { GajaeProgressRow } from "./gajae-progress";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  FolderGit2,
-} from "lucide-react";
+import { FolderGit2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -58,6 +56,7 @@ import {
 } from "./transcript-scroll";
 import { SKILL_ARGS_VIEW } from "./skill-activity";
 import { TranscriptItemView } from "./transcript-item-view";
+import { AssistantNameContext } from "./assistant-name";
 import { ToolRunBlockView } from "./transcript-tool-run";
 import { NO_OPEN_FOLDS, TurnFoldRow } from "./transcript-turn-fold";
 export { ThoughtCard, TranscriptItemView } from "./transcript-item-view";
@@ -151,9 +150,15 @@ export interface TranscriptProps {
   emptyStateMeta?: {
     workspace: string;
     modelDisplay?: string;
+    /** The model is still being read: "확인 중…" stands in until it is (unset: no model row). */
+    modelPending?: boolean;
+    /** Slash commands this agent takes, as the hint names them (unset: no hint). */
+    commandExamples?: string;
     recentWorkspaces: string[];
     onWorkspaceChange?: (workspace: string) => void;
   };
+  /** The session's agent, as the assistant's label and the empty state name it. */
+  assistantName?: string;
 }
 
 const exampleRequests = (): string[] => [
@@ -194,6 +199,7 @@ export function Transcript({
   onRevealInspector,
   onStopTool,
   onPickExample,
+  assistantName,
 }: TranscriptProps) {
   const items = useMemo(
     () => allItems.filter((item) => !isEmptyTodoSnapshot(item)),
@@ -1178,7 +1184,10 @@ export function Transcript({
         <span className="empty-conversation__mark">
           <PeacockMark />
         </span>
-        <h2>{t("Gajae에게 어떤 작업을 맡길까요?")}</h2>
+        <h2>{t("어디를 칠까요?")}</h2>
+        <p className="empty-conversation__agent">
+          {assistantName ? t`${assistantName}에게 무엇을 맡길까요?` : t("무엇을 맡길까요?")}
+        </p>
         {loadingPage && <p role="status">{t("최근 대화 불러오는 중…")}</p>}
         {pageLoadError && (
           <p role="alert">
@@ -1213,10 +1222,12 @@ export function Transcript({
                   {directoryName(emptyStateMeta.workspace)}
                 </dd>
               </div>
-              <div>
-                <dt>{t("모델")}</dt>
-                <dd>{emptyStateMeta.modelDisplay ?? t("확인 중…")}</dd>
-              </div>
+              {(emptyStateMeta.modelDisplay || emptyStateMeta.modelPending) && (
+                <div>
+                  <dt>{t("모델")}</dt>
+                  <dd>{emptyStateMeta.modelDisplay ?? t("확인 중…")}</dd>
+                </div>
+              )}
             </dl>
             {emptyStateMeta.recentWorkspaces.length > 1 && (
               <div className="empty-conversation__workspaces">
@@ -1245,10 +1256,12 @@ export function Transcript({
                 <kbd>⌘F</kbd>
                 <span>{t("이 대화에서 찾기")}</span>
               </li>
-              <li>
-                <kbd>/</kbd>
-                <span>{t("명령어 (예: /compact, /resume)")}</span>
-              </li>
+              {emptyStateMeta.commandExamples && (
+                <li>
+                  <kbd>/</kbd>
+                  <span>{t`명령어 (예: ${emptyStateMeta.commandExamples})`}</span>
+                </li>
+              )}
             </ul>
           </div>
         )}
@@ -1257,6 +1270,7 @@ export function Transcript({
   }
 
   return (
+    <AssistantNameContext.Provider value={assistantName ?? ""}>
     <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0 }}>
       {loadingPage && items.length > 0 && (
         <div role="status" style={{ flex: "none", padding: "4px 12px", textAlign: "center" }}>
@@ -1388,5 +1402,6 @@ export function Transcript({
       )}
       </div>
     </div>
+    </AssistantNameContext.Provider>
   );
 }

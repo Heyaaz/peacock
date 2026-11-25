@@ -11,6 +11,7 @@ import type {
 import type { MessageDeliverySessionState } from "../message-delivery";
 import { t } from "../i18n";
 import type { InvalidLinkReason } from "../../shared/settings-ipc";
+import { agentCatalogEntry } from "../../shared/agent-catalog";
 
 export type CenterView =
   | "conversation"
@@ -251,6 +252,16 @@ export function syncAppBadge(
   if (typeof window !== "undefined" && window.agentControlDesktop) return;
   if (count > 0) void nav.setAppBadge?.(count).catch(() => undefined);
   else void nav.clearAppBadge?.().catch(() => undefined);
+}
+
+/**
+ * The agent a session talks to, by name (GJC, Oh My Pi, Claude Code): what the assistant's
+ * label and the empty conversation call it. Hermes is its own runtime, named as such.
+ */
+export function sessionAgentName(session: Pick<AgentSession, "runtime" | "agentKind">): string {
+  if (session.runtime === "hermes" && !session.agentKind) return "Hermes";
+  const kind = session.agentKind ?? (session.runtime === "omp-rpc" ? "omp" : session.runtime === "herdr" ? "shell" : "gjc");
+  return kind === "shell" ? t("셸") : agentCatalogEntry(kind).name;
 }
 
 export function invalidLinkMessage(reason: InvalidLinkReason): string {

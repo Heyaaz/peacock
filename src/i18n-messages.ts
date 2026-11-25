@@ -59,7 +59,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "Gajae 세션 정보": "Gajae session info",
   "Gajae가 확인하고 수정할 프로젝트를 선택하세요.":
     "Choose the project Gajae may inspect and edit.",
-  "Gajae에게 어떤 작업을 맡길까요?": "What should Gajae work on?",
   "Git 레포": "Git repo",
   "Git 레포 아님": "Not a Git repo",
   "Git 레포가 아니라 레포 화면이 없습니다":
@@ -196,7 +195,6 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "줄 {0}": "lines {0}",
   "{0}줄": "{0} lines",
   "명령 실행 중…": "Running commands…",
-  "명령어 (예: /compact, /resume)": "Commands (for example /compact, /resume)",
   모델: "Model",
   "모델 목록을 불러오는 중입니다. 잠시 후 다시 선택하세요.":
     "Loading the model list. Select it again in a moment.",
@@ -1360,4 +1358,10 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "대화를 이 지점으로 옮깁니다 (같은 세션 파일 안에서)": "Moves the conversation to this point (within the same session file)",
   "여기로 이동": "Move here",
   "지난 GJC 세션 이어서 진행": "Continue a past GJC session",
+  "어디를 칠까요?": "Where do we strike?",
+  "{0}에게 무엇을 맡길까요?": "What should {0} take on?",
+  "무엇을 맡길까요?": "What should it take on?",
+  "선택된 세션이 없습니다. 에이전트를 골라 새 세션을 시작하세요.": "No session selected. Pick an agent to start a new session.",
+  "에이전트로 새 세션 시작": "Start a new session with an agent",
+  "명령어 (예: {0})": "Commands (e.g. {0})",
 };

@@ -1114,8 +1114,8 @@ function createWindow(): BrowserWindow {
             assert(document.querySelector('.plan-card'), 'Plan activity did not render');
             assert(document.querySelector('.markdown-body h3'), 'Markdown heading did not render');
             assert(document.querySelector('.markdown-body table'), 'GitHub-flavored Markdown table did not render');
-            assert(document.querySelector('.message-author')?.textContent?.includes('Gajae'), 'Assistant branding did not change to Gajae');
-            assert(document.querySelector('.assistant-mark img'), 'Gajae assistant icon did not render');
+            assert(document.querySelector('.message-author strong')?.textContent?.trim() === 'GJC', 'The assistant is not labelled with the session agent');
+            assert(document.querySelector('.assistant-mark svg'), 'The assistant avatar did not render');
             assert(!document.querySelector('.runtime-badge, .model-badge'), 'Removed header labels still render');
             const inspectorControl = document.querySelector('button[title="세션 정보"]');
             assert(inspectorControl, 'Session inspector control did not render');
@@ -1347,7 +1347,7 @@ function createWindow(): BrowserWindow {
             Array.from(document.querySelectorAll('[role="dialog"] button')).find((button) => button.textContent?.trim() === 'GJC')?.click();
             await wait(100);
             assert(document.querySelectorAll('.backend-card').length === 1, 'GJC settings card did not render');
-            assert(document.querySelector('.backend-logo img'), 'Gajae icon did not render in settings');
+            assert(document.querySelector('.backend-logo svg'), 'The GJC mark did not render in settings');
             assert(document.querySelector('input[list="gjc-model-profiles"]'), 'Custom profile field did not render');
             assert(!document.querySelector('.settings-panel select'), 'Native select still renders in settings');
             const approvalDropdown = document.querySelector('.settings-panel .dropdown-trigger');
