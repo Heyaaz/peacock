@@ -38,7 +38,11 @@ export function ThoughtCard({
       <header>
         <Brain size={15} />
         <strong>Gajae</strong>
-        <span>{t("추론")}</span>
+        <span>
+          {!item.streaming && item.durationMs !== undefined
+            ? t`${Math.max(1, Math.round(item.durationMs / 1000))}초 생각함`
+            : t("추론")}
+        </span>
         {!item.streaming && (
           <button
             type="button"

@@ -14,6 +14,9 @@ import type {
   NoticeActivity,
   QueuedMessage,
   QuestionActivity,
+  SessionLiveStatus,
+  SubagentSnapshot,
+  TodoSnapshotPhase,
   QuestionSubmission,
   SessionCapabilities,
   SessionStatus,
@@ -160,6 +163,14 @@ interface ChatRuntime {
   /** omp waits to retry a model call. */
   retry?: { attempt: number; maxAttempts?: number; retryAt: number; error?: string };
   stateTimer?: ReturnType<typeof setTimeout>;
+  /** When the running turn began, for the status line. */
+  turnStartedAt?: number;
+  /** What the turn does now, as the status line names it. */
+  activity?: string;
+  /** How long each thought read back from the file was watched streaming (by file row id). */
+  thoughtDurations: Map<string, number>;
+  /** omp's subagents as its progress frames report them (`set_subagent_subscription`). */
+  subagents: Map<string, Record<string, unknown>>;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -372,6 +383,7 @@ export class OmpRpcController implements AgentRuntimeController {
       throw error;
     }
     this.options.store.touch(sessionId);
+    chat.turnStartedAt ??= Date.now();
     if (!wasWorking) this.applyStatus(sessionId, "running");
     return wasWorking && steer ? "steer" : "prompt";
   }
@@ -448,6 +460,8 @@ export class OmpRpcController implements AgentRuntimeController {
   /** What a started omp is told before it is used (approvals and questions add theirs). */
   protected async configure(_sessionId: string, client: OmpRpcClient): Promise<void> {
     await client.call({ type: "set_ask_dialog", enabled: true }).catch(() => undefined);
+    // subagents report their progress as frames of their own (rpc-subagents.ts)
+    await client.call({ type: "set_subagent_subscription", level: "progress" }).catch(() => undefined);
   }
 
   private spawnProcess(binary: string, args: readonly string[], options: { cwd: string; env: Record<string, string> }): RpcProcess {
@@ -499,13 +513,23 @@ export class OmpRpcController implements AgentRuntimeController {
       return;
     }
     this.emitLive(sessionId, chat.live.apply(frame));
+    this.noteActivity(sessionId);
     switch (frame.type) {
       case "agent_start":
         if (!chat.working) {
           chat.working = true;
           chat.turnFileRevision ??= chat.follower.revision();
         }
+        chat.turnStartedAt ??= Date.now();
         this.applyStatus(sessionId, "running");
+        break;
+      case "tool_execution_end":
+        // the todo tool changes the list the status line counts
+        if (frame.toolName === "todo") this.refreshStateSoon(sessionId, client);
+        break;
+      case "subagent_lifecycle":
+      case "subagent_progress":
+        this.noteSubagent(sessionId, record(frame.payload));
         break;
       case "prompt_result":
         this.onTurnEnd(sessionId, client, frame as unknown as RpcPromptResult);
@@ -909,6 +933,47 @@ export class OmpRpcController implements AgentRuntimeController {
     this.emitConfig(sessionId);
   }
 
+  /** What the turn does now, from its live rows: the running tool, else thinking or writing. */
+  private noteActivity(sessionId: string): void {
+    const chat = this.chat(sessionId);
+    if (!chat.working) return;
+    const rows = chat.live.items();
+    let activity: string | undefined;
+    for (let index = rows.length - 1; index >= 0 && activity === undefined; index -= 1) {
+      const item = rows[index]!;
+      if (item.kind === "tool" && (item.status === "running" || item.status === "pending" || item.status === "approval-required"))
+        activity = item.description && item.description !== item.name ? `${item.name} · ${item.description}` : item.name;
+      else if (item.kind === "thought" && item.streaming) activity = "생각하는 중";
+      else if (item.kind === "message" && item.role === "assistant" && item.streaming) activity = "답을 쓰는 중";
+    }
+    if (activity === chat.activity) return;
+    chat.activity = activity;
+    this.bump(sessionId);
+    this.emitUpdated(sessionId);
+  }
+
+  /** One subagent's lifecycle or progress frame (`subagent_lifecycle`, `subagent_progress`). */
+  private noteSubagent(sessionId: string, payload: Record<string, unknown>): void {
+    const id = string(payload.id, payload.subagentId, record(payload.progress).id);
+    if (!id) return;
+    const chat = this.chat(sessionId);
+    chat.subagents.set(id, { ...(chat.subagents.get(id) ?? {}), ...payload, seenAt: Date.now() });
+  }
+
+  /** omp's subagents in this chat: the ones it reported this run, and the ones it still lists. */
+  async listSubagents(sessionId: string): Promise<SubagentSnapshot[]> {
+    const chat = this.chat(sessionId);
+    const client = this.client(sessionId);
+    if (client) {
+      const data = await client.call<{ subagents?: unknown }>({ type: "get_subagents" }).catch(() => undefined);
+      for (const entry of Array.isArray(data?.subagents) ? data.subagents.map(record) : []) {
+        const id = string(entry.id);
+        if (id) chat.subagents.set(id, { ...(chat.subagents.get(id) ?? {}), ...entry });
+      }
+    }
+    return [...chat.subagents.entries()].map(([id, entry]) => subagentSnapshot(id, entry));
+  }
+
   private applyCommands(sessionId: string, value: unknown): void {
     const commands = (Array.isArray(value) ? value.map(record) : []).flatMap((command): AgentCommand[] => {
       const name = string(command.name);
@@ -1078,6 +1143,8 @@ export class OmpRpcController implements AgentRuntimeController {
   private onTurnEnd(sessionId: string, client: OmpRpcClient, result: RpcPromptResult): void {
     const chat = this.chat(sessionId);
     chat.working = false;
+    chat.turnStartedAt = undefined;
+    chat.activity = undefined;
     this.closeCards(sessionId, "ended");
     this.emitLive(sessionId, chat.live.cancelOpenTools());
     const category = result.status === "error" ? "failed" : result.status === "completed" && result.agentInvoked ? "completed" : undefined;
@@ -1094,6 +1161,8 @@ export class OmpRpcController implements AgentRuntimeController {
     if (this.disposed) return;
     const wasWorking = chat.working;
     chat.working = false;
+    chat.turnStartedAt = undefined;
+    chat.activity = undefined;
     this.closeCards(sessionId, "exited");
     this.emitLive(sessionId, chat.live.cancelOpenTools());
     chat.compacting = false;
@@ -1172,6 +1241,12 @@ export class OmpRpcController implements AgentRuntimeController {
       return;
     }
     chat.turnFileRevision = undefined;
+    // a thought watched streaming keeps how long it took once the file's row stands in for it
+    const watched = chat.live.items().flatMap((item) => (item.kind === "thought" && isLiveRowId(sessionId, item.id) && item.durationMs !== undefined ? [item.durationMs] : []));
+    if (watched.length > 0) {
+      const fresh = chat.fileRows.filter((item) => item.kind === "thought" && !(chat.published ?? []).some((known) => known.id === item.id) && !chat.thoughtDurations.has(item.id));
+      fresh.slice(-watched.length).forEach((item, index) => chat.thoughtDurations.set(item.id, watched[index]!));
+    }
     const fileIds = new Set(chat.fileRows.map((item) => item.id));
     chat.live.retain((item) => !fileIds.has(item.id) && this.keepAfterSync(sessionId, item));
     chat.liveVersion += 1;
@@ -1205,7 +1280,11 @@ export class OmpRpcController implements AgentRuntimeController {
     const fileIds = new Set(chat.fileRows.map((item) => item.id));
     const live = chat.live.items();
     const replacing = new Map(live.filter((item) => fileIds.has(item.id)).map((item) => [item.id, item]));
-    const rows = replacing.size === 0 ? chat.fileRows.slice() : chat.fileRows.map((item) => replacing.get(item.id) ?? item);
+    const rows = chat.fileRows.map((item) => {
+      const replaced = replacing.get(item.id) ?? item;
+      const watched = replaced.kind === "thought" && replaced.durationMs === undefined ? chat.thoughtDurations.get(replaced.id) : undefined;
+      return watched !== undefined && replaced.kind === "thought" ? { ...replaced, durationMs: watched } : replaced;
+    });
     for (const item of live) if (!fileIds.has(item.id)) rows.push(item);
     return rows;
   }
@@ -1223,6 +1302,8 @@ export class OmpRpcController implements AgentRuntimeController {
         notices: 0,
         queue: { steering: [], followUp: [] },
         compacting: false,
+        thoughtDurations: new Map(),
+        subagents: new Map(),
       };
       this.chats.set(sessionId, chat);
     }
@@ -1290,14 +1371,25 @@ export class OmpRpcController implements AgentRuntimeController {
       ...(chat?.retry ? { retry: chat.retry } : {}),
     };
     const state = chat?.state;
-    if (!state) return live;
+    if (!state)
+      return chat?.turnStartedAt !== undefined
+        ? { ...live, liveStatus: { turnStartedAtMs: chat.turnStartedAt, ...(chat.activity ? { activity: chat.activity } : {}) } }
+        : live;
     const model = record(state.model);
     const provider = string(model.provider);
     const id = string(model.id);
     const usage = record(state.contextUsage);
     const thinking = string(state.configuredThinkingLevel, state.thinkingLevel);
+    const todo = todoPhases(state.todoPhases);
+    const liveStatus: SessionLiveStatus = {
+      ...(chat?.turnStartedAt !== undefined ? { turnStartedAtMs: chat.turnStartedAt } : {}),
+      ...(chat?.activity ? { activity: chat.activity } : {}),
+      ...(todo.length > 0 ? { todo } : {}),
+      ...(typeof usage.percent === "number" && Number.isFinite(usage.percent) ? { contextPercent: usage.percent } : {}),
+    };
     return {
       ...live,
+      liveStatus,
       ...(provider && id ? { model: `${provider}/${id}`, modelDisplay: string(model.name) ?? id } : {}),
       ...(thinking ? { thinking } : {}),
       ...(typeof usage.percent === "number" && Number.isFinite(usage.percent) ? { usagePercent: Math.round(usage.percent) } : {}),
@@ -1355,6 +1447,59 @@ export function ompRpcArgs(record: Pick<OmpRpcSessionRecord, "workspace" | "sess
 export function sessionOfOmpToolId(toolId: string): string | undefined {
   const match = new RegExp(`^(${OMP_RPC_SESSION_PREFIX}[0-9a-f-]{36}):`, "u").exec(toolId);
   return match?.[1];
+}
+
+/** omp's todo phases (`get_state.todoPhases`) as the status line's checklist. */
+function todoPhases(value: unknown): TodoSnapshotPhase[] {
+  return (Array.isArray(value) ? value.map(record) : []).flatMap((phase) => {
+    const raw = Array.isArray(phase.tasks) ? phase.tasks : Array.isArray(phase.items) ? phase.items : [];
+    const tasks = raw.flatMap((task) => {
+      if (typeof task === "string") return [{ content: task, status: "pending" }];
+      const entry = record(task);
+      const content = string(entry.content, entry.text, entry.title);
+      return content ? [{ content, ...(string(entry.status) ? { status: string(entry.status)! } : {}) }] : [];
+    });
+    const name = string(phase.name, phase.phase, phase.title);
+    return tasks.length > 0 ? [{ ...(name ? { name } : {}), tasks }] : [];
+  });
+}
+
+/** A subagent as the panel lists it, from what omp reported (its snapshot and progress). */
+function subagentSnapshot(id: string, entry: Record<string, unknown>): SubagentSnapshot {
+  const progress = record(entry.progress);
+  const pick = (...keys: string[]): unknown => {
+    for (const key of keys) {
+      if (progress[key] !== undefined) return progress[key];
+      if (entry[key] !== undefined) return entry[key];
+    }
+    return undefined;
+  };
+  const raw = string(pick("status")) ?? "running";
+  const status: SubagentSnapshot["status"] =
+    raw === "completed" || raw === "done" ? "completed" : raw === "failed" || raw === "aborted" || raw === "error" ? "failed" : raw === "pending" || raw === "parked" || raw === "waiting" ? "waiting" : "running";
+  const number = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
+  const started = number(pick("startedAt", "startTime"));
+  const ended = number(pick("endedAt", "endTime", "completedAt"));
+  const duration = number(pick("durationMs", "elapsedMs"));
+  const tools = pick("recentTools", "tools");
+  const recentTool = Array.isArray(tools) ? tools.map((tool) => (typeof tool === "string" ? tool : string(record(tool).name, record(tool).tool))).filter(Boolean).at(-1) : undefined;
+  const recent = string(pick("lastActivity", "activity", "currentTool", "lastMessage")) ?? recentTool;
+  const model = pick("model");
+  return {
+    id,
+    label: string(pick("agent", "name"), entry.description) ?? id,
+    status,
+    ...(string(entry.agentSource) ? { role: string(entry.agentSource)! } : {}),
+    ...(string(pick("task", "assignment", "description")) ? { objective: string(pick("task", "assignment", "description"))!.slice(0, 400) } : {}),
+    ...(typeof model === "string" ? { model } : string(record(model).id) ? { model: string(record(model).id)! } : {}),
+    ...(number(pick("cost")) !== undefined ? { costUsd: number(pick("cost"))! } : {}),
+    ...(number(pick("contextTokens", "tokens")) !== undefined ? { contextTokens: number(pick("contextTokens", "tokens"))! } : {}),
+    ...(number(pick("contextWindow")) !== undefined ? { contextWindow: number(pick("contextWindow"))! } : {}),
+    ...(number(pick("toolCount")) !== undefined ? { toolCount: number(pick("toolCount"))! } : {}),
+    ...(duration !== undefined ? { elapsedMs: duration } : started !== undefined ? { elapsedMs: Math.max(0, (ended ?? Date.now()) - started) } : {}),
+    ...(recent ? { recent: recent.slice(0, 200) } : {}),
+    ...(string(entry.sessionFile) ? { sessionFile: string(entry.sessionFile)! } : {}),
+  };
 }
 
 function finite(value: unknown): boolean {

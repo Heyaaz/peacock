@@ -231,7 +231,8 @@ export class OmpLiveRows {
       case "thinking_end": {
         const content = string(event.content);
         const { row } = this.ensureThought(id, "");
-        const settled: ThoughtActivity = { ...row, content: content ?? row.content, streaming: false };
+        const began = this.thinkingStarted.get(id);
+        const settled: ThoughtActivity = { ...row, content: content ?? row.content, streaming: false, ...(began !== undefined ? { durationMs: Math.max(0, this.now() - began) } : {}) };
         this.set(settled);
         return [{ type: "transcript.appended", item: settled }];
       }
@@ -268,7 +269,13 @@ export class OmpLiveRows {
         const text = [block.thinking, block.text, block.summary].map(resultText).find((part) => part.trim().length > 0) ?? "";
         if (!text && !this.index.has(id)) return;
         const { row } = this.ensureThought(id, text, message.timestamp);
-        const settled: ThoughtActivity = { ...row, content: text || row.content, streaming: false };
+        const began = this.thinkingStarted.get(id);
+        const settled: ThoughtActivity = {
+          ...row,
+          content: text || row.content,
+          streaming: false,
+          ...(row.durationMs === undefined && began !== undefined ? { durationMs: Math.max(0, this.now() - began) } : {}),
+        };
         this.set(settled);
         events.push({ type: "transcript.appended", item: settled });
       } else if (block.type === "toolCall") {
@@ -377,24 +384,25 @@ export class OmpLiveRows {
   private toolEnd(frame: RpcFrame): AgentEvent[] {
     const callId = string(frame.toolCallId);
     if (!callId) return [];
-    return this.finishTool(callId, record(frame.result).content, frame.isError === true);
+    const result = record(frame.result);
+    return this.finishTool(callId, result.content, frame.isError === true, record(result.details));
   }
 
   private toolResult(message: Row): AgentEvent[] {
     const callId = string(message.toolCallId);
     if (!callId) return [];
-    return this.finishTool(callId, message.content, message.isError === true);
+    return this.finishTool(callId, message.content, message.isError === true, record(message.details));
   }
 
-  private finishTool(callId: string, content: unknown, failed: boolean): AgentEvent[] {
+  private finishTool(callId: string, content: unknown, failed: boolean, details: Row = {}): AgentEvent[] {
     const call = this.tools.get(callId);
     if (!call) return [];
     if (call.endedAt === undefined) call.endedAt = this.now();
     const output = resultText(content);
+    const facts = toolResultFacts(details, call.startedAt !== undefined ? call.endedAt - call.startedAt : undefined);
     return this.updateTool(call.rowId, (tool) => {
       const status: ToolActivity["status"] = tool.status === "denied" ? "denied" : failed ? "failed" : "completed";
-      if (tool.status === status && (!output || tool.output === bounded(output))) return tool;
-      return { ...withoutOptions(tool), status, ...(output ? { output: bounded(output) } : {}) };
+      return { ...withoutOptions(tool), status, ...(output ? { output: bounded(output) } : {}), ...(tool.durationMs !== undefined ? { durationMs: tool.durationMs } : {}), ...facts };
     });
   }
 
@@ -422,6 +430,22 @@ export class OmpLiveRows {
     this.index.clear();
     this.rows.forEach((item, at) => this.index.set(item.id, at));
   }
+}
+
+/**
+ * What a tool result's details add to its row: how long it ran (the bash tool's `wallTimeMs`, else
+ * the time between its start and end) and an edit's diff and file (omp 19.1.1 edit `details.diff`).
+ */
+export function toolResultFacts(details: Row, measuredMs?: number): Pick<ToolActivity, "durationMs" | "diff" | "targetPath"> {
+  const wall = typeof details.wallTimeMs === "number" && Number.isFinite(details.wallTimeMs) ? details.wallTimeMs : undefined;
+  const duration = wall ?? (measuredMs !== undefined && measuredMs >= 0 ? measuredMs : undefined);
+  const diff = typeof details.diff === "string" && details.diff.trim().length > 0 ? bounded(details.diff) : undefined;
+  const target = typeof details.path === "string" && details.path.length > 0 ? details.path : undefined;
+  return {
+    ...(duration !== undefined ? { durationMs: Math.round(duration) } : {}),
+    ...(diff ? { diff } : {}),
+    ...(diff && target ? { targetPath: target } : {}),
+  };
 }
 
 function withoutOptions(tool: ToolActivity): ToolActivity {

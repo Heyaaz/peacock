@@ -99,4 +99,20 @@ describe("omp transcript", () => {
     const items = parse(TURN + line({ type: "custom", customType: "context_clear", id: "x1", parentId: "e4", timestamp: AT }) + entry("e9", "x1", { role: "user", content: "new" }));
     expect(items.map((item) => item.id)).toEqual([`${SID}:e9`]);
   });
+
+  it("reads how long a call ran and an edit's diff from the result's details (P6)", () => {
+    const parser = createOmpTranscriptParser("s");
+    parser.write(
+      [
+        { type: "message", id: "a1", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "ls" } }, { type: "toolCall", id: "c2", name: "edit", arguments: { path: "x.ts" } }] } },
+        { type: "message", id: "r1", message: { role: "toolResult", toolCallId: "c1", content: [{ type: "text", text: "a" }], details: { wallTimeMs: 31.6 } } },
+        { type: "message", id: "r2", message: { role: "toolResult", toolCallId: "c2", content: [{ type: "text", text: "ok" }], details: { diff: "-1 a\n+1 b", path: "x.ts" } } },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+    );
+    const [bash, editRow] = parser.items();
+    expect(bash).toMatchObject({ kind: "tool", status: "completed", durationMs: 32 });
+    expect(editRow).toMatchObject({ kind: "tool", diff: "-1 a\n+1 b", targetPath: "x.ts" });
+  });
 });

@@ -2,7 +2,7 @@ import type { ArtifactContent } from "../../shared/agent-contract";
 import type { ToolActivity } from "../backend/types";
 import { defaultRulePrefix, normalizeRulePrefix } from "../../shared/command-rules";
 import { compactToolCommand, compactToolText } from "../composer-utils";
-import { ChevronDown, ShieldCheck, TerminalSquare } from "lucide-react";
+import { Check, ChevronDown, ShieldCheck, TerminalSquare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { humanRuntimeText, toolDisplayName, toolStatusLabel } from "./format";
 import { DiffView } from "./primitives";
@@ -308,6 +308,13 @@ export function ToolCard({
             <pre>{summary.output.text}</pre>
           </div>
         )}
+        {tool.durationMs !== undefined && (tool.status === "completed" || tool.status === "failed") && (
+          <p className={`tool-card-footer tool-card-footer--${tool.status}`}>
+            {tool.status === "completed" ? <Check size={11} aria-hidden="true" /> : <X size={11} aria-hidden="true" />}
+            {tool.status === "completed" ? t("완료") : t("실패")}
+            <span>{formatToolDuration(tool.durationMs)}</span>
+          </p>
+        )}
         {hasDetails && (
           <button
             className="tool-expand"
@@ -533,4 +540,12 @@ export function ToolCard({
       </article>
     </>
   );
+}
+
+/** A call's run time as its card's footer says it: 0.03s, 4.2s, 1m 5s. */
+function formatToolDuration(ms: number): string {
+  if (ms < 10_000) return `${(ms / 1000).toFixed(ms < 1000 ? 2 : 1)}s`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }

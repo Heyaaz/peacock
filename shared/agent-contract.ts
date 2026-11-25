@@ -476,6 +476,20 @@ export interface AgentSession {
    * through `capabilitiesOf`.
    */
   capabilities?: Partial<SessionCapabilities>;
+  /** What the running turn is doing, for the status line above the composer (omp's chat). */
+  liveStatus?: SessionLiveStatus;
+}
+
+/** A turn's state as a status line shows it. */
+export interface SessionLiveStatus {
+  /** When the running turn began (epoch ms); unset while idle. */
+  turnStartedAtMs?: number;
+  /** What it does now: the running tool's description, or that it thinks or writes. */
+  activity?: string;
+  /** The agent's todo list, in phases. */
+  todo?: TodoSnapshotPhase[];
+  /** How much of the context window the conversation uses (percent). */
+  contextPercent?: number;
 }
 
 export interface SessionRetry {
@@ -656,6 +670,8 @@ export interface ToolActivity {
   targetPath?: string;
   images?: ToolImage[];
   subagents?: SubagentSnapshot[];
+  /** How long the call ran, when the runtime says (omp: the bash tool's `wallTimeMs`, else start to end). */
+  durationMs?: number;
 }
 
 export interface ToolImage {
@@ -801,6 +817,8 @@ export interface ThoughtActivity {
   content: string;
   createdAt: string;
   streaming: boolean;
+  /** How long the agent thought, when it was watched as it streamed. */
+  durationMs?: number;
 }
 
 export interface PlanActivity {
@@ -1234,6 +1252,19 @@ export interface SubagentSnapshot {
   role?: string;
   objective?: string;
   detail?: string;
+  /** What the runtime reports of its work (omp's subagent progress). */
+  model?: string;
+  costUsd?: number;
+  /** Context tokens in use, and the window they fill. */
+  contextTokens?: number;
+  contextWindow?: number;
+  toolCount?: number;
+  /** Since it started, or how long it ran. */
+  elapsedMs?: number;
+  /** Its latest activity, one line. */
+  recent?: string;
+  /** Its own session file, which holds its transcript. */
+  sessionFile?: string;
 }
 
 export type GoalOperation = "pause" | "resume" | "complete" | "drop";

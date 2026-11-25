@@ -55,6 +55,7 @@ export function transcriptItemEqual(
         left.outputArtifactId === right.outputArtifactId &&
         left.diff === right.diff &&
         left.targetPath === right.targetPath &&
+        left.durationMs === right.durationMs &&
         left.autoDecision?.decision === right.autoDecision?.decision &&
         left.autoDecision?.prefix === right.autoDecision?.prefix &&
         sameList(left.artifactRefs, right.artifactRefs, (ref, other) => ref === other) &&
@@ -99,7 +100,8 @@ export function transcriptItemEqual(
         right.kind === "thought" &&
         left.content === right.content &&
         left.createdAt === right.createdAt &&
-        left.streaming === right.streaming
+        left.streaming === right.streaming &&
+        left.durationMs === right.durationMs
       );
     case "plan":
       return (

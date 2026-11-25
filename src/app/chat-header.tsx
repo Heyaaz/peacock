@@ -1,4 +1,4 @@
-import { Bot, FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal } from "lucide-react";
+import { Bot, FolderGit2, GitBranch, Layers, MessageCircleQuestion, PanelRight, SquareTerminal, Users } from "lucide-react";
 import type { GitStatusSnapshot } from "../../shared/agent-contract";
 import type { AgentSession, ToolViewMode } from "../backend/types";
 import gajaeIconUrl from "../assets/gajae-icon-ui.png";
@@ -30,6 +30,9 @@ interface ChatHeaderProps {
   agentIcon?: "terminal" | "chat";
   /** Absent where the session has one screen only (a phone shows a terminal agent's chat). */
   surfaceToggle?: boolean;
+  /** The subagents panel of a chat that lists them (omp's); absent elsewhere. */
+  subagentsOpen?: boolean;
+  setSubagentsOpen?: (update: (open: boolean) => boolean) => void;
 }
 
 export function ChatHeader({
@@ -49,6 +52,8 @@ export function ChatHeader({
   terminalAgent = false,
   agentIcon = "terminal",
   surfaceToggle = true,
+  subagentsOpen = false,
+  setSubagentsOpen,
 }: ChatHeaderProps) {
   return (
   <header className="chat-header">
@@ -130,6 +135,17 @@ export function ChatHeader({
             { value: "detailed", label: t("상세"), description: t("추론까지 펼침") },
           ]} />
       </div>
+      {setSubagentsOpen && (
+        <button
+          className={`icon-button ${subagentsOpen ? "is-active" : ""}`}
+          type="button"
+          title={t("서브에이전트")}
+          aria-pressed={subagentsOpen}
+          onClick={() => setSubagentsOpen((open) => !open)}
+        >
+          <Users size={18} />
+        </button>
+      )}
       {setSideOpen && (
         <button
           className={`icon-button ${sideOpen ? "is-active" : ""}`}

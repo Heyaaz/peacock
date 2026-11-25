@@ -50,6 +50,22 @@ describe("OmpLiveRows", () => {
     expect(live.runningTools()).toEqual([]);
   });
 
+  it("keeps how long a call ran (bash wallTimeMs) and an edit's diff, and how long a thought took (P6)", () => {
+    const { live } = replay("approval-parallel.jsonl");
+    // omp's bash reports its own wall time: 29.97ms in the recording
+    expect(live.get(`${SESSION}:call_b845f691543f4b94855c0463`)).toMatchObject({ durationMs: 30 });
+    let clock = 1000;
+    const timed = new OmpLiveRows(SESSION, () => clock);
+    timed.apply({ type: "message_update", messageId: "m", message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } });
+    clock = 5200;
+    timed.apply({ type: "message_update", messageId: "m", message: { role: "assistant" }, assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: "hm" } });
+    expect(timed.get(`${SESSION}:live:m:0`)).toMatchObject({ kind: "thought", durationMs: 4200 });
+    timed.apply({ type: "tool_execution_start", toolCallId: "e1", toolName: "edit", args: { path: "a.ts" } });
+    clock = 5300;
+    timed.apply({ type: "tool_execution_end", toolCallId: "e1", toolName: "edit", result: { content: [{ type: "text", text: "ok" }], details: { diff: "-1 old\n+1 new", path: "a.ts" } } });
+    expect(timed.get(`${SESSION}:e1`)).toMatchObject({ status: "completed", durationMs: 100, diff: "-1 old\n+1 new", targetPath: "a.ts" });
+  });
+
   it("marks an aborted reply and the calls it left open (P0 abort)", () => {
     const { live } = replay("abort.jsonl");
     const notice = live.items().find((item) => item.kind === "notice");

@@ -156,7 +156,7 @@ describe("OmpRpcController", () => {
     expect(started!.args).toEqual(["--mode", "rpc-ui", "--cwd", context.workspace, "--approval-mode=always-ask"]);
     expect(started!.env).toEqual({ PATH: "/usr/bin", HOME: "/Users/me" });
     // opening also reads omp's command list and model picker for the composer
-    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "get_state", "get_available_commands", "get_model_picker", "get_available_models"]);
+    expect(started!.child.written.map((frame) => frame.type)).toEqual(["negotiate_protocol", "set_event_filter", "set_ask_dialog", "set_subagent_subscription", "get_state", "get_available_commands", "get_model_picker", "get_available_models"]);
     expect(started!.child.sent("set_event_filter")[0]).toMatchObject({ events: null, messageUpdates: "delta" });
     expect(context.store.get(session.id)).toMatchObject({ sessionFile: context.sessionFile, ompSessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3" });
     expect((await context.controller.listSessions())[0]).toMatchObject({ model: "opencodex/deepseek-flash", modelDisplay: "DeepSeek Flash", thinking: "low", usagePercent: 2 });
@@ -585,5 +585,47 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
       { type: "btw_record", record: { id: "btw-1", leafId: null, question: "q", answer: "A desktop app.", status: "complete", createdAt: 1, updatedAt: 2 } },
     );
     await expect(answer).resolves.toBe("A desktop app.");
+  });
+});
+
+describe("OmpRpcController status line and subagents (P6)", () => {
+  it("tells the status line how long the turn runs, what it does, its todo progress and context", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.sendMessage(session.id, { text: "go", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    child.emitFrames({ type: "agent_start" }, { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "npm test" } });
+    await settle();
+    const row = (await context.controller.listSessions())[0]!;
+    expect(row.liveStatus).toMatchObject({ activity: "bash · npm test", contextPercent: 1.5 });
+    expect(row.liveStatus?.turnStartedAtMs).toEqual(expect.any(Number));
+  });
+
+  it("lists the subagents omp reports, with what their progress says", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    expect(child.sent("set_subagent_subscription")[0]).toMatchObject({ level: "progress" });
+    child.emitFrames(
+      { type: "subagent_lifecycle", payload: { id: "sa-1", agent: "scout", status: "started", description: "find the parser", sessionFile: "/tmp/sa-1.jsonl" } },
+      { type: "subagent_progress", payload: { id: "sa-1", progress: { status: "running", model: "deepseek-flash", toolCount: 3, contextTokens: 5000, contextWindow: 100000, cost: 0.0123, lastActivity: "grep parser" } } },
+    );
+    await settle();
+    expect(await context.controller.listSubagents(session.id)).toEqual([
+      {
+        id: "sa-1",
+        label: "scout",
+        status: "running",
+        objective: "find the parser",
+        model: "deepseek-flash",
+        costUsd: 0.0123,
+        contextTokens: 5000,
+        contextWindow: 100000,
+        toolCount: 3,
+        recent: "grep parser",
+        sessionFile: "/tmp/sa-1.jsonl",
+      },
+    ]);
   });
 });

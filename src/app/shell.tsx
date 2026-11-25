@@ -76,6 +76,7 @@ import { useDiff, useGitStatus, useGoal } from "./use-selected-session";
 import { useTranscriptStore } from "./use-transcript-store";
 import { useMessageDelivery } from "./use-message-delivery";
 import { useSendMessage } from "./use-send-message";
+import { SubagentsPanel, TurnStatusLine } from "./turn-status";
 import { useInbox } from "./use-inbox";
 import { useShellShortcuts } from "./use-shell-shortcuts";
 import { useSessionSync } from "./use-session-sync";
@@ -162,6 +163,7 @@ export default function App() {
   );
   const [findOpen, setFindOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
+  const [subagentsOpen, setSubagentsOpen] = useState(false);
 
   // Each open is its own request: a second prefill while the dialog is up
   // remounts it with the new values instead of being dropped.
@@ -565,6 +567,8 @@ export default function App() {
   );
 
   const liveSubagents = useLiveSubagents(backend, selectedSessionId, inspectorOpen);
+  // an omp chat lists its subagents in a panel of its own (P6)
+  const ompSubagents = useLiveSubagents(backend, ompChat?.id, subagentsOpen);
 
   const { toggleInbox, inboxCount } = useInbox(
     backend,
@@ -1356,6 +1360,7 @@ export default function App() {
             {...(askSideBackend && !agentChat && selectedCapabilities?.sideQuestion ? { sideOpen, setSideOpen } : {})}
             terminalAgent={agentChat !== null || ompChat !== null}
             agentIcon={ompChat ? "chat" : "terminal"}
+            {...(ompChat ? { subagentsOpen, setSubagentsOpen } : {})}
             surfaceToggle={!ompChat && (!agentChat || agentTerminalReachable)}
           />
 
@@ -1459,6 +1464,12 @@ export default function App() {
                   </>
                 ) : (
                 <>
+                {selectedSession.liveStatus && (
+                  <TurnStatusLine
+                    status={selectedSession.liveStatus}
+                    running={selectedSession.status === "running" || selectedSession.status === "waiting"}
+                  />
+                )}
                 <QuestionBanner
                   pending={pendingQuestionCards}
                   onAnswer={answerQuestion}
@@ -1555,6 +1566,9 @@ export default function App() {
                 onClear={() => clearSide(selectedSession.id)}
                 onClose={() => setSideOpen(false)}
               />
+            )}
+            {viewSurface === "chat" && ompChat && subagentsOpen && (
+              <SubagentsPanel subagents={ompSubagents} onClose={() => setSubagentsOpen(false)} />
             )}
             {surface === "chat" && !agentChat && !ompChat && inspectorOpen && (
               <Inspector

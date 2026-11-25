@@ -264,6 +264,13 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 실측(`npm run desktop:omp-rpc-smoke`, omp 19.1.1·기본 모델, `GAJAE_SMOKE_OMP_ARGS=--no-prewalk`): 9단계 — 채팅 만들기 → 창에서 열기(GJC Composer, 화면 전환 없음) → "OK" 응답이 `message.delta`로 스트리밍되어 0.5초에 표시 → bash `echo` 요청에 창의 카드가 뜨고 상태 waiting → 카드 승인 → 실행·출력 → "DONE" → 행 id가 모두 파일 id(`:live:` 남지 않음). 10단계(앱 재시작) — 같은 행이 목록에 있고, 열면 같은 id 5개로 다시 읽히고, omp가 세션 파일로 다시 떠 모델이 행에 돌아옴. 같은 스모크에서 앱 시작 직후 처음 받은 세션 목록이 사용자의 선택을 지우던 버그(`use-session-sync` 초기 목록이 늦게 오면 선택이 null)를 찾아 고쳤다.
 - `hc-agent-smoke` 3단계(Claude Code 채팅)는 Claude Code의 채팅 화면이 없어져 뺐다(4단계가 omp 기록 채팅).
 
+**P6 (omp 채팅 화면 보강, Tern에서 기능만 가져옴)**
+- 도구 카드: 결과 details의 `wallTimeMs`(bash, P0 실측 29.97ms), 없으면 `tool_execution_start`~`end` 시간을 `ToolActivity.durationMs`로 두고 카드 끝에 "완료 · 0.03s". 출력 꼬리는 기존 카드 미리보기. edit는 결과 details의 `diff`·`path`(19.1.1 edit/index.ts)를 `diff`·`targetPath`로 넘겨 기존 DiffView가 그리고, 12줄이 넘는 diff는 "N줄 더 · 모두 보기"로 접는다(GJC 카드에도 같은 접기). 파일 판독기(`omp-transcript.ts`)도 같은 details를 읽으므로 턴이 파일로 바뀐 뒤와 omp 터미널 세션의 기록 채팅에도 남는다.
+- 생각: `thinking_start`~`thinking_end` 시간을 `ThoughtActivity.durationMs`로 두고 접힌 카드에 "N초 생각함". 턴이 파일 행으로 바뀌면 같은 턴의 새 생각 행에 순서대로 옮긴다(메모리에만 — 파일에 블록별 시간이 없어 앱을 다시 켜면 "추론"으로 돌아감).
+- 상태 줄(입력창 위, `AgentSession.liveStatus`): 턴 경과 시간(1초마다), 지금 하는 일(실행 중 도구 "이름 · 설명", 없으면 "생각하는 중"/"답을 쓰는 중"), 할 일 진행 "완료/전체"(`get_state.todoPhases`, todo 도구가 끝나면 다시 읽음; 누르면 체크리스트 팝오버), 컨텍스트 %(`get_state.contextUsage`).
+- 서브에이전트 패널(헤더 버튼): `set_subagent_subscription {level:"progress"}`, `subagent_lifecycle`/`subagent_progress` 프레임과 `get_subagents`로 실행 중·대기·완료·실패 목록과 작업·모델·비용·시간·도구 수·컨텍스트·최근 활동·기록 파일 경로. 진행 정보(`AgentProgress`)의 타입은 19.1.1 패키지 밖(pi-tui)에 있어, 바이너리의 서브에이전트 렌더러가 쓰는 이름(toolCount·contextTokens·contextWindow·cost·model)을 넓게 읽는다. 실제 서브에이전트 실행으로는 확인하지 않았다(단위 테스트만).
+- 빠진 것: 백그라운드 작업 패널 — 19.1.1 RPC에는 작업 목록·이벤트·취소 명령이 없고 `get_state.hasPendingAsyncWork`(불린)뿐이다(rpc-types·wire/events·rpc-mode에 job 없음). Tern은 지원 폴더의 `daemon.state`가 `omp --resume <id>`를 PTY로 띄우는 것으로 보아 omp TUI 화면을 보여 주는 앱이라 RPC 근거가 되지 않는다. 서브에이전트 기록 "열기"는 앱에 파일 열기 브리지가 없어 경로만 보인다.
+
 **한계 (omp RPC 채팅)**
 - 열린 채팅마다 omp 프로세스가 앱이 끝날 때까지 산다(유휴 종료 없음).
 - 거절 코멘트는 omp에 전달되지 않는다(RPC select는 라벨만 받음). "이 세션 동안 허용"·폴더 grant는 카드에 없다(카드의 선택은 어디서나 같은 뜻: 이번만 허용/거절, 나머지는 명령 규칙).

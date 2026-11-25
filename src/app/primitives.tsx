@@ -184,6 +184,7 @@ function DiffFileBlock({
   defaultOpen: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [whole, setWhole] = useState(false);
   const added = lines.filter((line) => line.kind === "added").length;
   const removed = lines.filter((line) => line.kind === "removed").length;
   const hunks = lines.filter((line) => line.kind === "hunk").length;
@@ -204,6 +205,7 @@ function DiffFileBlock({
         <pre className="tool-diff-body">
           {lines
             .filter((line) => line.kind !== "header")
+            .slice(0, whole ? undefined : DIFF_PREVIEW_LINES)
             .map((line, index) => (
               <span key={index} className={`diff-line diff-line--${line.kind}`}>
                 <span className="diff-line-numbers">
@@ -221,9 +223,17 @@ function DiffFileBlock({
             ))}
         </pre>
       )}
+      {open && !whole && lines.filter((line) => line.kind !== "header").length > DIFF_PREVIEW_LINES && (
+        <button className="tool-diff-more" type="button" onClick={() => setWhole(true)}>
+          {t`${lines.filter((line) => line.kind !== "header").length - DIFF_PREVIEW_LINES}줄 더 · 모두 보기`}
+        </button>
+      )}
     </div>
   );
 }
+
+/** How many diff lines a card shows before "모두 보기". */
+const DIFF_PREVIEW_LINES = 12;
 
 export function DiffView({ diff, path }: { diff: string; path?: string }) {
   const files = parseDiffFiles(diff);

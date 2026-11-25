@@ -54,13 +54,21 @@ export function piMessage(value: unknown): Row | null {
 }
 
 /** The tool results a message carries: a `toolResult` message itself, or result blocks inside it. */
-function piResults(message: Row): { id: string; text: string; error: boolean }[] {
+function piResults(message: Row): { id: string; text: string; error: boolean; details: Row }[] {
   const blocks = message.role === "toolResult" ? [message] : Array.isArray(message.content) ? message.content.filter((block) => record(block).type === "toolResult") : [];
   return blocks.flatMap((value) => {
     const block = record(value);
     if (typeof block.toolCallId !== "string") return [];
-    return [{ id: block.toolCallId, text: resultText(block.content), error: block.isError === true }];
+    return [{ id: block.toolCallId, text: resultText(block.content), error: block.isError === true, details: record(block.details) }];
   });
+}
+
+/** What a result's details add to its row: how long it ran, and an edit's diff (as the RPC chat's live rows read them). */
+function resultFacts(details: Row): Pick<ToolActivity, "durationMs" | "diff" | "targetPath"> {
+  const wall = typeof details.wallTimeMs === "number" && Number.isFinite(details.wallTimeMs) ? Math.round(details.wallTimeMs) : undefined;
+  const diff = typeof details.diff === "string" && details.diff.trim().length > 0 ? bounded(details.diff) : undefined;
+  const target = typeof details.path === "string" && details.path.length > 0 ? details.path : undefined;
+  return { ...(wall !== undefined ? { durationMs: wall } : {}), ...(diff ? { diff } : {}), ...(diff && target ? { targetPath: target } : {}) };
 }
 
 /**
@@ -97,6 +105,7 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
         ...tool,
         status: result.error ? "failed" : "completed",
         ...(result.text ? { output: bounded(result.text) } : {}),
+        ...resultFacts(result.details),
       }));
     }
   };

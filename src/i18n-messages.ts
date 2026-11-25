@@ -346,6 +346,16 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "검색 결과": "Results",
   "맞는 모델이 없습니다": "No matching models",
   "메인": "Main",
+  "{0}줄 더 · 모두 보기": "{0} more lines · Show all",
+  "{0}초 생각함": "Thought for {0}s",
+  "이번 턴이 지난 시간": "Time this turn has run",
+  "할 일 목록": "Todo list",
+  "할 일": "Todo",
+  "서브에이전트": "Subagents",
+  "이 대화에서 실행된 서브에이전트가 없습니다": "No subagents have run in this conversation",
+  "도구 {0}": "{0} tools",
+  "토큰 {0}": "{0} tokens",
+  "서브에이전트 기록 파일": "Subagent transcript file",
   "에이전트 설정 따름":
     "Follow the agent's own setting",
   "{0}을(를) 실행할 폴더를 선택하세요.":
