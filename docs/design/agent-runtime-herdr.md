@@ -224,3 +224,27 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - TerminalView의 디스플레이 질의(OSC 10/11/12, CSI 16t) 응답은 이식했지만 별도 실측 기록이 없다(§8-7).
 - omp의 병렬 실행·검색은 단위 테스트로만 확인(실측은 Claude Code). 개발 Electron은 macOS 알림 권한이 없어 배너 표시는 실측하지 못함.
 - 구버전 PWA 호환은 와이어 이름 유지로 대응했지만 실제 구버전 PWA 기기로는 확인하지 않았다.
+
+## 10. omp RPC 채팅
+
+상태: P0 스파이크(2026-11-25, omp 19.1.1, 임시 cwd·`--session-dir`, 기본 모델 deepseek flash). 실측 프레임은 `electron/omp-rpc/fixtures/`(홈·임시 경로를 지우고 시스템 프롬프트·MCP 이름 등은 뺀 사본).
+
+**결정**
+- omp의 "채팅"은 터미널 기록 판독기가 아니라 `omp --mode rpc-ui` 프로세스를 쓰는 새 런타임 `runtime: "omp-rpc"`(`agentKind: "omp"`)이다. herdr 컨트롤러에 섞지 않는다. 기존 omp 터미널 세션의 기록 채팅(폰·검색이 씀)은 그대로 둔다. v1에서 한 세션을 터미널↔RPC로 바꾸지 않는다.
+- **`--mode rpc`가 아니라 `--mode rpc-ui`**(설계안 변경): `rpc`는 `hasUI=false`라 ask 도구가 아예 없다(실측: 모델이 "ask 도구가 없다"고 답함, omp main.ts `options.hasUI = isInteractive || mode === "rpc-ui"`). `rpc-ui`에서만 ask가 생기고 그 UI가 프로토콜로 온다. 승인은 두 모드 모두 같다. `rpc-ui`는 bash를 pty 없이 돌린다(`PI_NO_PTY=1`).
+- 프로세스는 세션당 하나, 열거나 보낼 때 띄우고 앱과 함께 끝난다. 다시 열면 `--resume <sessionFile>`.
+- 승인 모드: 창에서 고른 값, 없으면 `always-ask`(omp 기본은 사용자 설정, 이 Mac은 yolo라 카드가 뜨지 않는다).
+
+**실측 (P0)**
+1. 시작: 0.2~0.6초에 `{"type":"ready","protocolVersion":1,"supportedProtocolVersions":[1,2],"maxFrameBytes":1048576,…}`. 첫 메시지 전에도 `get_state`가 `sessionFile`·`sessionId`를 준다(파일은 첫 메시지 때 생김, 옆에 `.<이름>.jsonl.lock.os`). `get_state`는 시스템 프롬프트 때문에 ~50KB, `get_available_models`는 ~345KB, `available_commands_update`는 ~38KB.
+2. 스트림(`set_event_filter {events:null, messageUpdates:"delta"}`): 사용자 메시지도 `message_start/end`(role user, `messageId: "msg-N"`)로 온다. assistant의 `message_start` content는 이미 델타보다 앞서 있다(`"OK"`가 든 message_start 뒤에 text_start·text_delta "OK"가 같은 ms에 옴) → message_start 본문은 버리고 `*_start`/`*_delta`로 쌓은 뒤 `text_end`·`thinking_end`(전체 `content`)와 `message_end`(전체 메시지)를 권위로 쓴다. `toolcall_end`는 `toolCall{id,name,arguments}` 전체. 턴은 `turn_start/turn_end`, 작업 끝은 `agent_end` → `prompt_result{id,status,agentInvoked,sessionSettled}` → `session_settled`.
+3. 사용자 설정이 그대로 적용된다: 이 Mac의 prewalk가 첫 답 뒤 custom 메시지(`prewalk-plan`)를 넣어 두 번째 턴을 시작했고, `prompt_result`는 그 뒤 한 번만 온다. 앱은 사용자 설정을 건드리지 않는다(스파이크만 `--no-prewalk --thinking low`).
+4. 승인(`--approval-mode always-ask`): `extension_ui_request` method `select`, `title: "Allow tool: bash\nCommand: echo gajae-a"`, `options: ["Approve","Approve bash for this session","Deny"]`, 호출 id 없음. 병렬 호출 둘: `tool_execution_start`(A)·(B) → `select`(A)·(B) 순서, `{value:"Approve"}`로 답하면 `tool_execution_update/end`. 세션 파일에는 `tool_approval_requested` custom 엔트리(호출 id 포함)가 남지만 RPC 프레임으로는 나오지 않는다. todo 같은 읽기 도구는 묻지 않는다.
+5. 질문: 19.1.1의 ask는 HTML 폼이다 — `extension_ui_request` method **`form`** `{html:"<form><fieldset><legend>Pick a color</legend><label><input type=radio name=color value=Red> Red</label>…"}`, 답은 `{data:{color:"Red"}}`(단일 선택은 value 문자열, checkbox·multiple은 배열, 텍스트는 문자열, 취소는 `{cancelled:true}`). 도구 결과는 `User answers: {"color":"Red"}`. form 요청은 ask의 `tool_execution_start`보다 먼저 오고 html은 직전 `toolcall_end`의 `arguments.html`과 같다. 18.20의 method `ask`(`set_ask_dialog`)는 확장의 `ui.askDialog`용으로 남아 있다(명령은 받음).
+6. 취소: `abort` → `message_end`(stopReason aborted) → `agent_end` → abort 응답 → `prompt_result{status:"aborted"}`.
+7. 클라이언트가 끊기면 대기 중 UI 요청에 `cancel` 프레임이 오고 도구 결과는 "RPC client disconnected before extension UI response completed", 세션 파일에 `session_exit`.
+8. `--resume <file>`: 같은 `sessionFile`·`sessionId`·`messageCount`. `get_messages`에는 엔트리 id가 없다 → 기록과 행 id는 파일 판독기(`omp-transcript.ts`)가 맡는다. 실시간 `messageId`(msg-N)는 프로세스 안에서만 유일하고 파일 엔트리 id와 다르다. 도구 호출 id는 양쪽이 같다.
+9. `rpc_chunk`: `negotiate_protocol 2` 뒤 1MiB 넘는 프레임(합성한 큰 세션의 `get_messages`, 1.4MB)이 `{type:"rpc_chunk",chunkId:"rpc-1",index,count:6,byteLength,data:<base64 256KiB>}` 여섯 줄로 왔다. v1에서는 큰 프레임의 문자열이 잘린다.
+10. 그 밖의 프레임: `notice{level,message,source}`(MCP 도구 추가 등 info), `advisor_cost_changed`, `setWidget`(autoresearch), `queue_update`.
+
+**승인 짝짓기 결정**: select 제목을 "실행 중(`tool_execution_start` 뒤·end 전)이고 아직 짝이 없는 호출"과 내용으로 맞춘다. 첫 줄 `Allow tool: <이름>`이 같은 호출 중 인자의 문자열 값(command, path …) 첫 줄이 모두 제목에 들어 있는 것을, 그중 먼저 시작한 것을 고른다. 없으면 같은 이름의 가장 오래된 호출, 그래도 없으면 독립 카드. 병렬 2개 실측에서 정확히 짝지어졌다. 같은 이름·같은 인자의 병렬 호출은 구분할 수 없지만 카드 내용이 같아 결과도 같다. 확장(`-e`) 방식은 쓰지 않는다: 기존 omp 확장은 TUI에서만 `ui.approve`를 감싸고(`ctx.mode !== "tui"`면 손대지 않음), RPC 프레임에는 `tool_approval_requested`가 없어 확장이 호출 id를 넘기려면 `setStatus` 같은 우회 통로가 또 필요하다. 카드 id는 `<sessionId>:<callIdPart(callId)>` — 파일 판독기의 도구 행 id와 같아 턴이 끝나 파일로 다시 맞춰도 카드 자리가 유지된다.
