@@ -67,7 +67,14 @@ const CALLS: [keyof FullAgentHost, unknown[]][] = [
 ];
 
 /** Calls only some runtimes answer; GJC has none of them. */
-const EXTRA_CALLS = new Set(["getContextBreakdown", "cancelSubagent", "steerSubagent", "getSubagentMessages"]);
+const EXTRA_CALLS = new Set([
+  "getContextBreakdown",
+  "cancelSubagent",
+  "steerSubagent",
+  "getSubagentMessages",
+  "promoteQueuedMessage",
+  "removeQueuedMessage",
+]);
 
 /** Router members that place calls rather than forward them. */
 const ROUTING_MEMBERS = new Set([

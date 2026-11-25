@@ -79,6 +79,7 @@ const none: Readonly<SessionCapabilities> = {
   streaming: false,
   contextBreakdown: false,
   subagentControl: false,
+  queueEdit: false,
 };
 
 /**
@@ -136,6 +137,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       streaming: true,
       contextBreakdown: true,
       subagentControl: true,
+      queueEdit: true,
     },
   },
   {
@@ -178,6 +180,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       streaming: true,
       contextBreakdown: false,
       subagentControl: false,
+      queueEdit: false,
     },
   },
   {

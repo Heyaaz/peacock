@@ -433,6 +433,22 @@ export class OmpRpcController implements AgentRuntimeController {
     return subagentMessages(data.messages);
   }
 
+  // ---- omp's queue (19.1.1 `promote_queued_message`, `remove_queued_message`)
+
+  /** A queued follow-up goes to steering: the running turn reads it at its next step. */
+  async promoteQueuedMessage(sessionId: string, text: string): Promise<boolean> {
+    const client = this.client(sessionId);
+    if (!client) return false;
+    return record(await client.call({ type: "promote_queued_message", message: text })).promoted === true;
+  }
+
+  async removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean> {
+    const client = this.client(sessionId);
+    if (!client) return false;
+    const data = record(await client.call({ type: "remove_queued_message", message: text, queue: mode === "steer" ? "steering" : "followUp" }));
+    return data.removed === true;
+  }
+
   // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)
 
   /** omp's goal for the goal row; a chat whose omp is not running reads as the last one seen. */
@@ -941,6 +957,9 @@ export class OmpRpcController implements AgentRuntimeController {
           steering: Array.isArray(frame.steering) ? frame.steering.filter((entry): entry is string => typeof entry === "string") : [],
           followUp: Array.isArray(frame.followUp) ? frame.followUp.filter((entry): entry is string => typeof entry === "string") : [],
         };
+        // the row's queue list follows it
+        this.bump(sessionId);
+        this.emitUpdated(sessionId);
         return;
       case "manual_compaction_start":
       case "auto_compaction_start":
@@ -1237,11 +1256,7 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   async listQueuedMessages(sessionId: string): Promise<QueuedMessage[]> {
-    const { steering, followUp } = this.chat(sessionId).queue;
-    return [
-      ...steering.map((text, index): QueuedMessage => ({ id: `steer-${index}`, text, mode: "steer", label: text })),
-      ...followUp.map((text, index): QueuedMessage => ({ id: `follow-${index}`, text, mode: "followUp", label: text })),
-    ];
+    return queuedMessages(this.chat(sessionId).queue);
   }
 
   /** Delivers omp's queue now: the running turn stops and the queued messages go in (`abort_and_deliver_queue`). */
@@ -1521,9 +1536,17 @@ export class OmpRpcController implements AgentRuntimeController {
       ...(chat?.retry ? { retry: chat.retry } : {}),
     };
     const state = chat?.state;
+    const queued = chat ? queuedMessages(chat.queue) : [];
     if (!state)
-      return chat?.turnStartedAt !== undefined
-        ? { ...live, liveStatus: { turnStartedAtMs: chat.turnStartedAt, ...(chat.activity ? { activity: chat.activity } : {}) } }
+      return chat?.turnStartedAt !== undefined || queued.length > 0
+        ? {
+            ...live,
+            liveStatus: {
+              ...(chat?.turnStartedAt !== undefined ? { turnStartedAtMs: chat.turnStartedAt } : {}),
+              ...(chat?.activity ? { activity: chat.activity } : {}),
+              ...(queued.length > 0 ? { queued } : {}),
+            },
+          }
         : live;
     const model = record(state.model);
     const provider = string(model.provider);
@@ -1538,6 +1561,7 @@ export class OmpRpcController implements AgentRuntimeController {
       ...(typeof usage.percent === "number" && Number.isFinite(usage.percent) ? { contextPercent: usage.percent } : {}),
       ...(typeof usage.tokens === "number" && Number.isFinite(usage.tokens) ? { contextTokens: usage.tokens } : {}),
       ...(typeof usage.contextWindow === "number" && usage.contextWindow > 0 ? { contextWindow: usage.contextWindow } : {}),
+      ...(queued.length > 0 ? { queued } : {}),
     };
     return {
       ...live,
@@ -1614,6 +1638,14 @@ function todoPhases(value: unknown): TodoSnapshotPhase[] {
     const name = string(phase.name, phase.phase, phase.title);
     return tasks.length > 0 ? [{ ...(name ? { name } : {}), tasks }] : [];
   });
+}
+
+/** omp's queue (`queue_update`) as the window lists it: steering first, then follow-ups. */
+function queuedMessages(queue: { steering: string[]; followUp: string[] }): QueuedMessage[] {
+  return [
+    ...queue.steering.map((text, index): QueuedMessage => ({ id: `steer-${index}`, text, mode: "steer", label: text })),
+    ...queue.followUp.map((text, index): QueuedMessage => ({ id: `follow-${index}`, text, mode: "followUp", label: text })),
+  ];
 }
 
 /** How much of one message the subagents panel shows. */

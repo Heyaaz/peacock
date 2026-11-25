@@ -93,6 +93,8 @@ export interface SessionCapabilities {
   contextBreakdown: boolean;
   /** Stopping a subagent, telling it more, and reading its conversation. */
   subagentControl: boolean;
+  /** Sending a message the runtime holds in its queue now, or taking it out. */
+  queueEdit: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -113,6 +115,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     streaming: value,
     contextBreakdown: value,
     subagentControl: value,
+    queueEdit: value,
   };
 }
 
@@ -133,6 +136,7 @@ export const SESSION_CAPABILITY_KEYS: readonly (keyof SessionCapabilities)[] =
 const LATER_CAPABILITIES = {
   contextBreakdown: false,
   subagentControl: false,
+  queueEdit: false,
 } satisfies Partial<SessionCapabilities>;
 
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
@@ -506,6 +510,8 @@ export interface SessionLiveStatus {
   /** The tokens that share is of, and the window's size. */
   contextTokens?: number;
   contextWindow?: number;
+  /** Messages the runtime holds for the running turn: steering first, then follow-ups. */
+  queued?: QueuedMessage[];
 }
 
 /** One message of a subagent's conversation, as the subagents panel lists it. */
@@ -1386,6 +1392,10 @@ export interface GjcDesktopBridge {
   steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void>;
   /** A subagent's conversation so far. Only omp's chat answers. */
   getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
+  /** Moves a queued follow-up into steering, so the running turn reads it next. Only omp's chat answers. */
+  promoteQueuedMessage(sessionId: string, text: string): Promise<boolean>;
+  /** Takes a message out of the runtime's queue. Only omp's chat answers. */
+  removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

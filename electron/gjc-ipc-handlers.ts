@@ -414,6 +414,19 @@ export function registerGjcIpcHandlers(
     if (!controller.steerSubagent) throw new AgentUnsupportedError("steerSubagent", id);
     return controller.steerSubagent(id, requiredId(subagentId, "Subagent ID"), message);
   });
+  handle(GJC_IPC.promoteQueuedMessage, (_event, sessionId: unknown, text: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (typeof text !== "string") throw new Error("Queued message must be a string");
+    if (!controller.promoteQueuedMessage) throw new AgentUnsupportedError("promoteQueuedMessage", id);
+    return controller.promoteQueuedMessage(id, text);
+  });
+  handle(GJC_IPC.removeQueuedMessage, (_event, sessionId: unknown, text: unknown, mode: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (typeof text !== "string") throw new Error("Queued message must be a string");
+    if (mode !== "steer" && mode !== "followUp") throw new Error("Queue must be steer or followUp");
+    if (!controller.removeQueuedMessage) throw new AgentUnsupportedError("removeQueuedMessage", id);
+    return controller.removeQueuedMessage(id, text, mode);
+  });
   handle(GJC_IPC.getSubagentMessages, (_event, sessionId: unknown, subagentId: unknown) => {
     const id = requiredId(sessionId, "Session ID");
     if (!controller.getSubagentMessages) throw new AgentUnsupportedError("getSubagentMessages", id);

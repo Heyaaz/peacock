@@ -10265,3 +10265,14 @@ button.diff-line-number:hover {
 .subagent-message.is-error p {
   color: var(--danger);
 }
+
+/* omp's own queue above the composer */
+.runtime-queue {
+  margin: 0 4px 6px;
+}
+.runtime-queue .composer-queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

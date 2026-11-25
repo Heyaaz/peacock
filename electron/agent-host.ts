@@ -189,6 +189,8 @@ export interface AgentExtrasFacet {
   cancelSubagent(sessionId: string, subagentId: string): Promise<boolean>;
   steerSubagent(sessionId: string, subagentId: string, message: string): Promise<void>;
   getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
+  promoteQueuedMessage(sessionId: string, text: string): Promise<boolean>;
+  removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

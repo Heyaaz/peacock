@@ -97,6 +97,9 @@ export interface AgentBackend {
   cancelSubagent?(sessionId: string, subagentId: string): Promise<boolean>;
   steerSubagent?(sessionId: string, subagentId: string, message: string): Promise<void>;
   getSubagentMessages?(sessionId: string, subagentId: string): Promise<SubagentMessage[]>;
+  /** The runtime's own queue, where the session's `queueEdit` capability is on (omp's chat). */
+  promoteQueuedMessage?(sessionId: string, text: string): Promise<boolean>;
+  removeQueuedMessage?(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

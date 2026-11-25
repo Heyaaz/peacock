@@ -78,6 +78,7 @@ import { useMessageDelivery } from "./use-message-delivery";
 import { useSendMessage } from "./use-send-message";
 import { SubagentsPanel, TurnStatusLine } from "./turn-status";
 import { ContextBar, ContextDialog } from "./context-usage";
+import { RuntimeQueue } from "./runtime-queue";
 import { useInbox } from "./use-inbox";
 import { useShellShortcuts } from "./use-shell-shortcuts";
 import { useSessionSync } from "./use-session-sync";
@@ -1520,6 +1521,25 @@ export default function App() {
                 />
                 </>
                 )}
+                {selectedCapabilities?.queueEdit &&
+                  !remoteViewOnly &&
+                  backend.promoteQueuedMessage &&
+                  backend.removeQueuedMessage &&
+                  selectedSession.liveStatus?.queued && (
+                    <RuntimeQueue
+                      queued={selectedSession.liveStatus.queued}
+                      onPromote={(message) => {
+                        void backend.promoteQueuedMessage!(selectedSession.id, message.text).catch((error: unknown) =>
+                          setAppError(humanErrorMessage(error)),
+                        );
+                      }}
+                      onRemove={(message) => {
+                        void backend.removeQueuedMessage!(selectedSession.id, message.text, message.mode).catch((error: unknown) =>
+                          setAppError(humanErrorMessage(error)),
+                        );
+                      }}
+                    />
+                  )}
                 {selectedCapabilities?.contextBreakdown && backend.getContextBreakdown && selectedSession.liveStatus && (
                   <ContextBar
                     status={selectedSession.liveStatus}

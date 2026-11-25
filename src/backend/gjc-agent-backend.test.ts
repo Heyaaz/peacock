@@ -165,6 +165,14 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async getSubagentMessages(_sessionId: string, _subagentId: string): Promise<[]> {
     return [];
   }
+
+  async promoteQueuedMessage(_sessionId: string, _text: string): Promise<boolean> {
+    return false;
+  }
+
+  async removeQueuedMessage(_sessionId: string, _text: string, _mode: "steer" | "followUp"): Promise<boolean> {
+    return false;
+  }
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

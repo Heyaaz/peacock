@@ -1292,4 +1292,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "아직 대화가 없습니다": "No conversation yet",
   "지시": "Instruction",
   "응답": "Reply",
+  "omp가 들고 있는 메시지": "Messages omp is holding",
+  "다음 단계에 전달": "Next step",
+  "턴 뒤에 전달": "After the turn",
 };

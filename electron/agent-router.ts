@@ -423,6 +423,14 @@ export class AgentRouter implements RoutingAgentHost {
     return this.facet(sessionId, "getSubagentMessages")(sessionId, subagentId);
   }
 
+  promoteQueuedMessage(sessionId: string, text: string): Promise<boolean> {
+    return this.facet(sessionId, "promoteQueuedMessage")(sessionId, text);
+  }
+
+  removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean> {
+    return this.facet(sessionId, "removeQueuedMessage")(sessionId, text, mode);
+  }
+
   openHistorySession(sessionId: string): Promise<AgentSession> {
     return this.adopt(
       this.controllerFor(sessionId),

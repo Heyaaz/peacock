@@ -112,6 +112,8 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "promote_queued_message") answer({ promoted: frame.message === "later" });
+      else if (frame.type === "remove_queued_message") answer({ removed: frame.queue === "steering" && frame.message === "now" });
       else if (frame.type === "cancel_subagent") answer({ cancelled: frame.subagentId === "sa-1" });
       else if (frame.type === "get_subagent_messages")
         answer({
@@ -777,5 +779,31 @@ describe("OmpRpcController subagent control", () => {
       { role: "tool", tool: "read", text: "ENOENT", error: true },
     ]);
     expect(child.sent("get_subagent_messages")[0]).toMatchObject({ subagentId: "sa-1" });
+  });
+});
+
+describe("OmpRpcController queue editing", () => {
+  it("lists omp's queue on the row and sends a follow-up now or takes a message out", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    child.emitFrames({ type: "queue_update", steering: ["now"], followUp: ["later"] });
+    await settle();
+    const updated = context.events.filter((event) => event.type === "session.updated").at(-1);
+    expect(updated).toMatchObject({
+      session: {
+        liveStatus: {
+          queued: [
+            { id: "steer-0", text: "now", mode: "steer", label: "now" },
+            { id: "follow-0", text: "later", mode: "followUp", label: "later" },
+          ],
+        },
+      },
+    });
+    await expect(context.controller.promoteQueuedMessage(session.id, "later")).resolves.toBe(true);
+    await expect(context.controller.removeQueuedMessage(session.id, "now", "steer")).resolves.toBe(true);
+    expect(child.sent("remove_queued_message")[0]).toMatchObject({ message: "now", queue: "steering" });
+    await expect(context.controller.removeQueuedMessage(session.id, "later", "followUp")).resolves.toBe(false);
   });
 });

@@ -202,6 +202,14 @@ export class GjcAgentBackend implements AgentBackend {
     return this.bridge.getSubagentMessages(sessionId, subagentId);
   }
 
+  promoteQueuedMessage(sessionId: string, text: string): Promise<boolean> {
+    return this.bridge.promoteQueuedMessage(sessionId, text);
+  }
+
+  removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean> {
+    return this.bridge.removeQueuedMessage(sessionId, text, mode);
+  }
+
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {
     return this.bridge.queueFollowUp(sessionId, input);
   }
