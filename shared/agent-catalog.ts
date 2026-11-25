@@ -36,8 +36,14 @@ export interface AgentCatalogEntry {
   installDirs: readonly string[];
   /** The arguments that make it print its version and exit. */
   versionArgs: readonly string[];
-  /** The screens its sessions can be shown on. */
+  /** The screens its sessions can be shown on in the window. */
   surfaces: readonly SessionSurface[];
+  /**
+   * Gajae reads this agent's own transcript files: search indexes them, and a phone,
+   * which reaches no terminal, shows them as the session's chat even when the window
+   * offers only the terminal.
+   */
+  transcript: boolean;
   /** The screen a new session opens on. */
   defaultSurface: SessionSurface;
   /**
@@ -86,7 +92,9 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     binaries: ["claude"],
     installDirs: ["~/.local/bin"],
     versionArgs: ["--version"],
-    surfaces: ["terminal", "chat"],
+    // Claude Code's own terminal UI is the screen; its transcript still feeds search and the phone.
+    surfaces: ["terminal"],
+    transcript: true,
     defaultSurface: "terminal",
     capabilities: terminalChat,
   },
@@ -97,6 +105,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     installDirs: ["~/.local/bin"],
     versionArgs: ["--version"],
     surfaces: ["terminal", "chat"],
+    transcript: true,
     defaultSurface: "terminal",
     capabilities: terminalChat,
   },
@@ -108,6 +117,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     versionArgs: ["--version"],
     // No transcript reader is planned for codex, so it has no chat screen.
     surfaces: ["terminal"],
+    transcript: false,
     defaultSurface: "terminal",
     capabilities: none,
   },
@@ -119,6 +129,8 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     installDirs: ["~/.local/bin", "~/.bun/bin"],
     versionArgs: ["--version"],
     surfaces: ["chat"],
+    // GJC's chat comes from its SDK, not from transcript files
+    transcript: false,
     defaultSurface: "chat",
     capabilities: {
       send: true,
@@ -144,6 +156,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     installDirs: [],
     versionArgs: [],
     surfaces: ["terminal"],
+    transcript: false,
     defaultSurface: "terminal",
     capabilities: none,
   },

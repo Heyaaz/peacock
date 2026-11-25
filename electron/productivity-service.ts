@@ -70,7 +70,7 @@ export interface ProductivitySource {
 export function searchable(session: AgentSession): boolean {
   if (!runsInTerminal(session)) return true
   const kind = session.agentKind ?? 'shell'
-  return kind !== 'shell' && agentCatalogEntry(kind).surfaces.includes('chat')
+  return kind !== 'shell' && agentCatalogEntry(kind).transcript
 }
 
 /** How often search looks at the terminal agents' transcripts for unannounced growth. */

@@ -103,7 +103,9 @@ describe('SettingsStore', () => {
     const root = temporaryDirectory()
     expect(parsePreferences({ newSessionKind: 'app' }, root).newSession).toEqual({ agentKind: 'gjc', surface: 'chat' })
     expect(parsePreferences({ newSessionKind: 'cli' }, root).newSession).toEqual({ agentKind: 'shell', surface: 'terminal' })
-    expect(parsePreferences({ newSessionKind: 'cli', newSession: { agentKind: 'claude', surface: 'chat' } }, root).newSession).toEqual({ agentKind: 'claude', surface: 'chat' })
+    expect(parsePreferences({ newSessionKind: 'cli', newSession: { agentKind: 'omp', surface: 'chat' } }, root).newSession).toEqual({ agentKind: 'omp', surface: 'chat' })
+    // Claude Code lost its chat screen: a saved choice of it is dropped, not opened on a screen it lacks
+    expect(parsePreferences({ newSession: { agentKind: 'claude', surface: 'chat' } }, root).newSession).toBeUndefined()
     // a screen the agent does not have is no choice: the first installed agent comes first again
     expect(parsePreferences({ newSession: { agentKind: 'gjc', surface: 'terminal' } }, root).newSession).toBeUndefined()
     expect(parsePreferences(undefined, root).newSession).toBeUndefined()

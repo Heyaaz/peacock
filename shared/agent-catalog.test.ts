@@ -55,9 +55,9 @@ describe("agent catalog", () => {
       );
   });
 
-  it("offers nothing on an agent without a chat screen", () => {
+  it("offers nothing on an agent Gajae has no chat for", () => {
     for (const entry of AGENT_CATALOG) {
-      if (entry.surfaces.includes("chat")) continue;
+      if (entry.surfaces.includes("chat") || entry.transcript) continue;
       expect(Object.values(entry.capabilities).every((value) => value === false)).toBe(true);
     }
   });
@@ -78,7 +78,8 @@ describe("agent catalog", () => {
   });
 
   it("answers which screens an agent supports", () => {
-    expect(agentSupportsSurface("claude", "chat")).toBe(true);
+    expect(agentSupportsSurface("claude", "chat")).toBe(false);
+    expect(agentSupportsSurface("omp", "chat")).toBe(true);
     expect(agentSupportsSurface("claude", "terminal")).toBe(true);
     expect(agentSupportsSurface("codex", "chat")).toBe(false);
     expect(agentSupportsSurface("gjc", "terminal")).toBe(false);

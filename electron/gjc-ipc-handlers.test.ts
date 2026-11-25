@@ -533,8 +533,10 @@ describe("session creation IPC validation", () => {
     try {
       expect(createSessionInput({ runtime: "terminal", workspace })).toEqual({ runtime: "herdr", workspace, isolation: "workspace", agentKind: "shell" });
       expect(
-        createSessionInput({ runtime: "herdr", workspace, agentKind: "claude", surface: "chat", title: "리뷰", launch: { permissionMode: "plan" } }),
-      ).toEqual({ runtime: "herdr", workspace, isolation: "workspace", agentKind: "claude", surface: "chat", title: "리뷰", launch: { permissionMode: "plan" } });
+        createSessionInput({ runtime: "herdr", workspace, agentKind: "claude", surface: "terminal", title: "리뷰", launch: { permissionMode: "plan" } }),
+      ).toEqual({ runtime: "herdr", workspace, isolation: "workspace", agentKind: "claude", surface: "terminal", title: "리뷰", launch: { permissionMode: "plan" } });
+      expect(createSessionInput({ runtime: "herdr", workspace, agentKind: "omp", surface: "chat" })).toMatchObject({ agentKind: "omp", surface: "chat" });
+      expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "claude", surface: "chat" })).toThrow("screen is invalid");
       expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "gjc" })).toThrow("agent is invalid");
       expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "codex", surface: "chat" })).toThrow("screen is invalid");
       expect(() => createSessionInput({ runtime: "herdr", workspace: "relative" })).toThrow("absolute");

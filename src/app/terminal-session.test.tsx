@@ -209,10 +209,9 @@ describe("terminal agents in the new session dialog", () => {
     expect(options.find((option) => option.value === "omp")!.disabled).toBe(true);
     expect(node.querySelector<HTMLInputElement>('input[name="session-agent"]:checked')?.value).toBe("claude");
     expect(node.textContent).toContain("설치되어 있지 않습니다");
-    // Claude Code has both screens; the terminal comes first, as its catalog entry says
-    const chat = [...node.querySelectorAll<HTMLButtonElement>(".session-kind-switch button")].find((button) => button.textContent === "채팅")!;
+    // Claude Code has only its terminal: no screen switch
+    expect(node.querySelector(".session-kind-switch")).toBeNull();
     expect(node.querySelector<HTMLSelectElement>('select[aria-label="권한 모드"]')!.value).toBe("");
-    await act(async () => chat.click());
     await select(node, "plan");
     await submit(node);
     Reflect.deleteProperty(window, "agentControlDesktop");
@@ -221,7 +220,7 @@ describe("terminal agents in the new session dialog", () => {
       workspace: "/work/repo",
       kind: "terminal",
       agentKind: "claude",
-      surface: "chat",
+      surface: "terminal",
       launch: { permissionMode: "plan" },
       remember: true,
     });

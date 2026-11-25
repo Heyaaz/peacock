@@ -145,11 +145,13 @@ describe("HerdrAgentController sessions", () => {
     await expect(controller.sendMessage(shell.id, text)).rejects.toMatchObject({ code: "unsupported" });
   });
 
-  it("gives Claude Code and omp a chat screen beside the terminal, and shells none", async () => {
+  it("gives omp a chat screen beside the terminal, Claude Code its terminal only, and shells none", async () => {
     const { controller, directory } = setup();
     const claude = await controller.createTerminalSession({ title: "c", workspace: directory, agentKind: "claude" });
+    const omp = await controller.createTerminalSession({ title: "o", workspace: directory, agentKind: "omp" });
     const shell = await controller.createTerminalSession({ title: "s", workspace: directory, agentKind: "shell" });
-    expect(claude.surfaces).toEqual(expect.arrayContaining(["chat", "terminal"]));
+    expect(claude.surfaces).toEqual(["terminal"]);
+    expect(omp.surfaces).toEqual(expect.arrayContaining(["chat", "terminal"]));
     expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: false });
     expect(shell.surfaces).toEqual(["terminal"]);
     expect(await controller.getTranscriptPage(shell.id)).toMatchObject({ items: [] });

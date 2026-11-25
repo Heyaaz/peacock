@@ -674,10 +674,10 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   // ---- what a session offers, and where its transcript is
 
-  /** Claude Code and omp have a chat screen beside their terminal; shells and codex do not. */
+  /** Claude Code and omp leave a transcript Gajae reads (chat, phone, search); shells and codex do not. */
   private hasChat(sessionId: string): boolean {
     const record = this.options.store.get(sessionId);
-    return record !== undefined && agentCatalogEntry(record.agentKind ?? "shell").surfaces.includes("chat");
+    return record !== undefined && agentCatalogEntry(record.agentKind ?? "shell").transcript;
   }
 
   /**

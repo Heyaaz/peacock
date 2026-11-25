@@ -459,13 +459,23 @@ export default function App() {
     if (choice?.agentKind === "gjc" || sessions.some((session) => !runsInTerminal(session))) return undefined;
     return choice ? { defaultAgent: choice.agentKind === "shell" ? t("셸") : agentCatalogEntry(choice.agentKind).name } : {};
   }, [backend.terminalSessions, connection.state, preferences.newSession, sessions]);
-  const agentChat = terminalRuntime && selectedSession?.surfaces?.includes("chat") ? selectedSession : null;
+  // a phone reaches no terminal: there an agent whose transcript Gajae reads shows as its chat,
+  // even one (Claude Code) whose window offers only the terminal
+  const agentTerminalReachable = backend.terminalSessions === true;
+  const agentChat =
+    terminalRuntime &&
+    selectedSession &&
+    (selectedSession.surfaces?.includes("chat") ||
+      (!agentTerminalReachable &&
+        selectedSession.agentKind !== undefined &&
+        selectedSession.agentKind !== "shell" &&
+        agentCatalogEntry(selectedSession.agentKind).transcript))
+      ? selectedSession
+      : null;
   const terminalSession = terminalRuntime && !agentChat ? selectedSession : null;
   const chatId = terminalSession ? null : selectedId;
   const selectedSessionId = terminalRuntime ? undefined : selectedSession?.id;
   const agentEntry = agentChat ? agentCatalogEntry(agentChat.agentKind ?? "claude") : null;
-  // a phone reaches no terminal: there an agent's session is its chat
-  const agentTerminalReachable = backend.terminalSessions === true;
   const agentSurface =
     agentChat && agentEntry
       ? agentTerminalReachable
