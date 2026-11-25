@@ -237,6 +237,10 @@ export class GjcAgentBackend implements AgentBackend {
     return this.bridge.branchSession(sessionId, entryId);
   }
 
+  abortUserShell(sessionId: string): Promise<void> {
+    return this.bridge.abortUserShell(sessionId);
+  }
+
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {
     return this.bridge.queueFollowUp(sessionId, input);
   }

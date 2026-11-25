@@ -116,3 +116,22 @@ describe("omp transcript", () => {
     expect(editRow).toMatchObject({ kind: "tool", diff: "-1 a\n+1 b", targetPath: "x.ts" });
   });
 });
+
+describe("omp's user shell records", () => {
+  it("reads a !command and a !!command as shell cards with their output and exit", () => {
+    const parser = createOmpTranscriptParser(SID);
+    parser.write(
+      HEAD +
+        entry("b1", "c0", { role: "bashExecution", command: "echo hi", output: "hi\n", exitCode: 0, cancelled: false, truncated: false }) +
+        entry("b2", "b1", { role: "bashExecution", command: "false", output: "", exitCode: 1, cancelled: false, truncated: false, excludeFromContext: true }) +
+        entry("b3", "b2", { role: "bashExecution", command: "sleep 9", output: "", cancelled: true, truncated: false }),
+    );
+    const tools = parser.items().filter((item): item is Extract<TranscriptItem, { kind: "tool" }> => item.kind === "tool");
+    expect(tools.map((tool) => [tool.id, tool.name, tool.status, tool.output ?? "", tool.userShell])).toEqual([
+      [`${SID}:b1`, "bash", "completed", "hi\n", {}],
+      [`${SID}:b2`, "bash", "failed", "", { excludedFromContext: true }],
+      [`${SID}:b3`, "bash", "cancelled", "", {}],
+    ]);
+    expect(tools[0]!.command).toContain("echo hi");
+  });
+});

@@ -1214,6 +1214,15 @@ export default function App() {
     onComposerConfigChange,
     onComposerCycleThinking,
   } = useComposerCallbacks(composerActionsRef);
+  // a `!` shell command's card stops just that command (omp's `abort_bash`)
+  const onStopTool = useCallback(
+    (toolId: string) => {
+      const sessionId = toolId.split(":")[0];
+      if (!sessionId || !backend.abortUserShell) return;
+      void backend.abortUserShell(sessionId).catch((error: unknown) => setAppError(humanErrorMessage(error)));
+    },
+    [backend],
+  );
   const onRevealInspector = useCallback((toolId: string) => {
     setInspectorToolId(toolId);
     setInspectorOpen(true);
@@ -1480,6 +1489,7 @@ export default function App() {
                 onReadArtifact={readArtifact}
                 onRetryLastRequest={retryLastRequest}
                 onRevealInspector={onRevealInspector}
+                {...(selectedCapabilities?.userShell && !remoteViewOnly ? { onStopTool } : {})}
                 autoDenyHint={autoDenyHint}
                 onPickExample={
                   remoteViewOnly || agentChat

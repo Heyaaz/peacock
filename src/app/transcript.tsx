@@ -143,6 +143,8 @@ export interface TranscriptProps {
   /** Retries the session's own last user request, from a run-failure notice's 다시 시도 button. */
   onRetryLastRequest?: (sessionId: string) => void;
   onRevealInspector?: (toolId: string) => void;
+  /** Stops a call that can stop on its own (omp's `!` shell command). */
+  onStopTool?: (toolId: string) => void;
   /** Puts an example request into the composer without sending it. */
   onPickExample?: (text: string) => void;
   /** What the empty-conversation state shows about the session it is about to run in. */
@@ -190,6 +192,7 @@ export function Transcript({
   onRetryLastRequest,
   emptyStateMeta,
   onRevealInspector,
+  onStopTool,
   onPickExample,
 }: TranscriptProps) {
   const items = useMemo(
@@ -1355,12 +1358,12 @@ export function Transcript({
                   />
                 ) : block.kind === "item" ? (
                   <div className="transcript-entry" id={`transcript-${encodeURIComponent(block.item.id)}`}>
-                    <TranscriptItemView item={block.item} thoughtsExpanded={effectiveThoughtsExpanded} skillArgsView={SKILL_ARGS_VIEW[toolViewMode]} onToggleThoughtsExpanded={onToggleThoughtsExpanded} onResolveTool={onResolveTool} onAnswerQuestion={onAnswerQuestion} onReadArtifact={onReadArtifact} autoDenyHint={autoDenyHint} onRetryLastRequest={onRetryLastRequest} onRevealInspector={onRevealInspector} />
+                    <TranscriptItemView item={block.item} thoughtsExpanded={effectiveThoughtsExpanded} skillArgsView={SKILL_ARGS_VIEW[toolViewMode]} onToggleThoughtsExpanded={onToggleThoughtsExpanded} onResolveTool={onResolveTool} onAnswerQuestion={onAnswerQuestion} onReadArtifact={onReadArtifact} autoDenyHint={autoDenyHint} onRetryLastRequest={onRetryLastRequest} onRevealInspector={onRevealInspector} onStopTool={onStopTool} />
                   </div>
                 ) : block.kind === "fold" ? (
                   <TurnFoldRow fold={block.fold} open={block.open} onToggle={setFoldOpen} />
                 ) : block.kind === "tools" ? (
-                  <ToolRunBlockView items={block.items} toolViewMode={toolViewMode} thoughtsExpanded={effectiveThoughtsExpanded} onToggleThoughtsExpanded={onToggleThoughtsExpanded} onResolveTool={onResolveTool} onReadArtifact={onReadArtifact} autoDenyHint={autoDenyHint} onRevealInspector={onRevealInspector} />
+                  <ToolRunBlockView items={block.items} toolViewMode={toolViewMode} thoughtsExpanded={effectiveThoughtsExpanded} onToggleThoughtsExpanded={onToggleThoughtsExpanded} onResolveTool={onResolveTool} onReadArtifact={onReadArtifact} autoDenyHint={autoDenyHint} onRevealInspector={onRevealInspector} onStopTool={onStopTool} />
                 ) : (
                   <MessageDeliveryRow
                     attempt={block.attempt}

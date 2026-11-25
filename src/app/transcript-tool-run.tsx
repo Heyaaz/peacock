@@ -23,6 +23,7 @@ export function ToolRunBlockView({
   onReadArtifact,
   autoDenyHint,
   onRevealInspector,
+  onStopTool,
 }: {
   items: Extract<TranscriptItem, { kind: "tool" }>[];
   toolViewMode: "basic" | "reasoning" | "detailed";
@@ -32,6 +33,7 @@ export function ToolRunBlockView({
   onReadArtifact: TranscriptProps["onReadArtifact"];
   autoDenyHint?: TranscriptProps["autoDenyHint"];
   onRevealInspector?: TranscriptProps["onRevealInspector"];
+  onStopTool?: TranscriptProps["onStopTool"];
 }) {
   const summary = useMemo(() => summarizeToolRun(items), [items]);
   const needsAttention = !summary.allCompleted;
@@ -68,6 +70,7 @@ export function ToolRunBlockView({
               onReadArtifact={onReadArtifact}
               autoDenyHint={autoDenyHint}
               onRevealInspector={onRevealInspector}
+              onStopTool={onStopTool}
             />
           </div>
         ))}

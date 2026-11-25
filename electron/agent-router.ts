@@ -454,6 +454,10 @@ export class AgentRouter implements RoutingAgentHost {
     return this.facet(sessionId, "branchSession")(sessionId, entryId);
   }
 
+  abortUserShell(sessionId: string): Promise<void> {
+    return this.facet(sessionId, "abortUserShell")(sessionId);
+  }
+
   openHistorySession(sessionId: string): Promise<AgentSession> {
     return this.adopt(
       this.controllerFor(sessionId),

@@ -191,6 +191,8 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async branchSession(_sessionId: string, _entryId: string): Promise<string> {
     return "";
   }
+
+  async abortUserShell(_sessionId: string): Promise<void> {}
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

@@ -46,6 +46,7 @@ export const GJC_IPC = {
   exportSessionHtml: "agent-control:gjc:export-session-html",
   getSessionTree: "agent-control:gjc:get-session-tree",
   branchSession: "agent-control:gjc:branch-session",
+  abortUserShell: "agent-control:gjc:abort-user-shell",
   queueFollowUp: "agent-control:gjc:queue-follow-up",
   listQueuedMessages: "agent-control:gjc:list-queued-messages",
   flushQueuedNow: "agent-control:gjc:flush-queued-now",

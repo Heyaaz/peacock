@@ -293,6 +293,8 @@ export const Composer = memo(function Composer({
       : commands.filter(
           (command) =>
             (onLogin || command.name !== "login") &&
+            // "!" marks a runtime that runs `!command`; it is typed as is, not picked as "/!"
+            command.name !== "!" &&
             command.name.toLowerCase().includes(commandQuery),
         );
   const paletteOpen = commandQuery !== null;

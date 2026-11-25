@@ -202,6 +202,7 @@ export interface AgentExtrasFacet {
   exportSessionHtml(sessionId: string, outputPath: string): Promise<string>;
   getSessionTree(sessionId: string): Promise<SessionTreeEntry[]>;
   branchSession(sessionId: string, entryId: string): Promise<string>;
+  abortUserShell(sessionId: string): Promise<void>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

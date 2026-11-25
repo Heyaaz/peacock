@@ -80,6 +80,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
   autoDenyHint,
   onRetryLastRequest,
   onRevealInspector,
+  onStopTool,
 }: {
   item: TranscriptItem;
   thoughtsExpanded?: boolean;
@@ -91,6 +92,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
   autoDenyHint?: TranscriptProps["autoDenyHint"];
   onRetryLastRequest?: TranscriptProps["onRetryLastRequest"];
   onRevealInspector?: TranscriptProps["onRevealInspector"];
+  onStopTool?: TranscriptProps["onStopTool"];
 }) {
   useLanguage();
   if (item.kind === "message") {
@@ -269,6 +271,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       onReadArtifact={onReadArtifact}
       autoDenyHint={item.kind === "tool" && item.status === "denied" ? autoDenyHint : undefined}
       onRevealInspector={onRevealInspector}
+      onStop={onStopTool}
     />
   );
 });

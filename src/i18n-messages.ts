@@ -1353,4 +1353,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "이 세션 동안 이 파일 허용": "Allow this file for this session",
   "이 대상 항상 허용": "Always allow this target",
   "이 세션 동안 이 대상 허용": "Allow this target for this session",
+  "입력창에서 직접 실행한 셸 명령": "A shell command you ran from the composer",
+  "직접 실행 · 컨텍스트 제외": "Run by you · kept out of context",
+  "직접 실행": "Run by you",
+  "이 명령만 멈춥니다": "Stops just this command",
 };

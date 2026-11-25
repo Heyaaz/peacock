@@ -2,7 +2,7 @@ import type { ArtifactContent } from "../../shared/agent-contract";
 import type { ToolActivity } from "../backend/types";
 import { defaultRulePrefix, normalizeRulePrefix } from "../../shared/command-rules";
 import { compactToolCommand, compactToolText } from "../composer-utils";
-import { Check, ChevronDown, ShieldCheck, TerminalSquare, X } from "lucide-react";
+import { Check, ChevronDown, ShieldCheck, Square, TerminalSquare, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { humanRuntimeText, toolDisplayName, toolStatusLabel } from "./format";
 import { DiffView } from "./primitives";
@@ -44,6 +44,8 @@ export interface ToolCardProps {
    * call -- that panel is where its step-by-step progress lives, not here.
    */
   onRevealInspector?: (toolId: string) => void;
+  /** Stops a call that can stop on its own (a `!` shell command in omp's chat). */
+  onStop?: (toolId: string) => void;
 }
 
 const SUBAGENT_TOOL_NAME = /^(task|subagent)$/iu;
@@ -72,6 +74,7 @@ export function ToolCard({
   onReadArtifact,
   autoDenyHint,
   onRevealInspector,
+  onStop,
 }: ToolCardProps) {
   const approvalRequired = tool.status === "approval-required";
   const isSubagentCall = SUBAGENT_TOOL_NAME.test(tool.name);
@@ -266,12 +269,28 @@ export function ToolCard({
             <TerminalSquare size={16} />
           </span>
           <span>
-            <strong>{toolDisplayName(tool.name)}</strong>
+            <strong>
+              {toolDisplayName(tool.name)}
+              {tool.userShell && (
+                <em className="tool-user-shell" title={t("입력창에서 직접 실행한 셸 명령")}>
+                  {tool.userShell.excludedFromContext ? t("직접 실행 · 컨텍스트 제외") : t("직접 실행")}
+                </em>
+              )}
+            </strong>
             <small>{tool.description}</small>
           </span>
-          <span className={`tool-status tool-status--${tool.status}`}>
-            {toolStatusLabel(tool.status)}
-          </span>
+          {tool.stoppable && tool.status === "running" && onStop ? (
+            <span className="tool-head-actions">
+              <button type="button" className="tool-stop" title={t("이 명령만 멈춥니다")} onClick={() => onStop(tool.id)}>
+                <Square size={10} aria-hidden="true" /> {t("중지")}
+              </button>
+              <span className={`tool-status tool-status--${tool.status}`}>{toolStatusLabel(tool.status)}</span>
+            </span>
+          ) : (
+            <span className={`tool-status tool-status--${tool.status}`}>
+              {toolStatusLabel(tool.status)}
+            </span>
+          )}
         </header>
         {isSubagentCall && onRevealInspector && (
           <button

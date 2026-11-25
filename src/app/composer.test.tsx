@@ -267,6 +267,13 @@ describe("selectedCommandDraft", () => {
       ),
     ).toBe(false);
   });
+
+  it("sends a !command at once only to a runtime that lists !", () => {
+    expect(isImmediateSdkCommandSubmission("!git status", [{ name: "!" }], false)).toBe(true);
+    expect(isImmediateSdkCommandSubmission("!!ls", [{ name: "!" }], false)).toBe(true);
+    expect(isImmediateSdkCommandSubmission("!git status", [{ name: "compact" }], false)).toBe(false);
+    expect(isImmediateSdkCommandSubmission("!ls", [{ name: "!" }], true)).toBe(false);
+  });
 });
 
 function composerProps(overrides: Partial<ComposerProps> = {}): ComposerProps {

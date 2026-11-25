@@ -79,6 +79,7 @@ const EXTRA_CALLS = new Set([
   "exportSessionHtml",
   "getSessionTree",
   "branchSession",
+  "abortUserShell",
 ]);
 
 /** Router members that place calls rather than forward them. */

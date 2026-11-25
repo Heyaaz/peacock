@@ -140,6 +140,18 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
     }
     const message = piMessage(entry);
     if (message === null) return;
+    // a command the user ran with `!` (or `!!`, kept out of the model's context): a shell card
+    if (message.role === "bashExecution" && typeof message.command === "string") {
+      const exitCode = typeof message.exitCode === "number" ? message.exitCode : undefined;
+      const tool = toolRow(rows, rows.id(entryId), "bash", { command: message.command }, message.command.slice(0, 120), ts);
+      rows.put({
+        ...tool,
+        status: message.cancelled === true ? "cancelled" : exitCode !== undefined && exitCode !== 0 ? "failed" : "completed",
+        ...(typeof message.output === "string" && message.output ? { output: bounded(message.output) } : {}),
+        userShell: message.excludeFromContext === true ? { excludedFromContext: true } : {},
+      });
+      return;
+    }
     if (message.role !== "assistant") applyResults(message);
 
     if (message.role === "user") {

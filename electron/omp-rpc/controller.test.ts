@@ -58,6 +58,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
   let prompts = 0;
   let goal: Record<string, unknown> | null = null;
   const modes = { fast: false, autoCompaction: true };
+  const bashCalls: { child: FakeRpcProcess; frame: Record<string, unknown> }[] = [];
   const spawn = vi.fn((command: string, args: readonly string[], spawnOptions: { cwd: string; env: Record<string, string> }) => {
     const child = new FakeRpcProcess();
     processes.push({ child, command, args, env: spawnOptions.env });
@@ -153,6 +154,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
             },
           ],
         });
+      else if (frame.type === "bash") bashCalls.push({ child, frame });
       else if (frame.type === "export_html") answer({ path: frame.outputPath });
       else if (frame.type === "get_session_stats")
         answer({
@@ -206,7 +208,11 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
     resyncDelaysMs: [0, 5, 5],
     commandRules: commandRules as never,
   });
-  return { directory, workspace, sessionFile, store, events, claim, detect, controller, processes, spawn, prompts: () => prompts, addRule };
+  const answerBash = (data: Record<string, unknown>) => {
+    const call = bashCalls.shift()!;
+    call.child.emitFrames({ id: call.frame.id, type: "response", command: "bash", success: true, data });
+  };
+  return { directory, workspace, sessionFile, store, events, claim, detect, controller, processes, spawn, prompts: () => prompts, addRule, bashCalls, answerBash };
 }
 
 async function newChat(context: ReturnType<typeof setup>, title = "chat") {
@@ -660,7 +666,8 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
     );
     await settle();
     const goalCommand = { name: "goal", description: "목표 모드: 목표 정하기, pause, resume, drop", hint: "[set] <목표>" };
-    expect(context.events).toContainEqual({ type: "session.commands", sessionId: session.id, commands: [{ name: "btw", description: "Side question" }, goalCommand] });
+    const shellCommand = { name: "!", description: "셸 명령 실행 (!!: 모델 컨텍스트에 넣지 않음)", hint: "<명령>" };
+    expect(context.events).toContainEqual({ type: "session.commands", sessionId: session.id, commands: [{ name: "btw", description: "Side question" }, shellCommand, goalCommand] });
     // a list without btw or goal still offers them: the RPC answers them
     expect(context.events).toContainEqual({
       type: "session.commands",
@@ -668,6 +675,7 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
       commands: [
         { name: "compact", description: "Compact the context", hint: "[instructions]" },
         { name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" },
+        shellCommand,
         goalCommand,
       ],
     });
@@ -983,5 +991,69 @@ describe("OmpRpcController tree, fork and branch", () => {
     const source = await newChat(context, "source");
     await expect(context.controller.forkSession({ sourceSessionId: source.id })).rejects.toThrow("nothing to fork");
     expect(context.store.list()).toHaveLength(1);
+  });
+});
+
+describe("OmpRpcController user shell", () => {
+  it("runs !command in omp's shell as a stoppable card, and !!command out of the model's context", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.sendMessage(session.id, { text: "!echo hi", images: [], files: [] })).resolves.toBe("prompt");
+    await settle();
+    const child = context.processes[0]!.child;
+    expect(child.sent("bash")[0]).toMatchObject({ command: "echo hi" });
+    expect(child.sent("bash")[0]).not.toHaveProperty("excludeFromContext");
+    expect(child.sent("prompt")).toEqual([]);
+    const running = context.events.filter((event) => event.type === "transcript.appended").map((event) => (event as { item: TranscriptItem }).item).find((item) => item.kind === "tool");
+    expect(running).toMatchObject({ name: "bash", status: "running", stoppable: true, userShell: {} });
+    await expect(context.controller.sendMessage(session.id, { text: "!ls", images: [], files: [] })).rejects.toThrow("이미 실행 중");
+    await context.controller.abortUserShell(session.id);
+    expect(child.sent("abort_bash")).toHaveLength(1);
+    context.answerBash({ output: "", cancelled: true, truncated: false, totalLines: 0, totalBytes: 0, outputLines: 0, outputBytes: 0 });
+    await settle();
+    const stopped = context.events.filter((event) => event.type === "tool.updated").map((event) => (event as { tool: TranscriptItem }).tool).at(-1);
+    expect(stopped).toMatchObject({ status: "cancelled" });
+    expect(stopped).not.toHaveProperty("stoppable");
+    await context.controller.sendMessage(session.id, { text: "!!git status", images: [], files: [] });
+    await settle();
+    expect(child.sent("bash")[1]).toMatchObject({ command: "git status", excludeFromContext: true });
+    context.answerBash({ output: "clean\n", exitCode: 0, cancelled: false, truncated: false, totalLines: 1, totalBytes: 6, outputLines: 1, outputBytes: 6 });
+    await settle();
+    const done = context.events.filter((event) => event.type === "tool.updated").map((event) => (event as { tool: TranscriptItem }).tool).at(-1);
+    expect(done).toMatchObject({ status: "completed", output: "clean\n", userShell: { excludedFromContext: true } });
+  });
+
+  it("keeps a ! card until the session file holds its record, then shows the file's", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.sendMessage(session.id, { text: "!echo hi", images: [], files: [] });
+    await settle();
+    context.answerBash({ output: "hi\n", exitCode: 0, cancelled: false, truncated: false, totalLines: 1, totalBytes: 3, outputLines: 1, outputBytes: 3 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // omp has not written its file yet: the live card stays
+    let rows = await context.controller.getTranscript(session.id);
+    expect(rows.filter((item) => item.kind === "tool").map((item) => item.id.includes(":ui:shell-"))).toEqual([true]);
+    writeFileSync(
+      context.sessionFile,
+      JSON.stringify({ type: "message", id: "b1", parentId: null, timestamp: "2026-11-25T00:00:00Z", message: { role: "bashExecution", command: "echo hi", output: "hi\n", exitCode: 0, cancelled: false, truncated: false, timestamp: 1 } }) + "\n",
+    );
+    await context.controller.sendMessage(session.id, { text: "!true", images: [], files: [] });
+    await settle();
+    context.answerBash({ output: "", exitCode: 0, cancelled: false, truncated: false, totalLines: 0, totalBytes: 0, outputLines: 0, outputBytes: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    rows = await context.controller.getTranscript(session.id);
+    expect(rows.filter((item) => item.kind === "tool").map((item) => [item.id.replace(session.id, ""), item.status])).toEqual([
+      [":b1", "completed"],
+      [rows.find((item) => item.kind === "tool" && item.id.includes(":ui:shell-"))!.id.replace(session.id, ""), "completed"],
+    ]);
+  });
+
+  it("lists ! so the composer sends it at once", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    await settle();
+    const commands = context.events.filter((event) => event.type === "session.commands").at(-1) as { commands: { name: string }[] };
+    expect(commands.commands.some((command) => command.name === "!")).toBe(true);
   });
 });

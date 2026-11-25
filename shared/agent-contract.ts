@@ -101,6 +101,8 @@ export interface SessionCapabilities {
   exportHtml: boolean;
   /** The conversation's tree: forking or rewriting from an earlier message. */
   sessionTree: boolean;
+  /** Running a shell command from the composer (`!`) and stopping it. */
+  userShell: boolean;
 }
 
 function uniformCapabilities(value: boolean): SessionCapabilities {
@@ -125,6 +127,7 @@ function uniformCapabilities(value: boolean): SessionCapabilities {
     runtimeModes: value,
     exportHtml: value,
     sessionTree: value,
+    userShell: value,
   };
 }
 
@@ -149,6 +152,7 @@ const LATER_CAPABILITIES = {
   runtimeModes: false,
   exportHtml: false,
   sessionTree: false,
+  userShell: false,
 } satisfies Partial<SessionCapabilities>;
 
 function runtimeCapabilities(runtime: unknown): SessionCapabilities {
@@ -771,6 +775,10 @@ export interface ToolActivity {
   subagents?: SubagentSnapshot[];
   /** How long the call ran, when the runtime says (omp: the bash tool's `wallTimeMs`, else start to end). */
   durationMs?: number;
+  /** A shell command the user ran from the composer (omp's `!`/`!!`), not the agent's call. */
+  userShell?: { excludedFromContext?: boolean };
+  /** The running call can be stopped on its own (omp's `abort_bash` for a user shell command). */
+  stoppable?: boolean;
 }
 
 export interface ToolImage {
@@ -1474,6 +1482,8 @@ export interface GjcDesktopBridge {
    * that message's text, for the composer to edit and send again. Only omp's chat answers.
    */
   branchSession(sessionId: string, entryId: string): Promise<string>;
+  /** Stops the shell command the user ran from the composer. Only omp's chat answers. */
+  abortUserShell(sessionId: string): Promise<void>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

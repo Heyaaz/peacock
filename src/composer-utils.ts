@@ -17,6 +17,8 @@ export function isImmediateSdkCommandSubmission(
   hasAttachments: boolean,
 ): boolean {
   if (hasAttachments) return false;
+  // a runtime that runs `!command` itself (omp) lists "!": a control, not a prompt
+  if (/^!/u.test(content.trim())) return commands.some((command) => command.name === "!");
   const name = /^\/([^\s]+)(?:\s|$)/u.exec(content.trim())?.[1]?.toLowerCase();
   return (
     name !== undefined &&

@@ -165,3 +165,43 @@ describe("card footer for a rule decision", () => {
     expect(container.querySelector(".tool-card-auto-decision")).toBeNull();
   });
 });
+
+describe("approval card scopes and the user's shell", () => {
+  it("offers this call, this session and omp's grants, each with its own label", () => {
+    const { container, onResolve } = render(
+      bash({
+        permissionOptions: [
+          { optionId: "grant-folder", kind: "allow_session", name: "Approve Directory: src", grant: { scope: "folder", target: "src" } },
+          { optionId: "grant-folder-always", kind: "allow_always", name: "Always Approve Directory: src", grant: { scope: "folder", target: "src" } },
+          { optionId: "allow_once", kind: "allow_once", name: "Allow once" },
+          { optionId: "allow_session", kind: "allow_session", name: "Allow for this session" },
+          { optionId: "reject_once", kind: "reject_once", name: "Reject" },
+        ],
+      }),
+    );
+    const labels = [...container.querySelectorAll(".permission-options button")].map((node) => [node.textContent, node.className]);
+    expect(labels).toEqual([
+      ["이 세션 동안 폴더 허용: src", "button-secondary"],
+      ["폴더 항상 허용: src", "button-secondary"],
+      ["이번만 허용", "button-primary"],
+      ["이 세션 동안 허용", "button-secondary"],
+      ["거절", "button-secondary"],
+    ]);
+    act(() => button(container, "이 세션 동안 허용").click());
+    expect(onResolve).toHaveBeenCalledWith("call-1", "allow_session", undefined);
+  });
+
+  it("marks a ! command as the user's own and stops it alone", () => {
+    const onStop = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const tool = bash({ status: "running", permissionOptions: undefined, stoppable: true, userShell: { excludedFromContext: true } });
+    act(() => root!.render(createElement(ToolCard, { tool, onResolve: vi.fn(), onStop })));
+    expect(container.querySelector(".tool-user-shell")?.textContent).toBe("직접 실행 · 컨텍스트 제외");
+    act(() => container.querySelector<HTMLButtonElement>(".tool-stop")!.click());
+    expect(onStop).toHaveBeenCalledWith("call-1");
+    act(() => root!.render(createElement(ToolCard, { tool: { ...tool, status: "completed", stoppable: undefined }, onResolve: vi.fn(), onStop })));
+    expect(container.querySelector(".tool-stop")).toBeNull();
+  });
+});

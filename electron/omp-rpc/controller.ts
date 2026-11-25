@@ -186,6 +186,9 @@ interface ChatRuntime {
   goal?: GoalSnapshot;
   /** Auto-retry as last set here: `get_state` does not report it. */
   autoRetry?: boolean;
+  /** The row of the user's `!` command omp is running (one at a time, as in omp's TUI). */
+  userShell?: string;
+  shellRuns: number;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -385,6 +388,10 @@ export class OmpRpcController implements AgentRuntimeController {
     if (!record) throw new AgentUnsupportedError("sending messages", sessionId);
     const text = input.text.trim();
     this.checkAttachments(sessionId, input);
+    // `!command` runs in omp's shell (RPC `bash`), `!!command` keeps its output out of the model's context
+    const shell = /^(!!?)([\s\S]*)$/u.exec(text);
+    if (shell && shell[2]!.trim() && input.images.length === 0 && input.files.length === 0)
+      return this.runUserShell(sessionId, shell[2]!.trim(), shell[1] === "!!");
     // `/goal` is omp's TUI command; over RPC it is the `goal` command
     const goal = /^\/goal(?:\s+([\s\S]*))?$/u.exec(text);
     if (goal && input.images.length === 0 && input.files.length === 0) return this.goalCommand(sessionId, goal[1]?.trim() ?? "");
@@ -497,6 +504,59 @@ export class OmpRpcController implements AgentRuntimeController {
       toolCalls: count(data.toolCalls),
       premiumRequests: count(data.premiumRequests),
     };
+  }
+
+  // ---- the user's shell (19.1.1 `bash`, `abort_bash`)
+
+  /**
+   * A command the user typed as `!command`: omp runs it in the session's folder and records it in
+   * the session (`bashExecution`), into the model's context unless `excluded` (`!!`). omp's RPC
+   * returns the result when it ends, with no output on the way, so the card shows it running until
+   * then, with a stop button (`abort_bash`). One at a time, as omp's TUI allows.
+   */
+  private async runUserShell(sessionId: string, command: string, excluded: boolean): Promise<MessageDelivery> {
+    const client = await this.ensureProcess(sessionId);
+    const chat = this.chat(sessionId);
+    if (chat.userShell) throw new Error("셸 명령이 이미 실행 중입니다. 먼저 멈추세요.");
+    chat.shellRuns += 1;
+    const rowId = `${sessionId}:ui:shell-${Date.now().toString(36)}-${chat.shellRuns}`;
+    const startedAt = Date.now();
+    const row: ToolActivity = {
+      ...toolRow(new TranscriptRows(sessionId), rowId, "bash", { command }, command.slice(0, 120), startedAt),
+      status: "running",
+      stoppable: true,
+      userShell: excluded ? { excludedFromContext: true } : {},
+    };
+    chat.userShell = rowId;
+    this.emitLive(sessionId, chat.live.put(row));
+    const finish = (change: (tool: ToolActivity) => ToolActivity): void => {
+      if (chat.userShell === rowId) chat.userShell = undefined;
+      this.emitLive(sessionId, chat.live.updateTool(rowId, (tool) => {
+        const { stoppable: _stoppable, ...rest } = change(tool);
+        return { ...rest, durationMs: Date.now() - startedAt };
+      }));
+      // omp writes the command's record into the session file now, or after the turn it ran beside
+      this.scheduleResync(sessionId);
+    };
+    void client.call<Record<string, unknown>>({ type: "bash", command, ...(excluded ? { excludeFromContext: true } : {}) }, 0).then(
+      (result) => {
+        const data = record(result);
+        const exitCode = typeof data.exitCode === "number" ? data.exitCode : undefined;
+        const output = string(data.output);
+        finish((tool) => ({
+          ...tool,
+          status: data.cancelled === true ? "cancelled" : exitCode !== undefined && exitCode !== 0 ? "failed" : "completed",
+          ...(output ? { output: bounded(output) } : {}),
+        }));
+      },
+      (error: unknown) => finish((tool) => ({ ...tool, status: "failed", output: error instanceof Error ? error.message : String(error) })),
+    );
+    return "prompt";
+  }
+
+  /** Stops the user's running `!` command; its card ends as cancelled when omp answers. */
+  async abortUserShell(sessionId: string): Promise<void> {
+    await this.client(sessionId)?.call({ type: "abort_bash" });
   }
 
   // ---- the conversation's tree (19.1.1 `get_tree`, `fork`, `branch`)
@@ -1249,6 +1309,9 @@ export class OmpRpcController implements AgentRuntimeController {
     // omp answers `/btw` over RPC (the `btw` command) though its slash list leaves it out (19.1.1)
     if (!commands.some((command) => command.name === "btw"))
       commands.push({ name: "btw", description: "대화에 남기지 않고 묻는 사이드 질문", hint: "<질문>" });
+    // `!` runs a shell command (RPC `bash`): listed so the composer sends it at once, as a control
+    if (!commands.some((command) => command.name === "!"))
+      commands.push({ name: "!", description: "셸 명령 실행 (!!: 모델 컨텍스트에 넣지 않음)", hint: "<명령>" });
     // `/goal` is TUI-only in omp; this chat sends it as the `goal` command
     if (!commands.some((command) => command.name === "goal"))
       commands.push({ name: "goal", description: "목표 모드: 목표 정하기, pause, resume, drop", hint: "[set] <목표>" });
@@ -1546,7 +1609,19 @@ export class OmpRpcController implements AgentRuntimeController {
       fresh.slice(-watched.length).forEach((item, index) => chat.thoughtDurations.set(item.id, watched[index]!));
     }
     const fileIds = new Set(chat.fileRows.map((item) => item.id));
-    chat.live.retain((item) => !fileIds.has(item.id) && this.keepAfterSync(sessionId, item));
+    // a `!` command's card gives way to its record only once the file holds it: omp writes the
+    // session file with the first reply, so a command run before that waits in memory
+    const recorded = new Map<string, number>();
+    for (const item of chat.fileRows)
+      if (item.kind === "tool" && item.userShell && item.command) recorded.set(item.command, (recorded.get(item.command) ?? 0) + 1);
+    const shellRecorded = (item: TranscriptItem): boolean => {
+      if (item.kind !== "tool" || !item.userShell || !item.command || item.status === "running") return false;
+      const left = recorded.get(item.command) ?? 0;
+      if (left === 0) return false;
+      recorded.set(item.command, left - 1);
+      return true;
+    };
+    chat.live.retain((item) => !fileIds.has(item.id) && (item.kind === "tool" && item.userShell ? !shellRecorded(item) : this.keepAfterSync(sessionId, item)));
     chat.liveVersion += 1;
     const next = this.composed(chat);
     const events = transcriptSyncEvents(sessionId, chat.published, next);
@@ -1603,6 +1678,7 @@ export class OmpRpcController implements AgentRuntimeController {
         thoughtDurations: new Map(),
         subagents: new Map(),
         readingOutput: 0,
+        shellRuns: 0,
       };
       this.chats.set(sessionId, chat);
     }

@@ -10555,3 +10555,37 @@ button.diff-line-number:hover {
 .model-catalog-row.is-profile .model-catalog-id {
   font-family: inherit;
 }
+
+/* the user's own shell command on a tool card (omp's `!`) */
+.tool-user-shell {
+  margin-left: 6px;
+  padding: 1px 6px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--overlay) 6%, transparent);
+  border-radius: 999px;
+}
+.tool-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.tool-stop {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  color: var(--danger);
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tool-stop:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}

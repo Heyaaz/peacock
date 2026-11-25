@@ -83,6 +83,7 @@ const none: Readonly<SessionCapabilities> = {
   runtimeModes: false,
   exportHtml: false,
   sessionTree: false,
+  userShell: false,
 };
 
 /**
@@ -145,6 +146,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       runtimeModes: true,
       exportHtml: true,
       sessionTree: true,
+      userShell: true,
     },
   },
   {
@@ -191,6 +193,7 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
       runtimeModes: false,
       exportHtml: false,
       sessionTree: false,
+      userShell: false,
     },
   },
   {
