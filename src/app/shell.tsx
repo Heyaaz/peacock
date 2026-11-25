@@ -175,6 +175,13 @@ export default function App() {
         : Promise.resolve(null),
     [backend, contextDialogFor],
   );
+  const loadSessionStats = useCallback(
+    () =>
+      contextDialogFor && backend.getSessionStats
+        ? backend.getSessionStats(contextDialogFor)
+        : Promise.reject(new Error("no session statistics")),
+    [backend, contextDialogFor],
+  );
   const closeContextDialog = useCallback(() => setContextDialogFor(null), []);
 
   // Each open is its own request: a second prefill while the dialog is up
@@ -1559,6 +1566,7 @@ export default function App() {
                 {contextDialogFor === selectedSession.id && (
                   <ContextDialog
                     load={loadContextBreakdown}
+                    loadStats={backend.getSessionStats ? loadSessionStats : undefined}
                     onClose={closeContextDialog}
                     onCompact={selectedCapabilities?.compact && !remoteViewOnly ? onComposerCompact : undefined}
                   />

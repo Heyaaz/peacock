@@ -17,6 +17,7 @@ import type {
   QuestionSubmission,
   RuntimeKind,
   RuntimeModeId,
+  SessionUsageStats,
   SubagentMessage,
   SubagentSnapshot,
   ToolDecision,
@@ -434,6 +435,10 @@ export class AgentRouter implements RoutingAgentHost {
 
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void> {
     return this.facet(sessionId, "setRuntimeMode")(sessionId, mode, enabled);
+  }
+
+  getSessionStats(sessionId: string): Promise<SessionUsageStats> {
+    return this.facet(sessionId, "getSessionStats")(sessionId);
   }
 
   openHistorySession(sessionId: string): Promise<AgentSession> {

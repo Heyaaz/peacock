@@ -20,6 +20,7 @@ import type {
   RuntimeModeId,
   RuntimeModeState,
   SessionLiveStatus,
+  SessionUsageStats,
   SubagentMessage,
   SubagentSnapshot,
   TodoSnapshotPhase,
@@ -461,6 +462,29 @@ export class OmpRpcController implements AgentRuntimeController {
     await client.call({ type, enabled });
     if (mode === "autoRetry") this.chat(sessionId).autoRetry = enabled;
     await this.refreshState(sessionId, client);
+  }
+
+  /** `get_session_stats`: cost, tokens and requests of the session so far (no model call). */
+  async getSessionStats(sessionId: string): Promise<SessionUsageStats> {
+    const client = await this.ensureProcess(sessionId);
+    const data = record(await client.call({ type: "get_session_stats" }));
+    const tokens = record(data.tokens);
+    const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+    return {
+      costUsd: count(data.cost),
+      tokens: {
+        input: count(tokens.input),
+        output: count(tokens.output),
+        reasoning: count(tokens.reasoning),
+        cacheRead: count(tokens.cacheRead),
+        cacheWrite: count(tokens.cacheWrite),
+        total: count(tokens.total),
+      },
+      requests: count(data.assistantMessages),
+      userMessages: count(data.userMessages),
+      toolCalls: count(data.toolCalls),
+      premiumRequests: count(data.premiumRequests),
+    };
   }
 
   // ---- goal mode (19.1.1 `goal`: get, create, resume, pause, drop)

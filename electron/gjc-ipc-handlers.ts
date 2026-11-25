@@ -435,6 +435,11 @@ export function registerGjcIpcHandlers(
     if (!controller.setRuntimeMode) throw new AgentUnsupportedError("setRuntimeMode", id);
     return controller.setRuntimeMode(id, mode, enabled);
   });
+  handle(GJC_IPC.getSessionStats, (_event, sessionId: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    if (!controller.getSessionStats) throw new AgentUnsupportedError("getSessionStats", id);
+    return controller.getSessionStats(id);
+  });
   handle(GJC_IPC.getSubagentMessages, (_event, sessionId: unknown, subagentId: unknown) => {
     const id = requiredId(sessionId, "Session ID");
     if (!controller.getSubagentMessages) throw new AgentUnsupportedError("getSubagentMessages", id);

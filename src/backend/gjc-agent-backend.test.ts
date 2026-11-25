@@ -175,6 +175,10 @@ class FakeGjcBridge implements GjcDesktopBridge {
   }
 
   async setRuntimeMode(_sessionId: string, _mode: string, _enabled: boolean): Promise<void> {}
+
+  async getSessionStats(_sessionId: string): Promise<never> {
+    throw new Error("not in this fake");
+  }
   async queueFollowUp(
     _sessionId: string,
     _input: MessageInput,

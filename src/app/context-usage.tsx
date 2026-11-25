@@ -6,6 +6,7 @@ import type {
   RuntimeModeId,
   RuntimeModeState,
   SessionLiveStatus,
+  SessionUsageStats,
 } from "../../shared/agent-contract";
 import { t } from "../i18n";
 
@@ -250,17 +251,65 @@ function Breakdown({ breakdown }: { breakdown: ContextBreakdown }) {
   );
 }
 
+function money(value: number): string {
+  return value === 0 ? "$0" : value >= 1 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+}
+
+/** What the session has used so far: cost, model calls, tokens. */
+function UsageStats({ stats }: { stats: SessionUsageStats }) {
+  const rows: [string, string][] = [
+    [t("비용"), money(stats.costUsd)],
+    [t("모델 호출"), String(stats.requests)],
+    [t("입력 토큰"), tokenLabel(stats.tokens.input)],
+    [t("출력 토큰"), tokenLabel(stats.tokens.output)],
+    [t("캐시 읽기"), tokenLabel(stats.tokens.cacheRead)],
+    [t("캐시 쓰기"), tokenLabel(stats.tokens.cacheWrite)],
+    ...(stats.tokens.reasoning > 0 ? [[t("추론 토큰"), tokenLabel(stats.tokens.reasoning)] as [string, string]] : []),
+    [t("보낸 메시지"), String(stats.userMessages)],
+    [t("도구 호출"), String(stats.toolCalls)],
+    ...(stats.premiumRequests > 0 ? [[t("프리미엄 요청"), String(stats.premiumRequests)] as [string, string]] : []),
+  ];
+  return (
+    <section className="context-dialog-usage" aria-label={t("이 세션의 사용량")}>
+      <h3>{t("이 세션의 사용량")}</h3>
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 /** "컨텍스트": what fills the window by category, as omp counts it, read when the dialog opens. */
 export function ContextDialog({
   load,
+  loadStats,
   onClose,
   onCompact,
 }: {
   load: () => Promise<ContextBreakdown | null>;
+  /** The session's cost, tokens and requests, shown under the breakdown when the runtime has them. */
+  loadStats?: () => Promise<SessionUsageStats>;
   onClose: () => void;
   onCompact?: () => void;
 }) {
   const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
+  const [stats, setStats] = useState<SessionUsageStats | null>(null);
+  useEffect(() => {
+    if (!loadStats) return;
+    let current = true;
+    loadStats().then(
+      (value) => current && setStats(value),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [loadStats]);
   useEffect(() => {
     let current = true;
     load().then(
@@ -307,6 +356,7 @@ export function ContextDialog({
             <p className="context-dialog-status">{t("omp가 이 대화의 컨텍스트를 알려주지 않았습니다. 선택된 모델이 없을 수 있습니다.")}</p>
           )}
           {breakdown && <Breakdown breakdown={breakdown} />}
+          {stats && <UsageStats stats={stats} />}
         </div>
         <footer>
           {onCompact && (

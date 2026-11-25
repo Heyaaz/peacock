@@ -97,6 +97,28 @@ describe("ContextDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("shows the session's usage under the breakdown", async () => {
+    const stats = {
+      costUsd: 0.0123,
+      tokens: { input: 724, output: 52, reasoning: 0, cacheRead: 43520, cacheWrite: 0, total: 44296 },
+      requests: 3,
+      userMessages: 2,
+      toolCalls: 1,
+      premiumRequests: 0,
+    };
+    const node = await mount(createElement(ContextDialog, { load: async () => BREAKDOWN, loadStats: async () => stats, onClose: () => undefined }));
+    expect([...node.querySelectorAll(".context-dialog-usage dl > div")].map((row) => row.textContent)).toEqual([
+      "비용$0.0123",
+      "모델 호출3",
+      "입력 토큰724",
+      "출력 토큰52",
+      "캐시 읽기43.5K",
+      "캐시 쓰기0",
+      "보낸 메시지2",
+      "도구 호출1",
+    ]);
+  });
+
   it("says so when omp cannot tell or the call fails", async () => {
     const node = await mount(createElement(ContextDialog, { load: async () => null, onClose: () => undefined }));
     expect(node.querySelector(".context-dialog-status")?.textContent).toContain("알려주지 않았습니다");

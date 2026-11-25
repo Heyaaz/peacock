@@ -1306,4 +1306,12 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "실행 모드": "Run modes",
   "이 모델에는 적용되지 않습니다": "Not in effect on this model",
   "omp가 상태를 알려주지 않아 기본값으로 보입니다": "omp does not report this; showing its default",
+  "모델 호출": "Model calls",
+  "캐시 읽기": "Cache read",
+  "캐시 쓰기": "Cache write",
+  "추론 토큰": "Reasoning tokens",
+  "보낸 메시지": "Messages sent",
+  "도구 호출": "Tool calls",
+  "프리미엄 요청": "Premium requests",
+  "이 세션의 사용량": "Usage of this session",
 };

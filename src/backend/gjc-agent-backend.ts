@@ -26,7 +26,13 @@ import type {
   QuestionSubmission,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
-import type { ContextBreakdown, ForkSessionInput, RuntimeModeId, SubagentMessage } from "../../shared/agent-contract";
+import type {
+  ContextBreakdown,
+  ForkSessionInput,
+  RuntimeModeId,
+  SessionUsageStats,
+  SubagentMessage,
+} from "../../shared/agent-contract";
 import {
   isTerminalSessionId,
   type TerminalDesktopBridge,
@@ -212,6 +218,10 @@ export class GjcAgentBackend implements AgentBackend {
 
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void> {
     return this.bridge.setRuntimeMode(sessionId, mode, enabled);
+  }
+
+  getSessionStats(sessionId: string): Promise<SessionUsageStats> {
+    return this.bridge.getSessionStats(sessionId);
   }
 
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery> {

@@ -4,6 +4,7 @@ import type {
   BackendConnection,
   ContextBreakdown,
   RuntimeModeId,
+  SessionUsageStats,
   SubagentMessage,
   CreateSessionInput,
   DiffSnapshot,
@@ -193,6 +194,7 @@ export interface AgentExtrasFacet {
   promoteQueuedMessage(sessionId: string, text: string): Promise<boolean>;
   removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
+  getSessionStats(sessionId: string): Promise<SessionUsageStats>;
 }
 
 /** What `AgentRouter` offers: every facet, and the extras it routes to the runtimes that have them. */

@@ -542,6 +542,18 @@ export interface SubagentMessage {
   error?: boolean;
 }
 
+/** What a session has used so far (omp's `get_session_stats`). */
+export interface SessionUsageStats {
+  costUsd: number;
+  tokens: { input: number; output: number; reasoning: number; cacheRead: number; cacheWrite: number; total: number };
+  /** Model calls: assistant messages. */
+  requests: number;
+  userMessages: number;
+  toolCalls: number;
+  /** Requests a provider counts against a premium allowance (Copilot). */
+  premiumRequests: number;
+}
+
 /** The kinds of content omp counts in a context window. */
 export type ContextCategoryId =
   | "systemPrompt"
@@ -1416,6 +1428,8 @@ export interface GjcDesktopBridge {
   removeQueuedMessage(sessionId: string, text: string, mode: QueuedMessage["mode"]): Promise<boolean>;
   /** Flips one of the runtime's switches. Only omp's chat answers. */
   setRuntimeMode(sessionId: string, mode: RuntimeModeId, enabled: boolean): Promise<void>;
+  /** Cost, tokens and requests so far. Only omp's chat answers. */
+  getSessionStats(sessionId: string): Promise<SessionUsageStats>;
   queueFollowUp(sessionId: string, input: MessageInput): Promise<MessageDelivery>;
   listQueuedMessages(sessionId: string): Promise<QueuedMessage[]>;
   flushQueuedNow(sessionId: string): Promise<boolean>;

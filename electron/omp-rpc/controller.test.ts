@@ -124,6 +124,18 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
       else if (frame.type === "get_available_commands") answer({ commands: [{ name: "compact", description: "Compact the context", input: { hint: "[instructions]" }, source: "builtin" }] });
       else if (frame.type === "cycle_thinking_level") answer({ level: "high" });
       else if (frame.type === "abort_and_deliver_queue") answer({ aborted: true });
+      else if (frame.type === "get_session_stats")
+        answer({
+          sessionId: "x",
+          userMessages: 2,
+          assistantMessages: 3,
+          toolCalls: 1,
+          toolResults: 1,
+          totalMessages: 6,
+          tokens: { input: 724, output: 52, reasoning: 3, cacheRead: 43520, cacheWrite: 0, total: 44296 },
+          cost: 0.0123,
+          premiumRequests: 0,
+        });
       else if (frame.type === "promote_queued_message") answer({ promoted: frame.message === "later" });
       else if (frame.type === "remove_queued_message") answer({ removed: frame.queue === "steering" && frame.message === "now" });
       else if (frame.type === "cancel_subagent") answer({ cancelled: frame.subagentId === "sa-1" });
@@ -844,5 +856,21 @@ describe("OmpRpcController switches", () => {
       { id: "autoCompaction", enabled: false },
       { id: "autoRetry", enabled: false },
     ]);
+  });
+});
+
+describe("OmpRpcController session statistics", () => {
+  it("reads cost, tokens and requests from get_session_stats", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await expect(context.controller.getSessionStats(session.id)).resolves.toEqual({
+      costUsd: 0.0123,
+      tokens: { input: 724, output: 52, reasoning: 3, cacheRead: 43520, cacheWrite: 0, total: 44296 },
+      requests: 3,
+      userMessages: 2,
+      toolCalls: 1,
+      premiumRequests: 0,
+    });
+    expect(context.prompts()).toBe(0);
   });
 });
