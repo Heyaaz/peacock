@@ -237,6 +237,8 @@ export class OmpRpcController implements AgentRuntimeController {
   private readonly pairedCalls = new Map<string, Set<string>>();
   /** Side questions by omp's record id. */
   private readonly sideQuestions = new Map<string, PendingSideQuestion>();
+  /** Renames that wait for the chat's omp to start. */
+  private readonly pendingNames = new Map<string, string>();
   private disposed = false;
   protected readonly log: (message: string, error?: unknown) => void;
 
@@ -279,9 +281,18 @@ export class OmpRpcController implements AgentRuntimeController {
     return session;
   }
 
+  /** Renames the row and omp's session (`set_session_name`), now or when its omp next starts. */
   async renameSession(sessionId: string, title: string): Promise<void> {
     this.options.store.rename(sessionId, title);
     this.emitUpdated(sessionId);
+    const client = this.client(sessionId);
+    if (!client) {
+      if (this.options.store.get(sessionId)) this.pendingNames.set(sessionId, title);
+      return;
+    }
+    await client
+      .call({ type: "set_session_name", name: title })
+      .catch((error: unknown) => this.log(`could not name omp's session ${sessionId}`, error));
   }
 
   sessionTitle(sessionId: string): string | undefined {
@@ -619,8 +630,14 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   /** What a started omp is told before it is used (approvals and questions add theirs). */
-  protected async configure(_sessionId: string, client: OmpRpcClient): Promise<void> {
+  protected async configure(sessionId: string, client: OmpRpcClient): Promise<void> {
     await client.call({ type: "set_ask_dialog", enabled: true }).catch(() => undefined);
+    // a rename made while omp was not running
+    const name = this.pendingNames.get(sessionId);
+    if (name !== undefined) {
+      this.pendingNames.delete(sessionId);
+      await client.call({ type: "set_session_name", name }).catch(() => undefined);
+    }
     // subagents report their progress as frames of their own (rpc-subagents.ts)
     await client.call({ type: "set_subagent_subscription", level: "progress" }).catch(() => undefined);
   }

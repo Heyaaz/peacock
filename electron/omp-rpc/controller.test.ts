@@ -874,3 +874,17 @@ describe("OmpRpcController session statistics", () => {
     expect(context.prompts()).toBe(0);
   });
 });
+
+describe("OmpRpcController session name", () => {
+  it("names omp's session when the chat is renamed, now or when its omp starts", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.renameSession(session.id, "before start");
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    expect(child.sent("set_session_name")).toMatchObject([{ name: "before start" }]);
+    await context.controller.renameSession(session.id, "while running");
+    expect(child.sent("set_session_name").at(-1)).toMatchObject({ name: "while running" });
+    expect(context.controller.sessionTitle(session.id)).toBe("while running");
+  });
+});
