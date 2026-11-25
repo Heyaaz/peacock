@@ -71,7 +71,9 @@ import { HerdrAgentController } from "./herdr-core/agent-controller.js";
 import { AgentHooks } from "./herdr-core/agent-hooks.js";
 import { AgentDetector } from "./herdr-core/agent-detect.js";
 import { installHerdrCore, readHcVersion } from "./herdr-core/install.js";
-import { coreEnvironment, corePath } from "./herdr-core/env.js";
+import { agentEnvironment, coreEnvironment, corePath } from "./herdr-core/env.js";
+import { OmpRpcController } from "./omp-rpc/controller.js";
+import { OmpRpcSessionStore } from "./omp-rpc/session-store.js";
 import { HC_BUNDLE, HC_VERSION } from "./herdr-core/version.js";
 import {
   DesktopIntegration,
@@ -678,6 +680,11 @@ const hcSession = hcSessionName(
   process.env.GAJAE_HC_SESSION,
 );
 let hcEnvironment: Promise<Record<string, string>> | undefined;
+let loginPath: Promise<string> | undefined;
+/** The login shell's PATH (a Finder launch has none of the user's folders), asked once. */
+function userLoginPath(): Promise<string> {
+  return (loginPath ??= corePath(process.env));
+}
 // Terminal sessions' shells run in herdr-core, which outlives the app. Without it (another
 // platform, no bundle, a core that fails) a session falls back to an in-app shell.
 const hcCore =
@@ -712,7 +719,7 @@ const agentDetector = new AgentDetector({
     (id === "gjc" ? gjcExecutableOf(settingsStore.get(), process.env) : settingsStore.get().agents[id]?.executable) || undefined,
 });
 function hcCoreEnvironment(): Promise<Record<string, string>> {
-  return (hcEnvironment ??= corePath(process.env).then((corePathValue) =>
+  return (hcEnvironment ??= userLoginPath().then((corePathValue) =>
     coreEnvironment(process.env, { session: hcSession, path: corePathValue }),
   ));
 }
@@ -758,6 +765,16 @@ herdrAgents =
       })
     : undefined;
 if (herdrAgents) agentRouter.registerRuntime("herdr", herdrAgents);
+// omp's chat screen is its own RPC process per session (design §10); the processes end with the app.
+const ompRpcSessions = new OmpRpcSessionStore(userDataDirectory);
+const ompRpc = new OmpRpcController({
+  store: ompRpcSessions,
+  detect: () => agentDetector.detect("omp"),
+  environment: () => userLoginPath().then((pathValue) => agentEnvironment(process.env, pathValue)),
+  emit: (event) => broadcastAgentEvent(event),
+  claim: (sessionId) => agentRouter.claimSession(sessionId, "omp-rpc"),
+});
+agentRouter.registerRuntime("omp-rpc", ompRpc);
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
   store: terminalSessions,
   provider: hcTerminals,
@@ -776,6 +793,7 @@ const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
 function exitWithTerminals(code: number): void {
   terminalIpc.disposeAll();
   herdrAgents?.dispose();
+  ompRpc.dispose();
   agentHooks?.stop();
   hcCore?.dispose();
   app.exit(code);

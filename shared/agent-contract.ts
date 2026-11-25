@@ -13,11 +13,12 @@ import type { AgentLaunchOptions } from "./agent-launch.js";
  * `gjc` is a GJC conversation in the app. `herdr` is every session that runs
  * in a terminal -- Claude Code, omp, codex or a shell -- on herdr-core, or in the
  * app's own pty where herdr-core is unavailable (docs/design/agent-runtime-herdr.md).
- * What such a session offers comes from its `agentKind`, `surfaces` and
- * `capabilities`, never from the runtime. `hermes` names the mock backend's
- * rows only; no host creates one.
+ * `omp-rpc` is an omp chat the app drives over `omp --mode rpc-ui` (design §10):
+ * a conversation like GJC's, with no terminal. What a session offers comes from
+ * its `agentKind`, `surfaces` and `capabilities`, never from the runtime.
+ * `hermes` names the mock backend's rows only; no host creates one.
  */
-export type RuntimeKind = "gjc" | "hermes" | "herdr";
+export type RuntimeKind = "gjc" | "hermes" | "herdr" | "omp-rpc";
 
 /**
  * A runtime name as an older host or client may still send it: hosts before the
@@ -25,11 +26,16 @@ export type RuntimeKind = "gjc" | "hermes" | "herdr";
  */
 export function normalizeRuntimeKind(value: unknown): RuntimeKind | undefined {
   if (value === "terminal") return "herdr";
-  return value === "gjc" || value === "herdr" || value === "hermes" ? value : undefined;
+  return value === "gjc" || value === "herdr" || value === "hermes" || value === "omp-rpc" ? value : undefined;
 }
 
-/** Whether a session runs in a terminal (an agent CLI or a shell) rather than as a GJC conversation. */
+/**
+ * Whether a session runs in a terminal (an agent CLI or a shell) rather than as a conversation
+ * the app drives (GJC, or an omp RPC chat). A row with no runtime this build knows but an agent
+ * other than GJC came from a host that ran every such agent in a terminal.
+ */
 export function runsInTerminal(session: Pick<AgentSession, "runtime" | "agentKind">): boolean {
+  if (session.runtime === "omp-rpc") return false;
   return session.runtime === "herdr" || (session.runtime as string) === "terminal" || (session.agentKind !== undefined && session.agentKind !== "gjc");
 }
 
@@ -1089,11 +1095,11 @@ export interface CreateSessionInput {
    * cannot resolve), so a parallel attempt runs on its own preset from its first turn.
    */
   modelPreset?: string;
-  /** A herdr session's agent (`runtime: "herdr"`); a shell when unset. */
+  /** A herdr session's agent (`runtime: "herdr"`); a shell when unset. An omp RPC chat's is omp. */
   agentKind?: AgentKindId;
   /** The screen a herdr session opens on (the window's choice; the row keeps its `surfaces`). */
   surface?: SessionSurface;
-  /** What a herdr session's agent starts with. */
+  /** What a herdr session's agent, or an omp RPC chat's omp, starts with. */
   launch?: AgentLaunchOptions;
 }
 

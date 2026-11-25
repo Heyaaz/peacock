@@ -1,5 +1,25 @@
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { questionSubmission, toolDecision } from "./gjc-input-validation.js";
+import { createSessionInput, questionSubmission, toolDecision } from "./gjc-input-validation.js";
+
+describe("createSessionInput for an omp chat (design §10)", () => {
+  const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-omp-input-")));
+
+  it("takes omp in a folder as it is, with the launch options omp takes", () => {
+    expect(
+      createSessionInput({ runtime: "omp-rpc", workspace, agentKind: "omp", title: "chat", launch: { permissionMode: "always-ask" } }),
+    ).toEqual({ runtime: "omp-rpc", workspace, isolation: "workspace", agentKind: "omp", surface: "chat", title: "chat", launch: { permissionMode: "always-ask" } });
+  });
+
+  it("refuses another agent, a worktree, an option omp does not take and a missing folder", () => {
+    expect(() => createSessionInput({ runtime: "omp-rpc", workspace, agentKind: "claude" })).toThrow("An omp chat runs omp");
+    expect(() => createSessionInput({ runtime: "omp-rpc", workspace, isolation: "worktree" })).toThrow("folder as it is");
+    expect(() => createSessionInput({ runtime: "omp-rpc", workspace, launch: { effort: "high" } })).toThrow("omp does not take effort");
+    expect(() => createSessionInput({ runtime: "omp-rpc", workspace: path.join(workspace, "gone") })).toThrow("existing directory");
+  });
+});
 
 describe("questionSubmission", () => {
   it.each([

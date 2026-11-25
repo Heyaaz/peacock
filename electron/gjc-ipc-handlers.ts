@@ -261,6 +261,24 @@ export function registerGjcIpcHandlers(
     reuseUnchangedIndex = false,
   ) => {
     const title = controller.sessionTitle(id);
+    // an omp chat (design §10) keeps its conversation in omp's own session file, which stays
+    const runtime = (controller as { runtimeOf?(sessionId: string): string }).runtimeOf?.(id);
+    if (runtime === "omp-rpc")
+      return {
+        grant: `${action}:${id}:omp`,
+        holder: undefined,
+        content: {
+          message: "세션을 삭제할까요?",
+          detail: [
+            title,
+            hostText("목록에서 지우고 이 세션의 omp를 종료합니다. omp의 세션 파일은 omp 기록에 남아 터미널에서 이어 갈 수 있습니다."),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          confirmLabel: "삭제",
+          danger: true,
+        },
+      };
     if (action === "hide")
       return {
         grant: `hide:${id}`,

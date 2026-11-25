@@ -31,11 +31,18 @@ export function coreEnvironment(
   source: SourceEnv,
   options: { session: string; path: string },
 ): Record<string, string> {
+  return { ...agentEnvironment(source, options.path), HC_SESSION: options.session };
+}
+
+/**
+ * The environment of an agent Gajae starts itself, outside herdr-core (an omp RPC chat, design
+ * §10): the same allow-list a core gets, and the login shell's PATH.
+ */
+export function agentEnvironment(source: SourceEnv, path: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(source))
     if (value !== undefined && CORE_ENV.test(name)) env[name] = value;
-  env.PATH = options.path;
-  env.HC_SESSION = options.session;
+  env.PATH = path;
   return env;
 }
 

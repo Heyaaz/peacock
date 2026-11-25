@@ -47,6 +47,14 @@ export interface AgentCatalogEntry {
   /** The screen a new session opens on. */
   defaultSurface: SessionSurface;
   /**
+   * The runtime a session chosen on the chat screen runs on, when that is not the terminal
+   * runtime's transcript reader: omp's chat is its own RPC process (design §10). Unset means
+   * the chat screen reads the terminal agent's transcript.
+   */
+  chatRuntime?: "omp-rpc";
+  /** The most that chat runtime's sessions can offer (`capabilities` stays the terminal's). */
+  chatCapabilities?: Readonly<SessionCapabilities>;
+  /**
    * The most a session of this agent can offer once its runtime is wired. A
    * running session reports what it offers now (`capabilitiesOf`); this is
    * the ceiling its controller starts from, never more than that.
@@ -108,6 +116,22 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     transcript: true,
     defaultSurface: "terminal",
     capabilities: terminalChat,
+    // 채팅 is omp's RPC mode (`omp --mode rpc-ui`): streaming, tool cards, approvals, questions
+    // and model settings as GJC's chat has them. Goals, forks, suggestions and the git panel stay GJC's.
+    chatRuntime: "omp-rpc",
+    chatCapabilities: {
+      ...none,
+      send: true,
+      cancel: true,
+      approvals: true,
+      questions: true,
+      compact: true,
+      sideQuestion: true,
+      modelConfig: true,
+      thinking: true,
+      attachments: true,
+      streaming: true,
+    },
   },
   {
     id: "codex",
@@ -171,6 +195,16 @@ export function agentCatalogEntry(id: AgentKindId): AgentCatalogEntry {
   const entry = BY_ID.get(id);
   if (!entry) throw new Error(`Unknown agent kind: ${id}`);
   return entry;
+}
+
+/**
+ * The runtime a new session of this agent runs on for the screen chosen: omp's chat is an RPC
+ * session of its own, every other non-GJC agent runs in a herdr terminal (its chat reads that).
+ */
+export function sessionRuntimeFor(id: AgentKindId, surface: SessionSurface): "gjc" | "herdr" | "omp-rpc" {
+  if (id === "gjc") return "gjc";
+  const entry = agentCatalogEntry(id);
+  return surface === "chat" && entry.chatRuntime ? entry.chatRuntime : "herdr";
 }
 
 /** Whether sessions of this agent can be shown on the given screen. */

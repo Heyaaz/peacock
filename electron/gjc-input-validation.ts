@@ -97,6 +97,33 @@ function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInp
   };
 }
 
+/** An omp RPC chat (design §10): omp, in a folder as it is, with the launch options omp takes. */
+function ompRpcSessionInput(candidate: Record<string, unknown>): CreateSessionInput {
+  if (candidate.agentKind !== undefined && candidate.agentKind !== "omp") throw new Error("An omp chat runs omp");
+  if (candidate.title !== undefined && typeof candidate.title !== "string") throw new Error("Session title must be a string");
+  if (typeof candidate.workspace !== "string" || !path.isAbsolute(candidate.workspace))
+    throw new Error("Session workspace must be an absolute directory");
+  if (candidate.isolation !== undefined && candidate.isolation !== "workspace")
+    throw new Error("An omp chat runs in its folder as it is");
+  const fault = launchOptionsFault("omp", candidate.launch);
+  if (fault) throw new Error(fault);
+  const launch = launchOptions("omp", candidate.launch);
+  try {
+    if (!statSync(candidate.workspace).isDirectory()) throw new Error();
+  } catch {
+    throw new Error("Session workspace must be an existing directory");
+  }
+  return {
+    runtime: "omp-rpc",
+    workspace: path.resolve(candidate.workspace),
+    isolation: "workspace",
+    agentKind: "omp",
+    surface: "chat",
+    ...(candidate.title ? { title: candidate.title } : {}),
+    ...(launch ? { launch } : {}),
+  };
+}
+
 export function createSessionInput(value: unknown): CreateSessionInput {
   if (!value || typeof value !== "object")
     throw new Error("Session input is required");
@@ -117,8 +144,9 @@ export function createSessionInput(value: unknown): CreateSessionInput {
   // an older window names a terminal session's runtime `terminal`; `hermes` is the mock backend's only
   const runtime = normalizeRuntimeKind(candidate.runtime);
   if (runtime === "herdr") return herdrSessionInput(candidate);
+  if (runtime === "omp-rpc") return ompRpcSessionInput(candidate);
   if (runtime !== "gjc")
-    throw new Error("Only GJC and terminal (herdr) sessions can be created through this bridge");
+    throw new Error("Only GJC, terminal (herdr) and omp chat sessions can be created through this bridge");
   if (candidate.title !== undefined && typeof candidate.title !== "string") {
     throw new Error("Session title must be a string");
   }

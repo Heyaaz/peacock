@@ -61,6 +61,7 @@ describe("capabilitiesOf runtime defaults", () => {
     expect(normalizeRuntimeKind("terminal")).toBe("herdr");
     expect(normalizeRuntimeKind("gjc")).toBe("gjc");
     expect(normalizeRuntimeKind("other")).toBeUndefined();
+    expect(normalizeRuntimeKind("omp-rpc")).toBe("omp-rpc");
   });
 
   it("tells a terminal session from a GJC conversation by its runtime or its agent", () => {
@@ -69,6 +70,9 @@ describe("capabilitiesOf runtime defaults", () => {
     expect(runsInTerminal({ runtime: "gjc", agentKind: "claude" })).toBe(true);
     expect(runsInTerminal({ runtime: "gjc" })).toBe(false);
     expect(runsInTerminal({ runtime: "gjc", agentKind: "gjc" })).toBe(false);
+    // an omp RPC chat is a conversation the app drives, though its agent is omp (design §10)
+    expect(runsInTerminal({ runtime: "omp-rpc", agentKind: "omp" })).toBe(false);
+    expect(runsInTerminal({ runtime: "herdr", agentKind: "omp" })).toBe(true);
   });
 
   it("assumes nothing for a herdr session that reports nothing", () => {

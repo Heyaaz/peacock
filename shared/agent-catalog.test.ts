@@ -3,6 +3,7 @@ import {
   AGENT_CATALOG,
   agentCatalogEntry,
   agentSupportsSurface,
+  sessionRuntimeFor,
 } from "./agent-catalog.js";
 import {
   AGENT_KIND_IDS,
@@ -75,6 +76,18 @@ describe("agent catalog", () => {
       expect(capabilities.streaming).toBe(false);
       expect(capabilities.send).toBe(true);
     }
+  });
+
+  it("runs omp's chat screen on its RPC runtime and every other agent's screens where they were", () => {
+    expect(sessionRuntimeFor("omp", "chat")).toBe("omp-rpc");
+    expect(sessionRuntimeFor("omp", "terminal")).toBe("herdr");
+    expect(sessionRuntimeFor("claude", "terminal")).toBe("herdr");
+    expect(sessionRuntimeFor("shell", "terminal")).toBe("herdr");
+    expect(sessionRuntimeFor("gjc", "chat")).toBe("gjc");
+    const chat = agentCatalogEntry("omp").chatCapabilities!;
+    expect(Object.keys(chat).sort()).toEqual([...SESSION_CAPABILITY_KEYS].sort());
+    // what stays GJC's: goals, forks, suggestions, the git panel
+    expect(chat).toMatchObject({ send: true, streaming: true, approvals: true, questions: true, goal: false, fork: false, suggestion: false, git: false });
   });
 
   it("answers which screens an agent supports", () => {

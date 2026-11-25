@@ -215,6 +215,25 @@ describe("AgentRouter with a second runtime", () => {
     expect(gjc.getTranscript).toHaveBeenCalledWith("g1");
   });
 
+  it("keeps herdr and omp chat sessions apart, each on its own controller (design §10)", async () => {
+    const gjc = fakeHost();
+    const herdr = fakeRuntime();
+    const ompRpc = fakeRuntime({ createSession: vi.fn(async () => ({ id: "omp-new" }) as AgentSession) } as unknown as Partial<AgentRuntimeController>);
+    const router = new AgentRouter(gjc);
+    router.registerRuntime("herdr", herdr);
+    router.registerRuntime("omp-rpc", ompRpc);
+
+    await expect(
+      router.createSession({ runtime: "omp-rpc", workspace: "/repo", isolation: "workspace", agentKind: "omp" }),
+    ).resolves.toMatchObject({ id: "omp-new" });
+    expect(router.runtimeOf("omp-new")).toBe("omp-rpc");
+    await router.sendMessage("omp-new", input);
+    expect(ompRpc.sendMessage).toHaveBeenCalledWith("omp-new", input, undefined);
+    expect(herdr.sendMessage).not.toHaveBeenCalled();
+    expect(gjc.sendMessage).not.toHaveBeenCalled();
+    expect(router.sessionOfTool("omp-new:call_1")).toBe("omp-new");
+  });
+
   it("refuses a facet the owner lacks as a rejected promise, not a throw", async () => {
     const gjc = fakeHost();
     const router = new AgentRouter(gjc);

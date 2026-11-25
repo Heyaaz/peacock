@@ -542,7 +542,7 @@ describe("session creation IPC validation", () => {
       expect(() => createSessionInput({ runtime: "herdr", workspace: "relative" })).toThrow("absolute");
       expect(() => createSessionInput({ runtime: "herdr", workspace, isolation: "worktree" })).toThrow("as it is");
       expect(() => createSessionInput({ runtime: "herdr", workspace: path.join(workspace, "missing") })).toThrow("existing directory");
-      expect(() => createSessionInput({ runtime: "hermes", workspace })).toThrow("Only GJC and terminal");
+      expect(() => createSessionInput({ runtime: "hermes", workspace })).toThrow("Only GJC, terminal (herdr) and omp chat");
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

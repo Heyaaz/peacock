@@ -961,7 +961,7 @@ function SidebarView({
                   the only removal that actually completes is hiding the row here.
                   It is a separate item, not a silent substitute: the label says the
                   history stays. */}
-              {!runsInTerminal(contextMenu.session) && (
+              {!runsInTerminal(contextMenu.session) && contextMenu.session.runtime !== "omp-rpc" && (
               <button
                 type="button"
                 onClick={() => {

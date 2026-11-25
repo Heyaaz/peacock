@@ -227,7 +227,7 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 
 ## 10. omp RPC 채팅
 
-상태: P0 스파이크(2026-11-25, omp 19.1.1, 임시 cwd·`--session-dir`, 기본 모델 deepseek flash). 실측 프레임은 `electron/omp-rpc/fixtures/`(홈·임시 경로를 지우고 시스템 프롬프트·MCP 이름 등은 뺀 사본).
+상태: P0 스파이크(2026-11-25, omp 19.1.1, 임시 cwd·`--session-dir`, 기본 모델 deepseek flash). 실측 프레임은 `electron/omp-rpc/fixtures/`(홈·임시 경로를 지우고 시스템 프롬프트·MCP 이름 등은 뺀 사본). 참고 소스는 npm의 `@oh-my-pi/pi-coding-agent` **19.1.1**(`src/modes/rpc/`, `src/tools/approval.ts`)이다. 처음 본 18.20 소스와 다른 점: `form` UI 요청과 `{data}` 응답이 19.1.1 타입에 정식으로 있고(`ui.formDialog`, opt-in 불필요), `get_model_picker`(가벼운 모델 목록), `set_model`의 `thinkingLevel`/`role`, `set_thinking_level`의 `auto`, `get_state`의 `configuredThinkingLevel`·`thinkingLevels`, `abort_and_deliver_queue`·`resume` 명령이 늘었다. RPC 승인은 19.1.1에서도 `ui.approve`가 없어 `select`로 온다(라벨: grant들, "Approve"/"Approve Once", "Approve <tool> for this session", "Deny").
 
 **결정**
 - omp의 "채팅"은 터미널 기록 판독기가 아니라 `omp --mode rpc-ui` 프로세스를 쓰는 새 런타임 `runtime: "omp-rpc"`(`agentKind: "omp"`)이다. herdr 컨트롤러에 섞지 않는다. 기존 omp 터미널 세션의 기록 채팅(폰·검색이 씀)은 그대로 둔다. v1에서 한 세션을 터미널↔RPC로 바꾸지 않는다.
