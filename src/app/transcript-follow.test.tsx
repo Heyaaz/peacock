@@ -159,6 +159,13 @@ describe("gesture window follow latch", () => {
     expect(scroll.scrollTop).toBe(scroll.bottom());
   });
 
+  it("puts the view back on the bottom in the same commit when rows change", async () => {
+    const { scroll, update } = await render([message("m-1", "hello")]);
+    scroll.scrollHeight = 1_480;
+    await update([message("m-1", "hello"), message("m-2", "next")]);
+    expect(scroll.scrollTop).toBe(scroll.bottom());
+  });
+
   it("loads the earlier page with the visible row and offset as its prepend anchor", async () => {
     const onLoadEarlier = vi.fn();
     const { element, scroll } = await render([message("m-anchor", "visible")], {

@@ -730,6 +730,25 @@ export function turnFoldContaining(
   return folds.find((fold) => index >= fold.start && index < fold.end);
 }
 
+/**
+ * Whether folding this turn would collapse the row the reader's viewport sits on.
+ *
+ * The caller keeps the turn open in that case: folding it would pull the text the
+ * reader is looking at out from under them. A run of tool calls is one block keyed
+ * by its first call (`tools-<id>`), so both the item's own id and that key count.
+ */
+export function foldCoversBlock(
+  fold: TurnFold,
+  blockId: string,
+  items: readonly TranscriptItem[],
+): boolean {
+  for (let index = fold.start; index < fold.end; index += 1) {
+    const id = items[index]?.id;
+    if (id && (blockId === id || blockId === `tools-${id}`)) return true;
+  }
+  return false;
+}
+
 /** Blocks with each fold as one row, followed by its own blocks while it is open. */
 export function foldTranscriptBlocks(
   items: readonly TranscriptItem[],

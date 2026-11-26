@@ -9,6 +9,7 @@ import {
 } from "../message-delivery";
 import {
   appendProgressBlock,
+  foldCoversBlock,
   foldTranscriptBlocks,
   lastTurnSettled,
   resolveTurnProgress,
@@ -19,6 +20,7 @@ import {
   turnFolds,
   turnStartBlockIds,
   type StoredTurnClock,
+  type TurnFold,
   type TurnSessionHint,
 } from "../transcript-utils";
 import { GajaeProgressRow } from "./gajae-progress";
@@ -373,6 +375,49 @@ export function Transcript({
     blocksRef.current = rows;
   }, [rows]);
 
+  // A turn that settles while the reader is looking at its work keeps that work on
+  // screen: the fold appears open, so nothing they were reading is pulled away. A
+  // reader above the turn is unaffected by folding it below them, and one following
+  // the newest content is at the answer, past the fold -- both fold at once.
+  const readAnchorRef = useRef<TranscriptViewportAnchor | null>(null);
+  const foldedTurnsRef = useRef<readonly TurnFold[]>([]);
+  useLayoutEffect(() => {
+    const previous = foldedTurnsRef.current;
+    foldedTurnsRef.current = folds;
+    if (followingRef.current) return;
+    const newest = folds[folds.length - 1];
+    if (!newest || previous.some((fold) => fold.id === newest.id)) return;
+    const anchor = readAnchorRef.current;
+    if (!anchor || !foldCoversBlock(newest, anchor.key, visibleItems)) return;
+    setFoldOpen(newest.id, true);
+  }, [folds, setFoldOpen, visibleItems]);
+  // Read after the fold decision above, so it names where the reader was before this
+  // commit's fold. Only a reader who is not following needs it.
+  useLayoutEffect(() => {
+    const scroller = transcriptRef.current;
+    if (!scroller || followingRef.current) {
+      readAnchorRef.current = null;
+      return;
+    }
+    readAnchorRef.current = currentViewportAnchor(scroller, 0);
+  });
+  // The follow effect below chases the bottom after a frame or two of measuring, and
+  // a reader following the newest content would watch that correction as a jump. A
+  // change in the rows themselves (a fold closing, the progress row leaving) is known
+  // before paint, so the view is put back on the bottom in the same commit.
+  const rowIdentity = useMemo(() => rows.map((row) => row.id).join("\u0000"), [rows]);
+  useLayoutEffect(() => {
+    const scroller = transcriptRef.current;
+    if (!scroller || !followingRef.current || scrolledAwayRef.current) return;
+    const previous = selfScrollingRef.current;
+    selfScrollingRef.current = true;
+    scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
+    const frame = requestAnimationFrame(() => {
+      selfScrollingRef.current = previous;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [rowIdentity]);
+
   // Only the blocks near the viewport are mounted. A full session used to keep ~800
   // entries and 20,000 nodes live, which made every width change -- opening the detail
   // panel, resizing the window -- re-wrap and re-measure the whole document in one
@@ -484,6 +529,8 @@ export function Transcript({
     sessionRef.current = sessionId;
     setAtHistoryStart(false);
     stableViewportRef.current = null;
+    readAnchorRef.current = null;
+    foldedTurnsRef.current = [];
     followingRef.current = true;
     scrolledAwayRef.current = false;
     gestureAtRef.current = 0;

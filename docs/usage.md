@@ -45,8 +45,9 @@ A finished turn keeps its request and final answer on screen and folds everythin
 between them into one line, such as `Worked for 4m`, with a failure count (`1 failed`)
 when a tool failed. Click the line to open the work in order. A running turn, a turn
 without a final answer, and a turn still waiting on a question or an approval stay
-open. The Details view never folds. Rows carry clock times like `13:22`, so the
-duration is counted in minutes.
+open. A turn that finishes while your viewport is inside its work stays open too, so
+the text you are reading does not move. The Details view never folds. Rows carry clock
+times like `13:22`, so the duration is counted in minutes.
 
 The conversation display menu in the header sets how much each turn shows:
 Summary (tool summaries), Default (tool cards) and Details (reasoning expanded too).

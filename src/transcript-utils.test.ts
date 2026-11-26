@@ -5,6 +5,7 @@ import {
   cacheTranscript,
   appendProgressBlock,
   copyableMessageText,
+  foldCoversBlock,
   currentTurnWork,
   elapsedTurnMs,
   gajaeEmoticonFor,
@@ -1500,6 +1501,28 @@ describe("turnStartBlockIds", () => {
   it("does not mark an assistant message, notice, or tool-run block", () => {
     const blocks = groupTranscriptItems([message, notice, tool("a")]);
     expect(turnStartBlockIds(blocks).size).toBe(0);
+  });
+});
+
+describe("foldCoversBlock", () => {
+  const items: TranscriptItem[] = [
+    { ...message, id: "u1", role: "user" },
+    tool("t1"),
+    tool("t2"),
+    { ...message, id: "a1" },
+  ];
+  const fold = { id: "u1", start: 1, end: 3, minutes: 1, failedCount: 0 };
+
+  it("catches the rows a fold would collapse", () => {
+    expect(foldCoversBlock(fold, "t1", items)).toBe(true);
+    expect(foldCoversBlock(fold, "tools-t1", items)).toBe(true);
+    expect(foldCoversBlock(fold, "t2", items)).toBe(true);
+  });
+
+  it("leaves the prompt, the answer, and the rest of the turn alone", () => {
+    expect(foldCoversBlock(fold, "u1", items)).toBe(false);
+    expect(foldCoversBlock(fold, "a1", items)).toBe(false);
+    expect(foldCoversBlock(fold, "tools-a1", items)).toBe(false);
   });
 });
 
