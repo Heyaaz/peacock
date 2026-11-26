@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/peacock-promo.gif" alt="Peacock in thirty seconds" width="860">
+  <img src="docs/media/peacock-promo.gif?v=0.2.0" alt="Peacock in thirty seconds" width="860">
 </p>
 
 Peacock is an Electron app for running coding agents without living in a terminal.
@@ -32,13 +32,13 @@ and parallel runs.
 ## Demo
 
 <p align="center">
-  <img src="docs/media/demo.gif" alt="A request runs, asks a question, and finishes" width="860">
+  <img src="docs/media/demo.gif?v=0.2.0" alt="A request runs, asks a question, and finishes" width="860">
 </p>
 
 The app running on its built-in sample data, in a GJC session. A request reads
 code and runs the tests, stops to ask which retry policy to use, then edits and
 finishes while the goal above the composer ticks to 3/3. Full quality:
-[demo.mp4](docs/media/demo.mp4), [promo.mp4](docs/media/peacock-promo.mp4).
+[demo.mp4](docs/media/demo.mp4?v=0.2.0), [promo.mp4](docs/media/peacock-promo.mp4?v=0.2.0).
 
 ## Feature tour
 
@@ -48,13 +48,13 @@ Each clip is the real app on its built-in sample data.
   <tr>
     <td width="50%" valign="top">
       <strong>Pick the agent per session</strong><br>
-      <img src="docs/media/feature-agents.gif" alt="Choosing an agent in the new session dialog">
+      <img src="docs/media/feature-agents.gif?v=0.2.0" alt="Choosing an agent in the new session dialog">
       <sub>Claude Code, omp, Codex, GJC or a shell. omp also opens on its chat, the
       others on their terminal or conversation.</sub>
     </td>
     <td width="50%" valign="top">
       <strong>omp chat at a glance</strong><br>
-      <img src="docs/media/feature-omp.gif" alt="omp's todo list, context breakdown and conversation tree">
+      <img src="docs/media/feature-omp.gif?v=0.2.0" alt="omp's todo list, context breakdown and conversation tree">
       <sub>The running step and todo list, a context breakdown with the session's
       cost, and the conversation tree.</sub>
     </td>
@@ -62,13 +62,13 @@ Each clip is the real app on its built-in sample data.
   <tr>
     <td width="50%" valign="top">
       <strong>Approve once, skip the rest</strong><br>
-      <img src="docs/media/feature-approval.gif" alt="Saving a command prefix as an allow rule from an approval card">
+      <img src="docs/media/feature-approval.gif?v=0.2.0" alt="Saving a command prefix as an allow rule from an approval card">
       <sub>Edit the command prefix on an approval card and always allow it. The
       next matching command runs without asking.</sub>
     </td>
     <td width="50%" valign="top">
       <strong>Side chat</strong><br>
-      <img src="docs/media/feature-side-chat.gif" alt="Asking a side question while the session keeps working">
+      <img src="docs/media/feature-side-chat.gif?v=0.2.0" alt="Asking a side question while the session keeps working">
       <sub>Press ⌘⇧B to ask about the session while it keeps working. The answer
       stays out of the transcript.</sub>
     </td>
@@ -76,12 +76,12 @@ Each clip is the real app on its built-in sample data.
   <tr>
     <td width="50%" valign="top">
       <strong>Diagrams in chat</strong><br>
-      <img src="docs/media/feature-mermaid.gif" alt="A Mermaid diagram rendering in a reply">
+      <img src="docs/media/feature-mermaid.gif?v=0.2.0" alt="A Mermaid diagram rendering in a reply">
       <sub>Mermaid blocks in a reply render as diagrams.</sub>
     </td>
     <td width="50%" valign="top">
       <strong>Next-input suggestion</strong> <sub>GJC</sub><br>
-      <img src="docs/media/feature-suggestion.gif" alt="A suggested next message accepted with Tab">
+      <img src="docs/media/feature-suggestion.gif?v=0.2.0" alt="A suggested next message accepted with Tab">
       <sub>When a turn ends, a suggested next message appears in the empty
       composer. Tab accepts it.</sub>
     </td>
@@ -89,26 +89,26 @@ Each clip is the real app on its built-in sample data.
   <tr>
     <td width="50%" valign="top">
       <strong>Queue while it runs</strong><br>
-      <img src="docs/media/feature-queue.gif" alt="Queued follow-ups being reordered and removed">
+      <img src="docs/media/feature-queue.gif?v=0.2.0" alt="Queued follow-ups being reordered and removed">
       <sub>Queue follow-ups during a turn, reorder them with the arrows, or
       discard one.</sub>
     </td>
     <td width="50%" valign="top">
       <strong>Model picker</strong><br>
-      <img src="docs/media/feature-model-picker.gif" alt="Searching and starring models in the model picker">
+      <img src="docs/media/feature-model-picker.gif?v=0.2.0" alt="Searching and starring models in the model picker">
       <sub>Search, set the thinking level and Fast mode, and star favorites.</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <strong>Review the changes</strong> <sub>GJC and omp chats</sub><br>
-      <img src="docs/media/feature-review.gif" alt="Commenting on diff lines in the changed files panel">
+      <img src="docs/media/feature-review.gif?v=0.2.0" alt="Commenting on diff lines in the changed files panel">
       <sub>Select diff lines, comment, and send the comments back to the agent
       as one review.</sub>
     </td>
     <td width="50%" valign="top">
       <strong>Projects rail</strong><br>
-      <img src="docs/media/feature-projects.gif" alt="The sidebar switching from projects to status">
+      <img src="docs/media/feature-projects.gif?v=0.2.0" alt="The sidebar switching from projects to status">
       <sub>Sessions group by project. One click switches to the by-status
       view.</sub>
     </td>
@@ -171,8 +171,8 @@ Each clip is the real app on its built-in sample data.
 
 <table>
   <tr>
-    <td><img src="docs/media/question-dark.png" alt="A question card in the dark theme"></td>
-    <td><img src="docs/media/done-light.png" alt="A finished run with its goal in the light theme"></td>
+    <td><img src="docs/media/question-dark.png?v=0.2.0" alt="A question card in the dark theme"></td>
+    <td><img src="docs/media/done-light.png?v=0.2.0" alt="A finished run with its goal in the light theme"></td>
   </tr>
 </table>
 
