@@ -1212,6 +1212,7 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "다음 새 세션부터 적용됩니다.": "Applies to new sessions.",
   "에이전트별 승인 방식": "Approvals by agent",
   "새 세션이 처음에 쓰는 방식입니다. 바꾸려면 에이전트 카드를 여세요.": "What a new session starts with. Change it on the agent's card.",
+  "⌘T로 여는 세션과 새 세션 창이 처음 고르는 에이전트·화면입니다. 창에서 다른 것을 고르면 그게 다음 기본값이 됩니다.": "The agent and screen ⌘T and the new-session dialog start with. Picking another one in the dialog makes it the next default.",
   "묻지 않고 실행합니다": "runs without asking",
   "바꾸기": "Change",
   "휴대폰에서 승인": "Approve from your phone",

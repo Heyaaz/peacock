@@ -6,6 +6,7 @@ import { MESSAGES } from "./i18n-messages";
 import {
   ensureEnglishDictionary,
   getLanguage,
+  hasStoredLanguageMode,
   installEnglishDictionary,
   readLanguageMode,
   resolveLanguage,
@@ -124,8 +125,10 @@ describe("i18n", () => {
     };
     storeLanguageMode("en", storage);
     expect(readLanguageMode(storage)).toBe("en");
+    expect(hasStoredLanguageMode(storage)).toBe(true);
     storeLanguageMode("system", storage);
     expect(readLanguageMode(storage)).toBe("system");
+    expect(hasStoredLanguageMode({ getItem: () => null })).toBe(false);
   });
 
   it("has no Korean left in the English dictionary", () => {

@@ -6,10 +6,22 @@ import { BackendProvider } from './backend/backend-provider'
 import { GjcAgentBackend } from './backend/gjc-agent-backend'
 import { RemoteAgentBackend } from './backend/remote-agent-backend'
 import { initializeTheme } from './theme'
-import { ensureEnglishDictionary, initializeLanguage, getLanguage } from './i18n'
+import { ensureEnglishDictionary, hasStoredLanguageMode, initializeLanguage, getLanguage, setLanguageMode } from './i18n'
 import './index.css'
 
 initializeLanguage()
+const quickInputBridge =
+  new URLSearchParams(window.location.search).get('window') === 'quick-input'
+    ? window.agentControlDesktop?.quickInput
+    : undefined
+const settingsBridge = window.agentControlDesktop?.settings
+// A window that never chose a mode follows the host's saved language: Settings is
+// where the desktop records it, and the renderer's own storage starts empty.
+const storedMode = hasStoredLanguageMode()
+if (!quickInputBridge && !storedMode && settingsBridge) {
+  const loaded = await settingsBridge.getPreferences().catch(() => undefined)
+  if (loaded) setLanguageMode(loaded.language)
+}
 // English copy is a separate chunk. Wait for it before the first paint so a
 // session that is already set to English does not flash the Korean source.
 if (getLanguage() === 'en') await ensureEnglishDictionary()
@@ -21,10 +33,6 @@ if (!mount) {
   throw new Error('Application mount is missing')
 }
 
-const quickInputBridge =
-  new URLSearchParams(window.location.search).get('window') === 'quick-input'
-    ? window.agentControlDesktop?.quickInput
-    : undefined
 if (quickInputBridge) {
   // The quick input window may reach only its own channels, so it skips the
   // backend and the settings calls the main window makes at startup.
@@ -35,8 +43,7 @@ if (quickInputBridge) {
     </StrictMode>,
   )
 } else {
-  const settingsBridge = window.agentControlDesktop?.settings
-  if (settingsBridge) void settingsBridge.setLanguage(getLanguage()).catch(() => undefined)
+  if (settingsBridge && storedMode) void settingsBridge.setLanguage(getLanguage()).catch(() => undefined)
   createRoot(mount).render(
     <StrictMode>
       <BackendProvider backend={await selectBackend()}>

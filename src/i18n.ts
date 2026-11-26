@@ -58,6 +58,17 @@ export function readLanguageMode(
   }
 }
 
+/** Whether this window has recorded its own mode, rather than defaulting to Korean. */
+export function hasStoredLanguageMode(
+  storage: Pick<Storage, "getItem"> | null | undefined = browserStorage(),
+): boolean {
+  try {
+    return isLanguageMode(storage?.getItem(STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
 export function storeLanguageMode(
   mode: LanguageMode,
   storage: Pick<Storage, "setItem"> | null | undefined = browserStorage(),
