@@ -11,7 +11,6 @@ import {
   appendProgressBlock,
   foldTranscriptBlocks,
   lastTurnSettled,
-  latestUserMessageId,
   resolveTurnProgress,
   TRANSCRIPT_BOTTOM_EPSILON_PX as BOTTOM_EPSILON_PX,
   transcriptBlockIndexForItem,
@@ -335,21 +334,6 @@ export function Transcript({
       }),
     [sessionId],
   );
-  // A turn that ends while the reader is scrolled up stays open: folding it would
-  // pull the content they are reading out from under them. A layout effect, so the
-  // fold never paints closed in between.
-  const newestPrompt = latestUserMessageId(visibleItems);
-  const liveTurnRef = useRef<string | undefined>(undefined);
-  useLayoutEffect(() => {
-    if (!newestSettled) {
-      liveTurnRef.current = newestPrompt;
-      return;
-    }
-    const live = liveTurnRef.current;
-    liveTurnRef.current = undefined;
-    if (live !== undefined && live === newestPrompt && !followingRef.current)
-      setFoldOpen(live, true);
-  }, [newestPrompt, newestSettled, setFoldOpen]);
   const grouped = useMemo(
     () => foldTranscriptBlocks(visibleItems, folds, openFoldIds),
     [folds, openFoldIds, visibleItems],
