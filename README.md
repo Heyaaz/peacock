@@ -80,7 +80,7 @@ Each clip is the real app on its built-in sample data.
       <sub>Mermaid blocks in a reply render as diagrams.</sub>
     </td>
     <td width="50%" valign="top">
-      <strong>Next-input suggestion</strong><br>
+      <strong>Next-input suggestion</strong> <sub>GJC</sub><br>
       <img src="docs/media/feature-suggestion.gif" alt="A suggested next message accepted with Tab">
       <sub>When a turn ends, a suggested next message appears in the empty
       composer. Tab accepts it.</sub>
@@ -101,7 +101,7 @@ Each clip is the real app on its built-in sample data.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <strong>Review the changes</strong><br>
+      <strong>Review the changes</strong> <sub>GJC and omp chats</sub><br>
       <img src="docs/media/feature-review.gif" alt="Commenting on diff lines in the changed files panel">
       <sub>Select diff lines, comment, and send the comments back to the agent
       as one review.</sub>
@@ -136,12 +136,12 @@ Each clip is the real app on its built-in sample data.
   delete rules in Settings > Approvals.
 - **Side chat.** `/btw` or ⌘⇧B asks about the session in a side panel while it
   keeps working. Nothing is added to the transcript.
-- **Next-input suggestion.** When a turn ends, the composer offers a likely next
-  message. Tab takes it, Esc dismisses it. It follows GJC's `promptSuggestions`
-  setting.
-- **Changed files and review.** See the session's diff, comment on lines, and
-  send the comments back as a review. A folder holding several repositories
-  shows each one's changes.
+- **Next-input suggestion.** In a GJC chat, when a turn ends, the composer offers a
+  likely next message. Tab takes it, Esc dismisses it. It follows GJC's
+  `promptSuggestions` setting.
+- **Changed files and review.** In GJC and omp chats, see the session's diff,
+  comment on lines, and send the comments back as a review. A folder holding
+  several repositories shows each one's changes.
 - **Goals.** An active goal stays pinned above the composer with its progress.
   Open it to see each task. omp's goal mode shows up the same way.
 - **Model picker.** Search, favorites and the thinking level for the agent's
@@ -241,7 +241,7 @@ keeps opening GJC.
 | `⌥⌘U` | Inbox |
 | `⌃⌥Space` | Quick input from any app |
 | `⌘⇧B` | Side chat |
-| `Tab` | Accept the suggested next message |
+| `Tab` | Accept the suggested next message (GJC) |
 | `Shift+Tab` | Cycle effort |
 | `Esc` | Stop the current run |
 

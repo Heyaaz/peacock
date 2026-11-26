@@ -310,69 +310,7 @@ const SCENES = [
       [...dg.querySelectorAll('.ed')].forEach((e, i) => { const len = e.getTotalLength(), p = eo(seg(lt, [1.7, 2.0, 2.25, 2.45][i], [2.05, 2.35, 2.6, 2.8][i])); e.style.strokeDasharray = len; e.style.strokeDashoffset = len * (1 - p); e.style.opacity = p > 0 ? 1 : 0; });
       [...dg.querySelectorAll('.el')].forEach((e, i) => { e.style.opacity = seg(lt, [2.0, 2.3][i], [2.2, 2.5][i]); });
     } },
-  { n: '07', dur: 3.0, tint: '#f6f4f0', eb: 'Next input', h: ['Next step.', 'One Tab away.'],
-    cap: 'When a turn ends, a suggestion appears in the empty composer. Tab accepts it, Esc dismisses.',
-    head: ['api-server · feat/router-retry', 'done'],
-    body: `
-      <div class="card" id="g1" style="top:12px"><b class="kind">Edit</b><span class="path">src/router/client.ts</span><span class="push"><span class="add">+18</span><span class="del">−3</span></span></div>
-      <div class="card" id="g2" style="top:44px"><b class="kind">Run</b><span class="path">npm test</span><span class="push"><span class="add">24 passed</span>${CHECK('#2f9e5b')}</span></div>
-      <div id="g3" class="a" style="left:18px;right:18px;top:86px;font:400 12px/17px var(--sans);color:#38352f">Retry with backoff is in and all 24 tests pass.</div>
-      <div id="g4" class="a mono" style="left:18px;top:114px;font-size:8.5px;letter-spacing:.08em;color:#a9a399">TURN FINISHED · 41S</div>
-      <div id="cp" class="a" style="left:18px;right:18px;top:148px;height:92px;border:1px solid #e8dfd3;border-radius:13px;background:#fff;box-shadow:0 8px 24px -16px rgba(60,40,20,.3)">
-        <div class="a" style="left:15px;top:16px;right:15px;font:400 13px/18px var(--sans);letter-spacing:-.005em"><span id="gt">Run the full suite and open a PR</span><i class="caret" id="gc" style="height:15px;vertical-align:-.2em"></i></div>
-        <div id="hint" class="a" style="right:12px;bottom:11px;display:flex;align-items:center;gap:7px;font:400 10px/1 var(--sans);color:#9b958d"><span id="kc" class="keycap">Tab</span>accept<span style="opacity:.5">·</span><span class="keycap" style="min-width:0;font-weight:500">Esc</span>dismiss</div>
-        <div id="sent" class="a" style="left:15px;bottom:11px;font:400 10px/1 var(--sans);color:#9b958d">Suggested from this turn</div>
-      </div>`,
-    update(r, lt) {
-      vis($('#g1', r), lt, .1); vis($('#g2', r), lt, .25); vis($('#g3', r), lt, .45); vis($('#g4', r), lt, .6);
-      vis($('#cp', r), lt, .4, .3, 6);
-      const gt = $('#gt', r), real = eo(seg(lt, 2.05, 2.3));
-      gt.style.color = mix('#c3bcb1', '#1d1d1f', real);
-      const gp = seg(lt, .95, 1.3);
-      gt.style.opacity = gp;
-      $('#gc', r).style.opacity = lt < 1.0 ? blink(lt) : (lt > 2.3 ? blink(lt - 2.3) : 0);
-      const pulse = lt > 1.4 && lt < 2.05 ? .5 + .5 * Math.sin((lt - 1.4) * 9) : 0;
-      const kc = $('#kc', r), press = seg(lt, 1.98, 2.06) * (1 - seg(lt, 2.1, 2.2));
-      kc.style.boxShadow = `0 ${2 - press * 1.5}px 0 #d9d1c5, 0 0 0 ${pulse * 5}px rgba(240,100,22,${.16 * pulse})`;
-      kc.style.transform = `translateY(${press * 1.5}px) scale(${1 + .06 * pulse})`;
-      kc.style.borderColor = mix('#d9d1c5', '#f06416', Math.max(pulse * .8, press));
-      kc.style.color = mix('#4a4540', '#c24d07', Math.max(pulse, press));
-      $('#hint', r).style.opacity = gp * (1 - seg(lt, 2.15, 2.4));
-      $('#sent', r).style.opacity = gp * (1 - seg(lt, 2.1, 2.3));
-    } },
-  { n: '08', dur: 3.3, tint: '#f7efe6', eb: 'Changed files', h: ['Review it.', 'Send it back.'],
-    cap: 'Comment on a diff line and send the review to the agent. Folders that hold several repositories work too.',
-    head: ['workspace · 3 repositories', '3 changed'],
-    body: `
-      <div class="row" id="f1" style="top:8px"><b>admin/</b><span style="color:#4a4540">src/pages/Retry.tsx</span><span class="st"><span class="add">+12</span> <span class="del">−2</span></span></div>
-      <div class="row" id="f2" style="top:36px;background:#fff4ea"><b>app/</b><span style="color:#1d1d1f;font-weight:600">lib/net/client.dart</span><span class="st"><span class="add">+18</span> <span class="del">−3</span></span></div>
-      <div class="diff" id="df" style="top:64px;height:68px"><div class="c"> 40  for (var n = 0; n &lt; max; n++) {</div><div class="m">-41    await sleep(base);</div><div class="p">+41    final delay = base * pow(2, n);</div><div class="p" id="dl">+42    await sleep(delay + jitter());</div></div>
-      <div id="pl" class="a" style="left:19px;top:112px;width:14px;height:14px;border-radius:4px;background:var(--o);color:#fff;font:700 11px/14px var(--sans);text-align:center;opacity:0">+</div>
-      <div id="cm" class="a" style="left:18px;right:18px;top:136px;height:38px;border:1px solid #f3c9a8;border-radius:9px;background:#fff4ea;padding:0 11px;display:flex;align-items:center;gap:8px;font:400 11px/1 var(--sans)"><i style="flex:none;width:20px;height:20px;border-radius:50%;background:#1d1d1f;color:#fff;font:600 7px/20px var(--sans);text-align:center;font-style:normal">YOU</i><span><span class="t"></span><i class="caret" style="height:12px"></i></span></div>
-      <div class="row" id="f3" style="top:182px"><b>app/</b><span style="color:#4a4540">lib/net/backoff.dart</span><span class="st"><span class="add">+34</span></span></div>
-      <div id="bar" class="a" style="left:0;right:0;bottom:0;height:40px;border-top:1px solid #efe8dd;background:#fffdf9">
-        <div class="a" id="cnt" style="left:18px;top:0;height:40px;display:flex;align-items:center;font:400 10px/1 var(--sans);color:#8c867d"></div>
-        <div class="btn dark" id="sr" style="right:18px;top:8px;height:24px">Send review</div>
-        <div class="a" id="ok" style="right:18px;top:0;height:40px;display:flex;align-items:center;gap:6px;font:600 10.5px/1 var(--sans);color:#2f9e5b;opacity:0">${CHECK('#2f9e5b')}Review sent</div>
-      </div>`,
-    update(r, lt) {
-      vis($('#f1', r), lt, .15); vis($('#f2', r), lt, .3);
-      const dp = eo(seg(lt, .6, 1.0));
-      const df = $('#df', r); df.style.opacity = dp; df.style.transform = `translateY(${(1 - dp) * -6}px)`;
-      const f3 = $('#f3', r), cmShow = eo(seg(lt, 1.6, 1.9));
-      vis(f3, lt, .5);
-      const hover = seg(lt, 1.1, 1.25) * (1 - seg(lt, 1.6, 1.7));
-      $('#pl', r).style.opacity = hover; $('#dl', r).style.background = mix('#eaf7ee', '#d9f0e1', hover);
-      const cm = $('#cm', r); cm.style.opacity = cmShow; cm.style.transform = `translateY(${(1 - cmShow) * -6}px)`;
-      typed($('#cm .t', r), 'Cap the delay at 30s.', lt, 1.8, 32);
-      $('#cm .caret', r).style.opacity = lt > 1.8 && lt < 2.7 ? blink(lt) : 0;
-      $('#cnt', r).textContent = lt > 1.9 ? '1 comment' : '';
-      const press = seg(lt, 2.5, 2.58) * (1 - seg(lt, 2.6, 2.7)), sent = seg(lt, 2.7, 2.9);
-      const sr = $('#sr', r); sr.style.transform = `scale(${1 - .06 * press})`; sr.style.opacity = (lt > 1.9 ? 1 : .45) * (1 - sent);
-      $('#ok', r).style.opacity = sent;
-      vis($('#bar', r), lt, .4, .3, 4);
-    } },
-  { n: '09', dur: 2.8, tint: '#eaeff8', eb: 'Projects', h: ['Every project.', 'One rail.'],
+  { n: '07', dur: 2.8, tint: '#eaeff8', eb: 'Projects', h: ['Every project.', 'One rail.'],
     cap: 'Sessions group by repository, worktrees included. Anything waiting on you rises to the top.',
     head: null,
     body: `
