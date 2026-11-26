@@ -4,6 +4,7 @@ import {
   appendPendingRequest,
   composerQueuePreview,
   liveTurnSubmissionMode,
+  normalizeComposerText,
   releaseRequests,
 } from "../composer-utils";
 import type { LiveTurnSubmissionMode, PendingRequest } from "../composer-utils";
@@ -139,7 +140,8 @@ export function requestQueueReleaseRetry(
   sessionId: string,
   pending: readonly PendingRequest[],
 ): void {
-  if (pending.length === 0 || pending[0]?.blocked) return;
+  const held = pending.filter((entry) => !entry.delivered);
+  if (held.length === 0 || held[0]?.blocked) return;
   for (const listener of queueReleaseRetryListeners) listener(sessionId);
 }
 
@@ -202,6 +204,15 @@ export async function releaseQueuedSession(
   send: (request: PendingRequest) => Promise<unknown>,
   canSend: () => boolean = () => true,
 ): Promise<void> {
+  // A delivered steer is a receipt for a live turn. The idle event that brought
+  // the shell here ends it, even when no composer is mounted to see the
+  // running -> idle transition and drop the chip itself.
+  const queued = composerQueue(sessionId);
+  if (queued.some((entry) => entry.delivered))
+    saveComposerQueue(
+      sessionId,
+      queued.filter((entry) => !entry.delivered),
+    );
   if (releasingQueues.has(sessionId) || composerQueue(sessionId).length === 0)
     return;
   releasingQueues.add(sessionId);
@@ -255,6 +266,59 @@ export function heldComposerRequest(
 }
 
 /**
+ * The chip a steer shows while the runtime has it but has not recorded it yet.
+ * The message is already on its way -- the row is a receipt, not a request to
+ * release, so it carries no controls and survives the queue's release order.
+ */
+export function deliveredSteerRequest(
+  content: string,
+  files: FileAttachment[],
+  images: ImageAttachment[],
+): PendingRequest {
+  const preview = composerQueuePreview(content, files, images);
+  return {
+    id: `local-${crypto.randomUUID()}`,
+    text: preview.text,
+    mode: "steer",
+    label: "Steer",
+    images,
+    files,
+    delivered: true,
+  };
+}
+
+/**
+ * The runtime recorded a steer in the transcript: retire the oldest chip still
+ * waiting on that text. Evidence arrives once per message, in occurrence order,
+ * so identical steers keep one chip each.
+ */
+export function acknowledgeDeliveredSteer(
+  sessionId: string,
+  text: string,
+): void {
+  const wanted = normalizeComposerText(
+    text.replace(/^\/(?:steer|queue)(?:\s+|$)/u, ""),
+  );
+  if (!wanted) return;
+  const pending = composerQueue(sessionId);
+  const index = pending.findIndex(
+    (entry) => entry.delivered && normalizeComposerText(entry.text) === wanted,
+  );
+  if (index < 0) return;
+  saveComposerQueue(sessionId, [
+    ...pending.slice(0, index),
+    ...pending.slice(index + 1),
+  ]);
+}
+
+/** A steer whose send failed: the receipt must not outlive the draft it restores. */
+export function discardDeliveredSteer(sessionId: string, id: string): void {
+  const pending = composerQueue(sessionId);
+  if (!pending.some((entry) => entry.id === id && entry.delivered)) return;
+  saveComposerQueue(sessionId, pending.filter((entry) => entry.id !== id));
+}
+
+/**
  * Submit for a session exactly as Enter in its composer would, whether or not
  * that composer is mounted. A steer goes into the running turn; otherwise a live
  * turn, or work already held, makes it a held row in the session's queue; else it
@@ -271,17 +335,29 @@ export function submitComposerInput(
   },
 ): void {
   const pending = composerQueue(sessionId);
-  const steer = immediateSteerText(input.text, { ...options, hasPending: pending.length > 0 });
-  if (!steer && (options.running || pending.length > 0)) {
+  const held = pending.filter((entry) => !entry.delivered);
+  const steer = immediateSteerText(input.text, { ...options, hasPending: held.length > 0 });
+  if (!steer && (options.running || held.length > 0)) {
     saveComposerQueue(
       sessionId,
       appendPendingRequest(pending, heldComposerRequest(input.text, input.files, input.images)),
     );
     return;
   }
+  if (!steer) {
+    void options.send(input).catch(() =>
+      publishComposerDraftRecovery(sessionId, input),
+    );
+    return;
+  }
+  const receipt = deliveredSteerRequest(input.text, input.files, input.images);
+  saveComposerQueue(sessionId, appendPendingRequest(pending, receipt));
   void options
-    .send(steer ? { ...input, text: steer } : input)
-    .catch(() => publishComposerDraftRecovery(sessionId, input));
+    .send({ ...input, text: steer })
+    .catch(() => {
+      discardDeliveredSteer(sessionId, receipt.id);
+      publishComposerDraftRecovery(sessionId, input);
+    });
 }
 
 /** Whether any release for this session is already handing requests over. */

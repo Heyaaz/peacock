@@ -1116,6 +1116,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "omp가 들고 있는 메시지": "Messages omp is holding",
   "다음 단계에 전달": "Next step",
   "턴 뒤에 전달": "After the turn",
+  "전달 대기": "Waiting for the agent",
+  "에이전트가 이 메시지를 읽으면 사라집니다": "Disappears once the agent reads it",
   "빠른 모드": "Fast mode",
   "지원하는 모델에서 우선 처리 등급으로 보냅니다": "Sends at the priority tier on models that have one",
   "느린 모드": "Slow mode",

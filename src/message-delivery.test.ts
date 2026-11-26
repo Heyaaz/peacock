@@ -47,6 +47,20 @@ describe("message delivery tracker", () => {
     expect(tracker.nextDeadline()).toBeUndefined();
   });
 
+  it("reports the request whose user row the runtime recorded", () => {
+    const delivered: Array<{ sessionId: string; input: MessageInput }> = [];
+    const tracker = new MessageDeliveryTracker({
+      onDelivered: (delivery) => delivered.push(delivery),
+    });
+    tracker.submit("session-1", input("/steer change course"), [], 0, attachedRunning);
+    tracker.observeUserEvent("session-1", user("local-prompt-renderer-1", "change course"), 1);
+    expect(delivered).toEqual([]);
+    tracker.observeUserEvent("session-1", user("recorded", "change course"), 2);
+    expect(delivered).toEqual([
+      { sessionId: "session-1", input: input("/steer change course") },
+    ]);
+  });
+
   it("requires a paged absence check to include the submission boundary", () => {
     const tracker = new MessageDeliveryTracker();
     const fence = user("before-submit", "previous request");

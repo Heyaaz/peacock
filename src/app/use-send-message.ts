@@ -203,7 +203,11 @@ export function useSendMessage(context: SendMessageContext) {
     let rendererEchoId: string | undefined;
     const text = input.text.trim();
     const prompt = text.replace(/^\/(?:steer|queue)(?:\s+|$)/u, "").trim();
-    if (prompt && (!text.startsWith("/") || /^\/(?:steer|queue)(?:\s+|$)/u.test(text))) {
+    // A steer waits as a composer chip until the runtime records it, so the
+    // window must not paint the bubble first and make the handoff look landed.
+    // GJC's own local echo still shows one as soon as it accepts the steer.
+    const steerSubmission = /^\/steer(?:\s+|$)/u.test(text);
+    if (!steerSubmission && prompt && (!text.startsWith("/") || /^\/(?:steer|queue)(?:\s+|$)/u.test(text))) {
       const echo: TranscriptItem = {
         id: `local-prompt-renderer-${crypto.randomUUID()}`,
         sessionId: resolvedSessionId, kind: "message", role: "user", content: prompt,

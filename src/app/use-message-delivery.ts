@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentSession, BackendConnection } from "../backend/types";
 import type { AgentBackend } from "../backend/agent-backend";
-import { MessageDeliveryTracker } from "../message-delivery";
+import { MessageDeliveryTracker, messageDeliveryRequestText } from "../message-delivery";
 import { mergeTranscriptPage } from "../transcript-pages";
+import { acknowledgeDeliveredSteer } from "./composer-session";
 import { deliverySessionState } from "./shell-model";
 
 export function useMessageDelivery(
@@ -12,7 +13,11 @@ export function useMessageDelivery(
 ) {
   const messageDeliveryTrackerRef = useRef<MessageDeliveryTracker | null>(null);
   if (!messageDeliveryTrackerRef.current)
-    messageDeliveryTrackerRef.current = new MessageDeliveryTracker();
+    messageDeliveryTrackerRef.current = new MessageDeliveryTracker({
+      // The transcript now holds the text, so a steer's waiting chip is spent.
+      onDelivered: ({ sessionId, input }) =>
+        acknowledgeDeliveredSteer(sessionId, messageDeliveryRequestText(input)),
+    });
   const deliveryPageReadsRef = useRef(new Set<string>());
   const deliveryPageRetryAfterRef = useRef(new Map<string, number>());
   const deliveryRetryTimersRef = useRef(new Map<string, number>());

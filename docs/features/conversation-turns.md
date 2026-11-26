@@ -112,9 +112,11 @@ open; `MAP_ROOT` is exported.
   ```bash
   cu "In Peacock, start this prompt in MAP-SESSION: 'MAP-TURN-STEER-BASE use the bash tool to run sleep 30, then reply exactly MAP-BASE-DONE. Do not edit any file.' While the header still says Working, type exactly '/steer MAP-TURN-4 reply with exactly MAP-STEER-OK after the current step' and press Enter. Save $MAP_ROOT/evidence/TURN-STEER-01.png and report whether a user bubble appeared immediately and whether any queue chip exists."
   ```
-  Observable: the instruction text after `/steer ` appears as a user bubble immediately
-  while the turn is still `Working`; no queue chip is created. The reply contains
-  `MAP-STEER-OK`. Cross-check: `grep -RlF 'MAP-TURN-4' "$MAP_ROOT/agent/sessions"`
+  Observable: a read-only `Steer` chip (label `전달 대기`) appears above the composer as
+  soon as `/steer` is submitted, stays while the turn is still `Working`, and disappears
+  when the runtime records the message; its user bubble appears in the transcript at that
+  point (GJC may echo one earlier). The chip has no pull, discard, or send control. The
+  reply contains `MAP-STEER-OK`. Cross-check: `grep -RlF 'MAP-TURN-4' "$MAP_ROOT/agent/sessions"`
   finds the transcript.
 
 - **TURN-STOP — stop from the Stop slot.**
@@ -170,10 +172,12 @@ open; `MAP_ROOT` is exported.
 
 ## Gotchas
 
-- A steer reaches GJC at once, but GJC decides when it takes effect: at the next
-  boundary after the running tool call, or by interrupting that call when GJC's
-  immediate-interrupt setting is on. During a long command the bubble can show well
-  before the agent reacts. Empty Enter first tries to stop the owned turn, then releases the held
+- A steer reaches the runtime at once, but the runtime decides when it takes effect: at
+  the next boundary after the running tool call, or by interrupting that call when its
+  immediate-interrupt setting is on. The composer shows the handoff as a `전달 대기`
+  chip and paints the user bubble only once the transcript records the message, so a
+  steer that has not landed does not look like it has.
+  Empty Enter first tries to stop the owned turn, then releases the held
   requests in order.
 - Plain text while a turn runs is held when the saved Enter-while-running preference is
   `queue` (the default) or something is already held. Explicit `/queue` always holds;

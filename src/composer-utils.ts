@@ -221,6 +221,11 @@ export interface PendingRequest {
   blocked?: true;
   /** Claimed by a release, but still visible until delivery is acknowledged. */
   sending?: true;
+  /**
+   * A steer already handed to the runtime. It stays visible, read-only, until the
+   * runtime records the message in the transcript; it is never released or resent.
+   */
+  delivered?: true;
 }
 
 export function normalizeComposerText(value: string): string {
@@ -240,7 +245,11 @@ export function withoutReleasedRequest(
 export function nextRequestToRelease(
   pending: readonly PendingRequest[],
 ): PendingRequest | undefined {
-  return pending[0]?.blocked || pending[0]?.sending ? undefined : pending[0];
+  // A blocked or in-flight request holds every release, wherever it sits.
+  // Delivered steers are already with the runtime, so they never block or join
+  // the release order.
+  if (pending.some((entry) => entry.blocked || entry.sending)) return undefined;
+  return pending.find((entry) => !entry.delivered);
 }
 
 // Hand held requests over one at a time, oldest first.
@@ -298,7 +307,8 @@ export function canMoveRequest(
   const to = from + offset;
   return from >= 0 && to >= 0 && to < pending.length &&
     !pending[from]!.blocked && !pending[to]!.blocked &&
-    !pending[from]!.sending && !pending[to]!.sending;
+    !pending[from]!.sending && !pending[to]!.sending &&
+    !pending[from]!.delivered && !pending[to]!.delivered;
 }
 
 /** Swap one held request with its neighbour so it is released earlier or later. */
@@ -363,17 +373,19 @@ export function pullQueuedRequest(
   pending: readonly PendingRequest[],
   target: QueuePullTarget,
 ): { entry: PendingRequest; pending: PendingRequest[] } | undefined {
-  const index =
+  const held = pending
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !entry.delivered);
+  const picked =
     target === "newest"
-      ? pending.length - 1
+      ? held.at(-1)
       : target === "oldest"
-        ? 0
-        : pending.findIndex((entry) => entry.id === target.id);
-  const entry = pending[index];
-  if (!entry) return undefined;
+        ? held[0]
+        : held.find(({ entry }) => entry.id === target.id);
+  if (!picked) return undefined;
   return {
-    entry,
-    pending: pending.filter((_, position) => position !== index),
+    entry: picked.entry,
+    pending: pending.filter((_, position) => position !== picked.index),
   };
 }
 

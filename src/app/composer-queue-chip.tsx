@@ -24,6 +24,16 @@ export interface QueueChipProps {
  * draft the user is trying to take a request out of.
  */
 export function QueueChip({ entry, onPull, onDiscard, onSendNow, onMoveUp, onMoveDown, reorderable = false, disabled = false }: QueueChipProps) {
+  // Already with the runtime: the chip is a receipt until the transcript records
+  // the message, so it has no pull, discard, or send control to offer.
+  if (entry.delivered)
+    return (
+      <span className="composer-queue-item composer-queue-item--steer composer-queue-item--delivered"
+        title={t("에이전트가 이 메시지를 읽으면 사라집니다")}>
+        <em>{t("전달 대기")}</em>
+        <span className="composer-queue-text">{entry.text}</span>
+      </span>
+    );
   return (
     <span className={`composer-queue-item composer-queue-item--${entry.mode}${entry.blocked ? " composer-queue-item--blocked" : ""}`}>
       {reorderable && (

@@ -10,7 +10,7 @@ import {
   saveComposerQueue,
   type ComposerProps,
 } from "./composer";
-import { submitComposerInput } from "./composer-session";
+import { submitComposerInput, acknowledgeDeliveredSteer } from "./composer-session";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -74,6 +74,11 @@ describe("running composer Enter", () => {
         ]);
       } else {
         expect(test.send).toHaveBeenCalledExactlyOnceWith({ text: "/steer change course", images: [], files: [] });
+        expect(composerQueue(test.sessionId)).toEqual([
+          expect.objectContaining({ text: "change course", mode: "steer", delivered: true }),
+        ]);
+        expect(test.node.querySelector(".composer-queue-item--delivered")).not.toBeNull();
+        await act(async () => acknowledgeDeliveredSteer(test.sessionId, "change course"));
         expect(composerQueue(test.sessionId)).toEqual([]);
       }
     } finally { await test.close(); clock.mockRestore(); }
@@ -285,7 +290,9 @@ describe("queued message Send now", () => {
       await act(async () => saveComposerQueue(test.sessionId, []));
       const input = await submit(test, text);
       expect(test.send).toHaveBeenCalledExactlyOnceWith({ text: "/steer change course", images: [], files: [] });
-      expect(composerQueue(test.sessionId)).toEqual([]);
+      expect(composerQueue(test.sessionId)).toEqual([
+        expect.objectContaining({ text: "change course", mode: "steer", delivered: true }),
+      ]);
       expect(input.value).toBe("");
     } finally { await test.close(); }
   });
@@ -325,7 +332,10 @@ describe("queued message Send now", () => {
     expect(send).toHaveBeenCalledExactlyOnceWith({ text: "/steer look here", images: [], files: [] });
     submitComposerInput(sessionId, { text: "later", images: [], files: [] }, { running: true, runningSubmission: "queue", send });
     expect(send).toHaveBeenCalledTimes(1);
-    expect(composerQueue(sessionId)).toEqual([expect.objectContaining({ text: "later", mode: "followUp" })]);
+    expect(composerQueue(sessionId)).toEqual([
+      expect.objectContaining({ text: "look here", mode: "steer", delivered: true }),
+      expect.objectContaining({ text: "later", mode: "followUp" }),
+    ]);
     saveComposerQueue(sessionId, []);
   });
 
@@ -356,8 +366,11 @@ describe("queued message Send now", () => {
       expect(test.cancel).not.toHaveBeenCalled();
       expect(test.flush).not.toHaveBeenCalled();
       await act(async () => accept());
-      expect(composerQueue(test.sessionId).map((row) => row.id)).toEqual(["second"]);
-      expect(test.node.querySelector(".composer-queue-items")?.textContent).not.toContain("change direction");
+      expect(composerQueue(test.sessionId)).toEqual([
+        expect.objectContaining({ id: "first", text: "change direction", mode: "steer", delivered: true }),
+        expect.objectContaining({ id: "second" }),
+      ]);
+      expect(test.node.querySelector(".composer-queue-item--delivered")?.textContent).toContain("change direction");
     } finally { await test.close(); }
   });
 

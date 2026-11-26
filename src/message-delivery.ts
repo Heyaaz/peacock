@@ -199,6 +199,11 @@ export function isTrackableMessageInput(
  * transcript evidence is consumed once, in occurrence order, so one historical
  * or newly-arrived row cannot acknowledge multiple identical submissions.
  */
+export interface MessageDeliveryTrackerOptions {
+  /** The runtime recorded a submitted request as a user row in the transcript. */
+  onDelivered?: (delivery: { sessionId: string; input: MessageInput }) => void;
+}
+
 export class MessageDeliveryTracker {
   private readonly attempts: StoredAttempt[] = [];
   private readonly latestCoverage = new Map<string, {
@@ -209,6 +214,11 @@ export class MessageDeliveryTracker {
   private readonly sessions = new Map<string, MessageDeliverySessionState>();
   private readonly consumedEvidenceIds = new Map<string, Set<string>>();
   private nextId = 1;
+  private readonly options: MessageDeliveryTrackerOptions;
+
+  constructor(options: MessageDeliveryTrackerOptions = {}) {
+    this.options = options;
+  }
 
   submit(
     sessionId: string,
@@ -274,6 +284,7 @@ export class MessageDeliveryTracker {
       consumed.add(item.id);
       this.consumedEvidenceIds.set(sessionId, consumed);
       this.removeAttempt(attempt);
+      this.notifyDelivered(attempt);
     }
     this.advance(now);
   }
@@ -527,7 +538,15 @@ export class MessageDeliveryTracker {
       consumedIds.add(match.id);
       this.consumedEvidenceIds.set(sessionId, consumedIds);
       this.removeAttempt(attempt);
+      this.notifyDelivered(attempt);
     }
+  }
+
+  private notifyDelivered(attempt: StoredAttempt): void {
+    this.options.onDelivered?.({
+      sessionId: attempt.sessionId,
+      input: copyInput(attempt.input),
+    });
   }
 
   private removeAttempt(attempt: StoredAttempt): void {

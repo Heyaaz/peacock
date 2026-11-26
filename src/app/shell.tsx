@@ -1652,6 +1652,7 @@ export default function App() {
                   backend.removeQueuedMessage &&
                   selectedSession.liveStatus?.queued && (
                     <RuntimeQueue
+                      sessionId={selectedSession.id}
                       queued={selectedSession.liveStatus.queued}
                       onPromote={(message) => {
                         void backend.promoteQueuedMessage!(selectedSession.id, message.text).catch((error: unknown) =>

@@ -1,26 +1,50 @@
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import type { QueuedMessage } from "../../shared/agent-contract";
+import { normalizeComposerText } from "../composer-utils";
 import { t } from "../i18n";
+import { composerQueue, subscribeComposerQueue } from "./composer-session";
 
 /**
  * What the runtime itself holds for the running turn (omp's steering and follow-up queue),
  * with "지금 보내기" for a follow-up and × to take a message out. The composer's own held
  * requests are its queue list; these were already handed to the runtime.
+ *
+ * A steer the composer still shows as a delivered chip is that same message -- omp keeps
+ * already-taken steering in its list until the transcript records it -- so it is dropped
+ * here rather than drawn twice.
  */
 export function RuntimeQueue({
+  sessionId,
   queued,
   onPromote,
   onRemove,
 }: {
+  sessionId: string;
   queued: readonly QueuedMessage[];
   onPromote: (message: QueuedMessage) => void;
   onRemove: (message: QueuedMessage) => void;
 }) {
-  if (queued.length === 0) return null;
+  const [, setRevision] = useState(0);
+  useEffect(
+    () => subscribeComposerQueue(sessionId, () => setRevision((revision) => revision + 1)),
+    [sessionId],
+  );
+  const delivered = new Set(
+    composerQueue(sessionId)
+      .filter((entry) => entry.delivered)
+      .map((entry) => normalizeComposerText(entry.text)),
+  );
+  const visible = queued.filter(
+    (message) =>
+      message.mode !== "steer" ||
+      !delivered.has(normalizeComposerText(message.text)),
+  );
+  if (visible.length === 0) return null;
   return (
     <div className="composer-queue runtime-queue" aria-label={t("omp가 들고 있는 메시지")}>
       <div className="composer-queue-items">
-        {queued.map((message) => (
+        {visible.map((message) => (
           <span key={message.id} className={`composer-queue-item composer-queue-item--${message.mode === "steer" ? "steer" : "queue"}`}>
             <em className="runtime-queue-mode">{message.mode === "steer" ? t("다음 단계에 전달") : t("턴 뒤에 전달")}</em>
             <span className="composer-queue-text" title={message.text}>

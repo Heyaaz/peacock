@@ -45,6 +45,8 @@ import {
   composerDraftRecoveries,
   composerQueue,
   composerSnapshots,
+  deliveredSteerRequest,
+  discardDeliveredSteer,
   mergePreparedAttachments,
   mergeRecoveredDraft,
   acknowledgeComposerDraftRecoveries,
@@ -331,7 +333,7 @@ export const Composer = memo(function Composer({
       sessionId,
       draftEmpty: value.length === 0,
       hasAttachments: images.length > 0 || files.length > 0,
-      queued: pendingQueue.length > 0,
+      queued: pendingQueue.some((entry) => !entry.delivered),
       running,
       popupOpen: paletteOpen || mentionOpen,
       readOnly,
@@ -735,7 +737,7 @@ export const Composer = memo(function Composer({
       pendingQueueRef.current = pending;
       if (mountedRef.current) setPendingQueue(pending);
     };
-    if (read()[0]?.blocked) return;
+    if (read().some((entry) => entry.blocked)) return;
     releasingQueues.add(owner);
     try {
       // Only an open turn needs interrupting. Aborting an idle session would
@@ -824,15 +826,30 @@ export const Composer = memo(function Composer({
   async function sendQueuedEntryNow(id: string): Promise<void> {
     if (readOnly || releasingQueues.has(sessionId)) return;
     const entry = pendingQueueRef.current.find((request) => request.id === id);
-    if (!entry || entry.blocked || entry.sending) return;
+    if (!entry || entry.blocked || entry.sending || entry.delivered) return;
     const owner = sessionId;
     releasingQueues.add(owner);
     saveComposerQueue(owner, composerQueue(owner).map((request) =>
       request.id === id ? { ...request, sending: true } : request,
     ));
     try {
-      await onSend({ text: running ? `/steer ${entry.text}` : entry.text, images: entry.images, files: entry.files });
-      saveComposerQueue(owner, withoutReleasedRequest(composerQueue(owner), id));
+      const steer = running;
+      await onSend({ text: steer ? `/steer ${entry.text}` : entry.text, images: entry.images, files: entry.files });
+      saveComposerQueue(owner, steer
+        ? composerQueue(owner).map((request) =>
+            request.id === id
+              ? {
+                  id: request.id,
+                  text: entry.text,
+                  mode: "steer" as const,
+                  label: "Steer",
+                  images: entry.images,
+                  files: entry.files,
+                  delivered: true as const,
+                }
+              : request,
+          )
+        : withoutReleasedRequest(composerQueue(owner), id));
     } catch (error) {
       saveComposerQueue(owner, composerQueue(owner).map((request) =>
         request.id === id ? { ...entry, blocked: true } : request,
@@ -844,6 +861,17 @@ export const Composer = memo(function Composer({
       requestQueueReleaseRetry(owner, composerQueue(owner));
     }
   }
+
+  useEffect(() => {
+    // A composer that mounts after the turn ended has a delivered steer left over
+    // from a window that saw the transition and no receipt it can act on.
+    if (running) return;
+    if (!pendingQueueRef.current.some((entry) => entry.delivered)) return;
+    const remaining = pendingQueueRef.current.filter((entry) => !entry.delivered);
+    pendingQueueRef.current = remaining;
+    saveComposerQueue(sessionId, remaining);
+    setPendingQueue(remaining);
+  }, [running, sessionId]);
 
   // Held requests exist only because a turn was open. Once that turn ends they
   // are sent without waiting for another gesture -- otherwise the queue is
@@ -860,7 +888,16 @@ export const Composer = memo(function Composer({
     const previous = wasRunningRef.current;
     const turnEnded = previous.sessionId === sessionId && previous.running && !running;
     wasRunningRef.current = { sessionId, running };
-    if (!turnEnded || pendingQueueRef.current.length === 0) return;
+    if (!turnEnded) return;
+    // A steer the runtime never recorded is gone with the turn: the chip was a
+    // receipt, not work to resend.
+    if (pendingQueueRef.current.some((entry) => entry.delivered)) {
+      const remaining = pendingQueueRef.current.filter((entry) => !entry.delivered);
+      pendingQueueRef.current = remaining;
+      saveComposerQueue(sessionId, remaining);
+      setPendingQueue(remaining);
+    }
+    if (pendingQueueRef.current.length === 0) return;
     void releasePendingQueue();
   }, [releasePendingQueue, running, sessionId]);
 
@@ -887,7 +924,8 @@ export const Composer = memo(function Composer({
     // GJC CLI semantics: an empty submit interrupts a live run and releases the
     // queue this composer has been holding. With nothing held it is a no-op.
     if (!content && images.length === 0 && files.length === 0) {
-      if (pendingQueue.length === 0) return;
+      if (!pendingQueue.some((entry) => !entry.delivered && !entry.blocked && !entry.sending))
+        return;
       void releasePendingQueue();
       return;
     }
@@ -935,7 +973,8 @@ export const Composer = memo(function Composer({
           [...history, content].slice(-100),
         );
     }
-    const liveTurn = running || pendingQueue.length > 0;
+    const held = pendingQueue.filter((entry) => !entry.delivered);
+    const liveTurn = running || held.length > 0;
     const immediateSdkCommand = isImmediateSdkCommandSubmission(
       content,
       commands,
@@ -947,7 +986,7 @@ export const Composer = memo(function Composer({
     const steer = immediateSteerText(content, {
       running,
       runningSubmission,
-      hasPending: pendingQueue.length > 0,
+      hasPending: held.length > 0,
     });
     const holdForTurn = liveTurn && !immediateSdkCommand && !sideQuestion && !steer;
     if (holdForTurn) {
@@ -966,7 +1005,14 @@ export const Composer = memo(function Composer({
       // than creating an unhandled renderer rejection.
       const owner = sessionId;
       const input = { text: content, images, files };
+      // A steer is already on its way, but the runtime may not read it until the
+      // next step. Keep a read-only chip until the transcript records it, so the
+      // handoff does not look like it landed when it is still waiting.
+      const receipt = steer ? deliveredSteerRequest(content, files, images) : undefined;
+      if (receipt)
+        setPendingQueue((current) => appendPendingRequest(current, receipt));
       void onSend(steer ? { ...input, text: steer } : input).catch(() => {
+        if (receipt) discardDeliveredSteer(owner, receipt.id);
         if (submission && lastSubmissionRef.current === submission)
           lastSubmissionRef.current = { text: "", at: 0 };
         restoreRejectedSubmission(owner, input);
