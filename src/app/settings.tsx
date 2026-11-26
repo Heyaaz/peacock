@@ -843,7 +843,7 @@ export function SettingsDialog({
                 <div className="settings-toggle-row">
                   <span>
                     <strong>{t("기본 에이전트")}</strong>
-                    <small>{t("새 세션 창이 처음에 고르는 에이전트와 화면입니다. 창에서 다른 것을 고르면 그게 다음 기본값이 됩니다.")}</small>
+                    <small>{t("⌘T로 여는 세션과 새 세션 창이 처음 고르는 에이전트·화면입니다. 창에서 다른 것을 고르면 그게 다음 기본값이 됩니다.")}</small>
                     {choiceError && <small className="composer-error" role="alert">{choiceError}</small>}
                   </span>
                   <Dropdown

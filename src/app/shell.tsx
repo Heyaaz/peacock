@@ -36,13 +36,16 @@ import {
   GlobalSearchDialog,
   NewSessionDialog,
   ResumeSessionDialog,
+  type NewSessionInput,
 } from "./dialogs";
 import {
   EMPTY_TRANSCRIPT,
+  directoryName,
   humanErrorMessage,
   isDeclinedConfirmation,
   sessionTitleText,
 } from "./format";
+import { initialChoice } from "./agent-choice";
 import { DiffPanel, GoalProgressRow, Inspector } from "./inspector";
 import { SideQuestionPanel } from "./side-question-panel";
 import { sideQuestionText, type SideExchange } from "./side-questions";
@@ -837,6 +840,34 @@ export default function App() {
     [],
   );
 
+  // ⌘T creates at once, so it reads the same default the dialog's first screen shows:
+  // the agent remembered in Settings → 새 세션, or the first installed one.
+  const defaultNewSessionInput = useCallback(
+    async (workspace: string): Promise<NewSessionInput> => {
+      const remembered = preferencesRef.current.newSession;
+      const listAgents = window.agentControlDesktop?.terminal?.listAgents;
+      let choice: NewSessionChoice = { agentKind: "gjc", surface: "chat" };
+      if (backend.terminalSessions && typeof listAgents === "function") {
+        try {
+          choice = initialChoice(await listAgents(), remembered);
+        } catch {
+          // detection failed: GJC is the one agent a session needs no other program for
+        }
+      }
+      if (choice.agentKind === "gjc") return { title: DEFAULT_SESSION_TITLE, workspace };
+      const launch = preferencesRef.current.agents?.[choice.agentKind]?.launch;
+      return {
+        title: directoryName(workspace),
+        workspace,
+        kind: "terminal",
+        ...(choice.agentKind !== "shell" ? { agentKind: choice.agentKind } : {}),
+        surface: choice.surface,
+        ...(launch ? { launch } : {}),
+      };
+    },
+    [backend],
+  );
+
   const openParallelGroup = useCallback((groupId: string): void => {
     setParallelGroupId(groupId);
     setNavOpen(false);
@@ -905,6 +936,7 @@ export default function App() {
     pendingApprovals,
     focusedApprovalId,
     createSession,
+    defaultNewSessionInput,
     cancelRun,
     openLinkedSession,
     openNewSessionDialog,

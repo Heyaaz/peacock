@@ -5,6 +5,13 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptPageRequest } from "../../shared/agent-contract";
+import {
+  DEFAULT_MODEL_PRESET,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_TOOL_VIEW_MODE,
+  type AgentControlPreferences,
+} from "../../shared/agent-contract";
+import { DEFAULT_DESKTOP_INTEGRATION } from "../../shared/desktop-integration";
 import type { SessionShortcut } from "../../shared/settings-ipc";
 import { selectTranscriptPage } from "../../shared/transcript-page";
 import type { AgentEvent, AgentSession, TranscriptItem } from "../backend/types";
@@ -481,6 +488,52 @@ describe("session shortcuts from the main process", () => {
     );
     expect(probe.prefillComposerDraft).toHaveBeenCalledExactlyOnceWith("s-created", "이슈 내용", undefined);
     expect(probe.composer?.sessionId).toBe("s-created");
+  });
+
+  it("creates the agent Settings → 새 세션 names at once, instead of GJC", async () => {
+    const loaded: AgentControlPreferences = {
+      workspace: "/tmp/gajae-bot",
+      workspaceLabel: "작업",
+      modelPreset: DEFAULT_MODEL_PRESET,
+      permissionHandling: "prompt",
+      agents: {},
+      thoughtsExpanded: false,
+      toolViewMode: DEFAULT_TOOL_VIEW_MODE,
+      notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
+      desktopIntegration: DEFAULT_DESKTOP_INTEGRATION,
+      language: "ko",
+      runningSubmission: "queue",
+      newSession: { agentKind: "claude", surface: "terminal" },
+    };
+    const desktop = window as unknown as {
+      agentControlDesktop: { settings: object; terminal?: unknown };
+    };
+    const pending = desktop.agentControlDesktop.settings;
+    desktop.agentControlDesktop.settings = new Proxy(pending, {
+      get: (target, name) =>
+        name === "getPreferences"
+          ? async () => loaded
+          : name === "inspectWorkspace"
+            ? async () => ({ broad: false, git: false })
+            : Reflect.get(target, name),
+    });
+    desktop.agentControlDesktop.terminal = {
+      listAgents: async () => [
+        { id: "claude", name: "Claude Code", installed: true, binary: "/bin/claude" },
+      ],
+    };
+    await mountApp();
+    await act(async () => shortcut!({ type: "new" }));
+    expect(probe.createSession).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        title: "gajae-bot",
+        workspace: "/tmp/gajae-bot",
+        runtime: "herdr",
+        agentKind: "claude",
+        surface: "terminal",
+      }),
+    );
+    expect(probe.newSessionDialog).toBeNull();
   });
 });
 

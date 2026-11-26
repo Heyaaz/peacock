@@ -43,10 +43,12 @@ it does not drive the app's context-menu or native confirmation entry points.
 
 - Create: the rail `+` (`title="새 Gajae 세션"`) and the empty workspace button
   `새 세션` open the `새 GJC 세션` dialog. `⌘T` creates immediately in the selected
-  session's workspace (or the connection workspace; it opens the dialog only when no
-  workspace is known). The composer command `/new` and the composer's workspace switcher
-  (`세션을 시작할 workspace` → a recent folder or `다른 폴더 선택…`) also create
-  immediately in the chosen workspace.
+  session's workspace (or the connection workspace) with the agent and screen
+  `설정 → 새 세션 → 기본 에이전트` names, or the first installed agent while that is
+  `자동`; it opens the dialog only when no workspace is known or the folder is broad.
+  The composer command `/new` and the composer's workspace switcher
+  (`세션을 시작할 workspace` → a recent folder or `다른 폴더 선택…`) create
+  immediately in the chosen workspace as GJC sessions.
 - Create dialog: `세션 이름`, `작업 격리` (`현재 workspace에서 작업` or
   `별도 worktree 생성` with optional `안전한 브랜치 (선택)`), and `프로젝트 위치`
   (`선택…` opens the native folder picker). `세션 만들기` submits; `취소` closes.
@@ -102,9 +104,11 @@ at least one completed turn for the history/search journeys; no modal is open;
   cu "In the Peacock composer of MAP-SESSION, type exactly '/new' and press Enter. Save $MAP_ROOT/evidence/SESSION-CREATE-04.png and report the new row, its workspace, and whether the dialog appeared."
   ```
   Observable: `⌘T` creates and selects a new session in the selected session's workspace
-  (or the connection workspace); `/new` creates and selects one in the current session's
-  workspace. Both bypass the dialog. If no workspace is known, `⌘T` opens the dialog
-  instead. These are separate entry points from the rail `+` journey.
+  (or the connection workspace) with the default agent from
+  `설정 → 새 세션 → 기본 에이전트`; `/new` creates and selects a GJC session in the
+  current session's workspace. Both bypass the dialog. If no workspace is known or the
+  folder is broad, `⌘T` opens the dialog instead. These are separate entry points from
+  the rail `+` journey.
 
 - **SESSION-CREATE — worktree isolation.**
   Action: repeat the dialog with `별도 worktree 생성` and a synthetic branch.

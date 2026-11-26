@@ -1,8 +1,8 @@
 import { useEffect } from "react";
-import { DEFAULT_SESSION_TITLE } from "../../shared/session-title";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { AgentSession, BackendConnection, TranscriptItem } from "../backend/types";
 import type { NewSessionPrefill } from "../../shared/settings-ipc";
+import type { NewSessionInput } from "./dialogs";
 import { escapeCancelsRun, invalidLinkMessage, isTextEntryTarget } from "./shell-model";
 import type { CenterView } from "./shell-model";
 import { parallelGroupIdOf } from "./sidebar-model";
@@ -23,7 +23,9 @@ export interface ShellShortcutsContext {
   shortcutSessions: readonly AgentSession[];
   pendingApprovals: Extract<TranscriptItem, { kind: "tool" }>[];
   focusedApprovalId: string | undefined;
-  createSession: (input: { title: string; workspace: string }) => void;
+  createSession: (input: NewSessionInput) => void | Promise<void>;
+  /** What ⌘T creates: the agent Settings → 새 세션 names, or the first installed one. */
+  defaultNewSessionInput: (workspace: string) => Promise<NewSessionInput>;
   cancelRun: (sessionId: string) => Promise<void>;
   openLinkedSession: (sessionId: string, known: readonly AgentSession[]) => void;
   openNewSessionDialog: (prefill?: NewSessionPrefill) => void;
@@ -54,6 +56,7 @@ export function useShellShortcuts(context: ShellShortcutsContext): void {
     pendingApprovals,
     focusedApprovalId,
     createSession,
+    defaultNewSessionInput,
     cancelRun,
     openLinkedSession,
     openNewSessionDialog,
@@ -100,12 +103,15 @@ export function useShellShortcuts(context: ShellShortcutsContext): void {
             return;
           }
           // A broad folder is never started silently; the dialog warns first.
+          // The agent comes from Settings → 새 세션, the same default the dialog opens on.
           const settings = window.agentControlDesktop?.settings;
           void (settings ? settings.inspectWorkspace(workspace) : Promise.resolve({ broad: false })).then(
             (info) =>
               info.broad
                 ? openNewSessionDialog()
-                : createSession({ title: DEFAULT_SESSION_TITLE, workspace }),
+                : Promise.resolve(defaultNewSessionInput(workspace)).then((input) =>
+                    createSession(input),
+                  ),
             () => openNewSessionDialog(),
           );
           return;
@@ -163,6 +169,7 @@ export function useShellShortcuts(context: ShellShortcutsContext): void {
   }, [
     connection.workspace,
     createSession,
+    defaultNewSessionInput,
     dismissibleSurfaceOpen,
     openLinkedSession,
     openNewSessionDialog,
