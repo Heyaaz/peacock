@@ -151,13 +151,23 @@ question.
 
 ## Next-input suggestion
 
-In a GJC chat, when a turn ends normally and the composer is empty (no draft,
-attachment or held request), a likely next message appears in it as ghost text.
-Tab takes it, Esc dismisses it, and typing anything drops it. It is asked of the
-session's own model through `btw.ask`, and only while the window is visible and
-focused. It follows GJC's `promptSuggestions` setting: with that off no request is
-made. A suggestion that has not arrived after 30 seconds is dropped. Other
-agents' chats offer none.
+When a turn ends normally and the composer is empty (no draft, attachment or held
+request), a likely next message appears in it as ghost text. Tab takes it, Esc
+dismisses it, and typing anything drops it. In a GJC chat it is asked of the
+session's own model through `btw.ask` and follows GJC's `promptSuggestions`
+setting: with that off no request is made. An omp chat asks omp's own side
+question (`btw` over RPC) once per finished turn. Either way it runs only while
+the window is visible and focused, and a suggestion that has not arrived after 30
+seconds is dropped. Other agents' chats offer none.
+
+## Away recap
+
+In an omp chat, a completed turn that then stays quiet for four minutes (omp's
+own default `recap.idleSeconds`) gets one more side question: a short "where
+things stand" recap. It arrives as a `While you were away` notice in the
+transcript, so a returning user can catch up without rereading the turn. It is
+asked only after a completed turn, at most once per turn, and never while
+another turn or queued work is live. GJC chats do not have it.
 
 ## File mentions
 
@@ -412,13 +422,18 @@ session (the dialog's Terminal choice) stays terminal-only.
   chat, read from the chat's folder with `git diff HEAD`; Stage, Unstage, Commit
   and Push work only in a managed worktree, as in GJC.
 - **Side chat.** `/btw` and `⌘⇧B` work as in GJC.
+- **Next-input suggestion.** After a completed turn the composer offers a likely
+  next message as ghost text; Tab takes it, Esc dismisses it. It costs one side
+  question per turn.
+- **Away recap.** A finished turn that stays quiet for four minutes gets a
+  `While you were away` recap notice, as in omp's own TUI.
 - **Sidebar menu.** Export as HTML saves the conversation through a save dialog.
   Renaming the chat renames the omp session too.
 - **Sign-in.** Settings > Agents > Oh My Pi > omp sign-in lists omp's providers and
   accounts, signs in (omp opens the browser for OAuth) and signs an account out
   after a confirmation. omp keeps the credentials; Peacock never stores them.
-- **Not in omp chats.** Next-input suggestions, the session info panel, `/login` and
-  `/resume`, and a terminal screen.
+- **Not in omp chats.** The session info panel, `/login` and `/resume`, and a
+  terminal screen.
 - **Delete.** Removes the chat from the list and stops its omp process; omp's
   session file stays in omp's history.
 

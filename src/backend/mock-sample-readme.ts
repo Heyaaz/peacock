@@ -65,7 +65,8 @@ function gjcSession(fields: Partial<AgentSession> & Pick<AgentSession, "id" | "t
   };
 }
 
-// What omp's chat offers (shared/agent-catalog.ts, `chatCapabilities`); suggestions stay GJC's.
+// What omp's chat offers (shared/agent-catalog.ts, `chatCapabilities`); suggestions come
+// from one side question per finished turn, as in the real chat.
 const ompCapabilities: Partial<SessionCapabilities> = {
   send: true,
   cancel: true,
@@ -75,7 +76,7 @@ const ompCapabilities: Partial<SessionCapabilities> = {
   fork: true,
   compact: true,
   sideQuestion: true,
-  suggestion: false,
+  suggestion: true,
   modelConfig: true,
   thinking: true,
   git: true,

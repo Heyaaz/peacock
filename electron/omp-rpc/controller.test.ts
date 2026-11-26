@@ -35,7 +35,7 @@ const CONTEXT_REPORT = [
   "  Free             [███░] 83%  793150 tokens",
 ].join("\n");
 
-function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject"> } = {}) {
+function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject">; recapIdleMs?: number } = {}) {
   const addRule = vi.fn(async () => undefined);
   const commandRules = {
     decide: vi.fn(async (_root: string, _tool: string, command: string) => {
@@ -207,6 +207,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
     claim,
     log: () => undefined,
     resyncDelaysMs: [0, 5, 5],
+    ...(options.recapIdleMs !== undefined ? { recapIdleMs: options.recapIdleMs } : {}),
     commandRules: commandRules as never,
   });
   const answerBash = (data: Record<string, unknown>) => {
@@ -783,6 +784,57 @@ describe("OmpRpcController model, commands, compaction, queue and side questions
       { type: "btw_record", record: { id: "btw-1", leafId: null, question: "q", answer: "A desktop app.", status: "complete", createdAt: 1, updatedAt: 2 } },
     );
     await expect(answer).resolves.toBe("A desktop app.");
+  });
+
+  it("predicts the next input from a side question, one line without quotes", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.refreshSessionContext(session.id);
+    const child = context.processes[0]!.child;
+    const suggestion = context.controller.suggestNextInput(session.id);
+    await settle();
+    expect(child.sent("btw")[0]).toMatchObject({ type: "btw" });
+    child.emitFrames({
+      type: "btw_record",
+      record: { id: "btw-1", status: "complete", answer: "\"add a test for it\"\n", question: "q" },
+    });
+    await expect(suggestion).resolves.toBe("add a test for it");
+  });
+
+  it("does not ask for a suggestion while a turn is working", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.sendMessage(session.id, { text: "go", images: [], files: [] });
+    const child = context.processes[0]!.child;
+    await expect(context.controller.suggestNextInput(session.id)).resolves.toBeNull();
+    expect(child.sent("btw")).toEqual([]);
+  });
+
+  it("asks for the away recap once a finished turn stays idle", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const context = setup({ recapIdleMs: 5 });
+      const session = await newChat(context);
+      await context.controller.refreshSessionContext(session.id);
+      await context.controller.sendMessage(session.id, { text: "go", images: [], files: [] });
+      const child = context.processes[0]!.child;
+      child.emitFrames({ type: "prompt_result", id: child.sent("prompt")[0]!.id, agentInvoked: true, status: "completed", sessionSettled: true });
+      await settle();
+      vi.advanceTimersByTime(5);
+      await settle();
+      expect(child.sent("btw")).toHaveLength(1);
+      child.emitFrames({
+        type: "btw_record",
+        record: { id: "btw-1", status: "complete", answer: "- finished the review\n- next: ship it", question: "q" },
+      });
+      await settle();
+      expect(context.events).toContainEqual({
+        type: "transcript.appended",
+        item: expect.objectContaining({ kind: "notice", title: "While you were away", content: "- finished the review\n- next: ship it" }),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

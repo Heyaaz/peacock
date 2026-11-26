@@ -23,9 +23,9 @@ Peacock drives over omp's RPC mode. GJC sessions go through GJC's public
 `gjc sdk session` CLI and the session files GJC already writes, so a request
 started in the app can be checked from the terminal and the other way round.
 
-GJC's chat is the richest: questions, goals, side chat, next-input suggestions
-and the model picker. omp's chat has most of those and adds context, subagent
-and conversation-tree views. Claude Code and Codex get their terminal and remote
+GJC's chat is the richest: questions, goals, side chat and the model picker.
+omp's chat has most of those, plus next-input suggestions, context, subagent and
+conversation-tree views. Claude Code and Codex get their terminal and remote
 access; Claude Code, like omp, also gets status, approval cards, global search
 and parallel runs.
 
@@ -136,9 +136,9 @@ Each clip is the real app on its built-in sample data.
   delete rules in Settings > Approvals.
 - **Side chat.** `/btw` or ⌘⇧B asks about the session in a side panel while it
   keeps working. Nothing is added to the transcript.
-- **Next-input suggestion.** In a GJC chat, when a turn ends, the composer offers a
-  likely next message. Tab takes it, Esc dismisses it. It follows GJC's
-  `promptSuggestions` setting.
+- **Next-input suggestion.** When a GJC or omp turn ends, the composer offers a
+  likely next message. Tab takes it, Esc dismisses it. GJC follows its
+  `promptSuggestions` setting; omp asks one side question per turn.
 - **Changed files and review.** In GJC and omp chats, see the session's diff,
   comment on lines, and send the comments back as a review. A folder holding
   several repositories shows each one's changes.

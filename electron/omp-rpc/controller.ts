@@ -91,6 +91,8 @@ export interface OmpRpcControllerOptions {
     decide(projectPath: string, toolName: string, command: string): Promise<CommandRuleMatch | undefined>;
     add(projectPath: string, prefix: string, decision: CommandRuleDecision): Promise<void>;
   };
+  /** How long a chat stays idle before its recap is asked for (tests shorten it). */
+  recapIdleMs?: number;
 }
 
 /** An approval card waiting for its answer. */
@@ -193,6 +195,8 @@ interface ChatRuntime {
   /** The row of the user's `!` command omp is running (one at a time, as in omp's TUI). */
   userShell?: string;
   shellRuns: number;
+  /** The idle recap asked for after a finished turn, while the chat stays quiet. */
+  recapTimer?: ReturnType<typeof setTimeout>;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -208,6 +212,18 @@ const NO_GOAL: GoalSnapshot = { enabled: false, completed: 0, total: 0, operatio
 
 /** How long a side question may take. */
 const SIDE_QUESTION_TIMEOUT_MS = 5 * 60_000;
+/**
+ * How long a chat stays idle before omp is asked for the recap Tern shows as
+ * "while you were away". omp's own TUI waits `recap.idleSeconds` (240s by
+ * default); an RPC chat gets the same delay so a finished turn does not cost a
+ * second request while the user is still reading it.
+ */
+const RECAP_IDLE_MS = 240_000;
+const RECAP_TITLE = "While you were away";
+const RECAP_PROMPT =
+  "The user stepped away from this session. Summarize where things stand for someone coming back: what was being worked on, what finished, and the next step. 3-5 short bullets, no preamble, no tool calls, in the language the user writes in.";
+const SUGGESTION_PROMPT =
+  "Predict the single most likely next message the user would send in this conversation. Reply with only that message -- no quotes, no label, no explanation, in the language the user writes in.";
 /** How many models the composer's picker lists: omp's whole catalog (P4: 286 on this Mac). */
 const MODEL_PICKER_LIMIT = 1000;
 /** omp's chat model roles a picker scope names, in omp's order (config/model-roles.ts). */
@@ -390,6 +406,7 @@ export class OmpRpcController implements AgentRuntimeController {
   async sendMessage(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
     const record = this.options.store.get(sessionId);
     if (!record) throw new AgentUnsupportedError("sending messages", sessionId);
+    this.clearRecap(sessionId);
     const text = input.text.trim();
     this.checkAttachments(sessionId, input);
     // `!command` runs in omp's shell (RPC `bash`), `!!command` keeps its output out of the model's context
@@ -831,6 +848,7 @@ export class OmpRpcController implements AgentRuntimeController {
 
   private stopProcess(sessionId: string): void {
     const chat = this.chats.get(sessionId);
+    this.clearRecap(sessionId);
     chat?.client?.close();
   }
 
@@ -1491,6 +1509,7 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   async steerSession(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
+    this.clearRecap(sessionId);
     if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
     const client = await this.ensureProcess(sessionId);
     const images = await this.images(input);
@@ -1499,6 +1518,7 @@ export class OmpRpcController implements AgentRuntimeController {
   }
 
   async queueFollowUp(sessionId: string, input: ResolvedMessageInput): Promise<MessageDelivery> {
+    this.clearRecap(sessionId);
     if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
     const client = await this.ensureProcess(sessionId);
     const images = await this.images(input);
@@ -1525,7 +1545,22 @@ export class OmpRpcController implements AgentRuntimeController {
 
   /** `/btw`: omp answers from the conversation without adding to it, as `btw_record` frames. */
   async askSideQuestion(sessionId: string, question: string): Promise<string> {
-    const client = await this.ensureProcess(sessionId);
+    return this.sideQuestion(await this.ensureProcess(sessionId), question);
+  }
+
+  /**
+   * The composer's next-input ghost text. omp's TUI predicts the next message
+   * after a completed turn; over RPC it is one side question, which answers from
+   * the conversation without writing to it. Nothing runs unless the chat is idle
+   * and already has an omp, so a suggestion cannot spawn one.
+   */
+  async suggestNextInput(sessionId: string): Promise<string | null> {
+    const client = this.chats.get(sessionId)?.client;
+    if (!client || client.exited || this.chat(sessionId).working) return null;
+    return suggestionLine(await this.sideQuestion(client, SUGGESTION_PROMPT));
+  }
+
+  private async sideQuestion(client: OmpRpcClient, question: string): Promise<string> {
     const data = record(await client.call({ type: "btw", question }));
     const started = record(data.record);
     const id = string(started.id);
@@ -1566,10 +1601,52 @@ export class OmpRpcController implements AgentRuntimeController {
     if (result.status === "error" && result.error?.message) this.addNotice(sessionId, "작업 실패", result.error.message, "warning");
     this.applyStatus(sessionId, "idle", category);
     this.scheduleResync(sessionId);
+    // omp's own "while you were away" recap is TUI-only; over RPC the same
+    // question is asked here, once a completed turn stays quiet.
+    if (result.status === "completed" && result.agentInvoked) this.scheduleRecap(sessionId, client);
     void this.refreshState(sessionId, client).catch((error: unknown) => this.log(`could not read the state of ${sessionId}`, error));
   }
 
+  /**
+   * Asks for the recap Tern shows as "while you were away" once the chat has been
+   * idle for `RECAP_IDLE_MS`. Nothing is asked while a turn, a queued message, or
+   * a new submission keeps the chat busy; only one recap per finished turn.
+   */
+  private scheduleRecap(sessionId: string, client: OmpRpcClient): void {
+    const chat = this.chats.get(sessionId);
+    if (!chat) return;
+    this.clearRecap(sessionId);
+    const timer = setTimeout(() => {
+      chat.recapTimer = undefined;
+      if (
+        this.disposed ||
+        chat.client !== client ||
+        chat.working ||
+        chat.queue.steering.length > 0 ||
+        chat.queue.followUp.length > 0
+      )
+        return;
+      void this.sideQuestion(client, RECAP_PROMPT)
+        .then((answer) => {
+          if (this.chats.get(sessionId) !== chat || chat.client !== client || chat.working) return;
+          const recap = recapText(answer);
+          if (recap) this.addNotice(sessionId, RECAP_TITLE, recap, "neutral");
+        })
+        .catch(() => undefined);
+    }, this.options.recapIdleMs ?? RECAP_IDLE_MS);
+    timer.unref?.();
+    chat.recapTimer = timer;
+  }
+
+  private clearRecap(sessionId: string): void {
+    const chat = this.chats.get(sessionId);
+    if (!chat?.recapTimer) return;
+    clearTimeout(chat.recapTimer);
+    chat.recapTimer = undefined;
+  }
+
   private onExit(sessionId: string, client: OmpRpcClient, info: { code: number | null; signal: string | null; stderr: string }): void {
+    this.clearRecap(sessionId);
     const chat = this.chats.get(sessionId);
     if (!chat || chat.client !== client) return;
     chat.client = undefined;
@@ -2137,6 +2214,23 @@ function sideTurn(entry: Record<string, unknown>): { status: string; answer: str
     answer: string(turn.answer) ?? "",
     ...(string(turn.error) ? { error: string(turn.error) } : {}),
   };
+}
+
+/** A side question's answer as the ghost text: one line, no quotes, no label, not an essay. */
+function suggestionLine(answer: string): string | null {
+  const text = answer.replace(/^```[\w-]*\n?/u, "").replace(/\n?```$/u, "").trim();
+  const line = text.split(/\r?\n/u).map((part) => part.trim()).find(Boolean);
+  if (!line) return null;
+  const cleaned = line
+    .replace(/^(?:suggestion|next message|다음 메시지)\s*[:：]\s*/iu, "")
+    .replace(/^["'`“”‘’]+|["'`“”‘’]+$/gu, "")
+    .trim();
+  return cleaned && cleaned.length <= 400 ? cleaned : null;
+}
+
+/** The recap as the notice card shows it: the answer's text without a code fence. */
+function recapText(answer: string): string {
+  return answer.replace(/^```[\w-]*\n?/u, "").replace(/\n?```$/u, "").trim().slice(0, 4000);
 }
 
 function dropOptions(tool: ToolActivity): ToolActivity {
