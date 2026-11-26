@@ -40,6 +40,7 @@ import type { Terminal } from "./hc-api.generated.js";
 import { newestOmpSession, ompBreadcrumb, ompSessionHeader } from "./omp-session.js";
 import { SESSION_LABEL } from "./terminals.js";
 import { workspaceDiff } from "./workspace-diff.js";
+import { createSessionWorktree, discardSessionWorktree, type GitRunner, type PrepareWorktree } from "../worktree-service.js";
 import { HerdrTranscripts, type TranscriptLocation } from "./transcript/transcripts.js";
 
 /** How long a lost event stream waits before it subscribes again. */
@@ -94,6 +95,10 @@ export interface HerdrAgentControllerOptions {
   transcripts?: { pollMs?: number; initialBytes?: number };
   /** How long a request waits for its agent to be ready, and how often it looks (tests shorten them). */
   readiness?: { timeoutMs?: number; pollMs?: number };
+  /** Fills a new session's worktree from its project's settings (copied files, setup script). */
+  prepareWorktree?: PrepareWorktree;
+  /** Git for making and taking back a session's worktree (tests hand in a fake). */
+  git?: GitRunner;
 }
 
 /** How long a parallel run's request waits for its agent: a folder-trust dialog waits on the user. */
@@ -191,6 +196,8 @@ export class HerdrAgentController implements AgentRuntimeController {
       workspace: input.workspace,
       agentKind: input.agentKind ?? "shell",
       ...(input.launch ? { launch: input.launch } : {}),
+      ...(input.isolation === "worktree" ? { isolation: "worktree" as const } : {}),
+      ...(input.worktreeBranch ? { worktreeBranch: input.worktreeBranch } : {}),
     });
   }
 
@@ -204,17 +211,35 @@ export class HerdrAgentController implements AgentRuntimeController {
       const agent = await this.options.detect(agentKind);
       if (!agent.installed) throw new Error(`${agent.name}: ${agent.reason ?? "not installed"}`);
     }
-    const record = this.options.store.create({
-      title: input.title.trim() || agentKind,
-      workspace: input.workspace,
-      agentKind,
-      ...(launch ? { launch } : {}),
-      ...(agentKind === "claude" ? { agentSessionRef: randomUUID() } : {}),
-    });
+    // everything the session can be refused for is checked above, so a worktree is made only for one that starts
+    const made =
+      input.isolation === "worktree"
+        ? await createSessionWorktree({
+            workspace: input.workspace,
+            ...(input.worktreeBranch ? { branch: input.worktreeBranch } : {}),
+            ...(this.options.prepareWorktree ? { prepare: this.options.prepareWorktree } : {}),
+            ...(this.options.git ? { git: this.options.git } : {}),
+          })
+        : undefined;
+    let record: TerminalSessionRecord;
+    try {
+      record = this.options.store.create({
+        title: input.title.trim() || agentKind,
+        workspace: made?.worktree.path ?? input.workspace,
+        agentKind,
+        ...(launch ? { launch } : {}),
+        ...(agentKind === "claude" ? { agentSessionRef: randomUUID() } : {}),
+        ...(made ? { worktree: made.worktree } : {}),
+      });
+    } catch (error) {
+      if (made) await discardSessionWorktree(made, this.options.git);
+      throw error;
+    }
     this.options.claim?.(record.id);
     const session = this.row(record);
     this.options.emit({ type: "session.created", session });
-    return session;
+    // only the answer to this call carries what the worktree's setup reported
+    return made?.setup ? { ...session, worktreeSetup: made.setup } : session;
   }
 
   listAgents(): Promise<AgentAvailability[]> {

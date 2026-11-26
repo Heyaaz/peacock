@@ -17,6 +17,7 @@ import { ReplayBuffer, createOutputBatcher, type OutputBatcher } from "./termina
 import type { TerminalSessionStore } from "./terminal-session-store.js";
 import { isAgentKindId } from "../shared/agent-contract.js";
 import { launchOptions } from "../shared/agent-launch.js";
+import { terminalIsolation } from "./gjc-input-validation.js";
 import {
   TERMINAL_IPC,
   isTerminalSessionId,
@@ -468,7 +469,14 @@ function terminalCreateInput(value: Record<string, unknown>): TerminalSessionCre
   if (!isAgentKindId(agentKind) || agentKind === "gjc") throw new Error("Terminal agent is invalid");
   // an older client named the program here (`launch: "shell"`); the agent says that now
   const launch = launchOptions(agentKind, typeof value.launch === "string" ? undefined : value.launch);
-  return { title: value.title, workspace: value.workspace, agentKind, ...(launch ? { launch } : {}) };
+  const isolation = terminalIsolation(value);
+  return {
+    title: value.title,
+    workspace: value.workspace,
+    agentKind,
+    ...(launch ? { launch } : {}),
+    ...(isolation.isolation === "worktree" ? isolation : {}),
+  };
 }
 
 export function registerTerminalIpcHandlers(
@@ -527,6 +535,7 @@ export function registerTerminalIpcHandlers(
       const request = terminalCreateInput(value);
       if (agents) return agents.createTerminalSession(request);
       if (request.agentKind !== "shell") throw new Error("Agent sessions need herdr-core");
+      if (request.isolation === "worktree") throw new Error("A session in its own worktree needs herdr-core");
       return terminalAgentSession(requireStore().create({ title: request.title, workspace: request.workspace }));
     }),
   );

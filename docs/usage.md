@@ -188,7 +188,7 @@ listing, and `@` stays plain text there.
 
 | Key         | Action                |
 | ----------- | --------------------- |
-| `⌘T`        | New session: opens one on the default agent in the current folder at once, or the new-session dialog when the folder is a broad one (home, Documents, Desktop) or unknown |
+| `⌘T`        | New session: opens one on the default agent in the current folder at once (in a new worktree of the project when Settings > Projects says so), or the new-session dialog when the folder is a broad one (home, Documents, Desktop) or unknown |
 | `⌘1`–`⌘9`   | Select a session in sidebar order |
 | `⌘K`        | Search every session and message |
 | `⌘F`        | Find in this conversation (not in a terminal) |
@@ -320,9 +320,10 @@ default. A settings file from before agents could be chosen keeps opening GJC
 (`newSessionKind: "app"`) or a shell (`"cli"`).
 
 The dialog's other fields: Session name; Approvals, for Claude Code and omp;
-Where to work, for GJC in a Git folder (work directly in the folder, or in a separate
-copy, a managed worktree with an optional branch name); and Folder. For GJC, a folder
-as broad as home, Documents or Desktop is warned about before the session starts.
+Where to work, for any agent in a Git folder (work directly in the folder, or in a
+separate copy, a managed worktree with an optional branch name — see
+[Sessions in their own worktree](#sessions-in-their-own-worktree)); and Folder. For GJC,
+a folder as broad as home, Documents or Desktop is warned about before the session starts.
 
 - **Screens.** Claude Code opens on its terminal. omp opens on its terminal or on
   its chat ([omp chat](#omp-chat)): the dialog's "Opens in" choice is made when the
@@ -367,6 +368,52 @@ as broad as home, Documents or Desktop is warned about before the session starts
 
 The app keeps agent and shell sessions in `terminal-sessions.json` and omp chats
 in `omp-rpc-sessions.json` under its user data, since GJC does not know about them.
+A session started in a worktree keeps its worktree in that record.
+
+### Sessions in their own worktree
+
+Any agent can start in a new Git worktree of the folder's repository instead of in the
+folder itself: pick "Work in a separate copy" (the other choice is "Work directly in this
+folder") under "Where to work" in the new-session dialog, with an optional "Branch name",
+or let the project do it for you.
+
+- **Where.** The worktree is made next to the repository, in
+  `<repo>.gajae-worktrees/<id>`, and the session opens in it. The branch is the one
+  typed in the dialog, or a new `peacock/<id>` branch from `HEAD` for Claude Code, omp,
+  Codex and a shell (GJC keeps its own `gajae/<id>`). A branch that must already exist,
+  and a fork's pull request, are still GJC's, so a request started from an issue or a CI
+  run opens GJC. A terminal session (Claude Code, Codex, a shell, omp on its terminal) needs
+  herdr-core for this, and the window reports it when herdr-core is not running; an omp chat
+  does not.
+- **One click.** Settings > Projects keeps, for each project (a repository's main working
+  tree, shared by its worktrees): "Start new sessions in a new worktree", a "Setup script"
+  and "Files to copy". With the first on, ⌘T makes the session in a new worktree on a
+  `peacock/<time>-<salt>` branch, built from the project's main working tree whichever
+  worktree is open, and the new-session dialog opens on "separate copy" (the radio can
+  still be switched). A folder outside Git is not affected. A session that is being
+  prepared shows in the rail as starting ("Preparing worktree…") until its worktree is
+  ready; if the worktree cannot be made, that row is marked failed and the window says why.
+- **Files to copy.** Files the repository does not track (`.env`, local config), one path
+  per line, relative to the project folder. They are copied into each new worktree before
+  the setup script runs. A path that leaves the project folder, names `.git`, or is a folder
+  is refused; a symbolic link, a file over 10 MiB, one Git tracks, one the worktree already
+  has and one the project does not have are skipped. Only a file that could not be copied
+  is reported.
+- **Setup script.** A shell script run with `/bin/sh -c` in the new worktree, after the copy:
+  for example `npm ci`. `PEACOCK_ROOT_PATH`, `PEACOCK_WORKTREE_PATH` and
+  `PEACOCK_WORKTREE_BRANCH` are set. It stops after 10 minutes and only the end of its output
+  (32 KB) is kept. It is what you wrote in Settings, kept in the app's data folder and never read
+  from the repository, and saving a new or changed script asks for confirmation first.
+  A script that fails or times out, or a file that could not be copied, does not stop the
+  session: it opens anyway and the window says what did not go as asked.
+- **Claude Code** asks whether to trust a new folder, and so may another agent. Nothing is
+  typed into the session for you, so the question is waiting in its terminal; answer it there.
+- **Forks and git.** A fork of an omp chat stays in its worktree. An omp chat in a managed
+  worktree can stage, commit and push from its changed-files panel, as GJC can.
+- **Not removed.** Hiding or deleting a session leaves its worktree and branch where they
+  are; they show on the repository screen, and `git worktree remove` takes them away.
+- Settings are in `project-settings.json` in the app's data folder. This is desktop only: a
+  paired phone cannot start sessions, in a worktree or otherwise.
 
 ## omp chat
 
@@ -421,7 +468,8 @@ session (the dialog's Terminal choice) stays terminal-only.
   Stop button. One runs at a time.
 - **Changed files.** The header's changed-files button opens the same panel as a GJC
   chat, read from the chat's folder with `git diff HEAD`; Stage, Unstage, Commit
-  and Push work only in a managed worktree, as in GJC.
+  and Push work only in a managed worktree, as in GJC: a chat started in a
+  [separate copy](#sessions-in-their-own-worktree) is in one, a chat in its folder as it is is not.
 - **Side chat.** `/btw` and `⌘⇧B` work as in GJC.
 - **Next-input suggestion.** After a completed turn the composer offers a likely
   next message as ghost text; Tab takes it, Esc dismisses it. It costs one side

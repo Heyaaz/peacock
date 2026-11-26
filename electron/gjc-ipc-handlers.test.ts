@@ -540,9 +540,42 @@ describe("session creation IPC validation", () => {
       expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "gjc" })).toThrow("agent is invalid");
       expect(() => createSessionInput({ runtime: "herdr", workspace, agentKind: "codex", surface: "chat" })).toThrow("screen is invalid");
       expect(() => createSessionInput({ runtime: "herdr", workspace: "relative" })).toThrow("absolute");
-      expect(() => createSessionInput({ runtime: "herdr", workspace, isolation: "worktree" })).toThrow("as it is");
+      expect(() => createSessionInput({ runtime: "herdr", workspace, isolation: "sandbox" })).toThrow("workspace or worktree");
       expect(() => createSessionInput({ runtime: "herdr", workspace: path.join(workspace, "missing") })).toThrow("existing directory");
       expect(() => createSessionInput({ runtime: "hermes", workspace })).toThrow("Only GJC, terminal (herdr) and omp chat");
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("lets a terminal agent and an omp chat start in a new worktree, on a branch of its own or a named one", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "gajae-create-input-"));
+    try {
+      expect(createSessionInput({ runtime: "herdr", workspace, agentKind: "claude", isolation: "worktree" })).toEqual({
+        runtime: "herdr",
+        workspace,
+        isolation: "worktree",
+        agentKind: "claude",
+      });
+      expect(
+        createSessionInput({ runtime: "herdr", workspace, agentKind: "codex", isolation: "worktree", worktreeBranch: "peacock/abc-1" }),
+      ).toMatchObject({ isolation: "worktree", worktreeBranch: "peacock/abc-1" });
+      expect(
+        createSessionInput({ runtime: "omp-rpc", workspace, isolation: "worktree", worktreeBranch: "feat/x" }),
+      ).toMatchObject({ runtime: "omp-rpc", isolation: "worktree", worktreeBranch: "feat/x", surface: "chat" });
+      // a branch name has no meaning in the folder itself
+      expect(createSessionInput({ runtime: "herdr", workspace, isolation: "workspace", worktreeBranch: "feat/x" })).not.toHaveProperty("worktreeBranch");
+      for (const runtime of ["herdr", "omp-rpc"]) {
+        expect(() => createSessionInput({ runtime, workspace, isolation: "worktree", worktreeBranch: "-x" })).toThrow("branch is invalid");
+        expect(() => createSessionInput({ runtime, workspace, isolation: "worktree", worktreeBranch: "a..b" })).toThrow("branch is invalid");
+        expect(() => createSessionInput({ runtime, workspace, isolation: "worktree", worktreeBranch: "x y" })).toThrow("branch is invalid");
+        expect(() =>
+          createSessionInput({ runtime, workspace, isolation: "worktree", worktreeBranch: "pr-9", worktreePull: { remote: "origin", number: 9 } }),
+        ).toThrow("Only GJC");
+        expect(() =>
+          createSessionInput({ runtime, workspace, isolation: "worktree", worktreeBranch: "pr-9", worktreeBranchExisting: true }),
+        ).toThrow("Only GJC");
+      }
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }

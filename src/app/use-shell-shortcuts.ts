@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { AgentSession, BackendConnection, TranscriptItem } from "../backend/types";
-import type { NewSessionPrefill } from "../../shared/settings-ipc";
+import type { NewSessionPrefill, WorkspaceInspection } from "../../shared/settings-ipc";
 import type { NewSessionInput } from "./dialogs";
 import { escapeCancelsRun, invalidLinkMessage, isTextEntryTarget } from "./shell-model";
 import type { CenterView } from "./shell-model";
@@ -24,8 +24,11 @@ export interface ShellShortcutsContext {
   pendingApprovals: Extract<TranscriptItem, { kind: "tool" }>[];
   focusedApprovalId: string | undefined;
   createSession: (input: NewSessionInput) => void | Promise<void>;
-  /** What ⌘T creates: the agent Settings → 새 세션 names, or the first installed one. */
-  defaultNewSessionInput: (workspace: string) => Promise<NewSessionInput>;
+  /**
+   * What ⌘T creates: the agent Settings → 새 세션 names, or the first installed one. A project
+   * that starts new sessions in a worktree has its root, which the worktree is made from.
+   */
+  defaultNewSessionInput: (workspace: string, worktreeRoot?: string) => Promise<NewSessionInput>;
   cancelRun: (sessionId: string) => Promise<void>;
   openLinkedSession: (sessionId: string, known: readonly AgentSession[]) => void;
   openNewSessionDialog: (prefill?: NewSessionPrefill) => void;
@@ -105,11 +108,14 @@ export function useShellShortcuts(context: ShellShortcutsContext): void {
           // A broad folder is never started silently; the dialog warns first.
           // The agent comes from Settings → 새 세션, the same default the dialog opens on.
           const settings = window.agentControlDesktop?.settings;
-          void (settings ? settings.inspectWorkspace(workspace) : Promise.resolve({ broad: false })).then(
+          void (settings
+            ? settings.inspectWorkspace(workspace)
+            : Promise.resolve<WorkspaceInspection>({ broad: false, git: false })
+          ).then(
             (info) =>
               info.broad
                 ? openNewSessionDialog()
-                : Promise.resolve(defaultNewSessionInput(workspace)).then((input) =>
+                : Promise.resolve(defaultNewSessionInput(workspace, info.newSessionWorktreeRoot)).then((input) =>
                     createSession(input),
                   ),
             () => openNewSessionDialog(),

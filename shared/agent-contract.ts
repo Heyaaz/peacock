@@ -405,6 +405,28 @@ export interface ManagedWorktree {
 }
 
 /**
+ * A stored worktree record, if it is whole: absolute folders, a branch, `managed`. A file an
+ * older build wrote, or one edited by hand, may hold anything, so a record that is not whole
+ * is dropped rather than half believed.
+ */
+export function parseManagedWorktree(value: unknown): ManagedWorktree | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { sourceWorkspace, path, branch, managed } = value as Record<string, unknown>;
+  const folder = (candidate: unknown): candidate is string =>
+    typeof candidate === "string" && candidate.startsWith("/") && candidate.length <= 4096 && !candidate.includes("\0");
+  if (
+    managed !== true ||
+    !folder(sourceWorkspace) ||
+    !folder(path) ||
+    typeof branch !== "string" ||
+    branch.length === 0 ||
+    branch.length > 256
+  )
+    return undefined;
+  return { sourceWorkspace, path, branch, managed: true };
+}
+
+/**
  * What filling a new worktree from its project's settings reported when something did
  * not go as asked. The session is created either way; this is only for the window to say so.
  */

@@ -1,4 +1,5 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { constants, existsSync } from "node:fs";
 import { copyFile, lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -108,8 +109,10 @@ export async function addWorktree(
 export interface WorktreeRequest {
   /** A folder inside the repository the worktree is made from. */
   workspace: string;
-  /** The branch to check out; a new `gajae/<suffix>` branch when unset. */
+  /** The branch to check out; a new `<branchPrefix>/<suffix>` branch when unset. */
   branch?: string;
+  /** The folder of the default branch name; `gajae` when unset. */
+  branchPrefix?: string;
   /** The branch must already exist, locally or on exactly one remote, rather than start from HEAD. */
   branchExisting?: boolean;
   /** A pull request from a fork: a missing branch is fetched from its head instead of created. */
@@ -140,7 +143,7 @@ export async function createWorktree(
   const root = await repositoryRoot(git, request.workspace);
   if (!root) throw new Error("Workspace is not a git repository");
   const suffix = request.suffix();
-  const branch = request.branch?.trim() || `gajae/${suffix}`;
+  const branch = request.branch?.trim() || `${request.branchPrefix ?? "gajae"}/${suffix}`;
   const worktreePath = path.join(path.dirname(root), `${path.basename(root)}.gajae-worktrees`, suffix);
   const branchExisted = await localBranchExists(git, root, branch);
   const onOneRemote =
@@ -193,15 +196,19 @@ export async function discardUnusedWorktree(
   }
 }
 
-/** Removes a worktree this code just made, with its branch, whatever it holds. Never throws. */
+/**
+ * Removes a worktree this code just made, whatever it holds, and its branch unless the branch
+ * was there before (`keepBranch`). Never throws.
+ */
 export async function discardNewWorktree(
   git: GitRunner,
   root: string,
   worktreePath: string,
   branch: string,
+  options: { keepBranch?: boolean } = {},
 ): Promise<void> {
   await git(root, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
-  await git(root, ["branch", "-D", branch]).catch(() => undefined);
+  if (!options.keepBranch) await git(root, ["branch", "-D", branch]).catch(() => undefined);
 }
 
 // ---- reading and removing what is left
@@ -542,4 +549,54 @@ export function worktreeSetupReport(preparation: WorktreePreparation): WorktreeS
         }
       : {}),
   };
+}
+
+// ---- a worktree for a terminal or chat session
+
+/** Fills a new worktree from its project's settings; the caller (main) binds the settings store. */
+export type PrepareWorktree = (worktree: ManagedWorktree) => Promise<WorktreePreparation>;
+
+/** The folder a terminal or chat session's new branch lives under, apart from GJC's `gajae`. */
+export const SESSION_BRANCH_PREFIX = "peacock";
+
+export interface SessionWorktree {
+  worktree: ManagedWorktree;
+  branchExisted: boolean;
+  /** What its setup reported, when something did not go as asked. */
+  setup?: WorktreeSetupReport;
+}
+
+/**
+ * A worktree for a new Claude Code, Codex, omp or shell session: made like GJC's, then filled
+ * from the project's settings. The setup cannot fail the session, so a rejection of `prepare`
+ * only means nothing was copied or run. Everything that can be refused about the session
+ * itself is to be checked before this, so what this makes is rarely taken back.
+ */
+export async function createSessionWorktree(input: {
+  workspace: string;
+  branch?: string;
+  prepare?: PrepareWorktree;
+  git?: GitRunner;
+}): Promise<SessionWorktree> {
+  const created = await createWorktree(
+    {
+      workspace: input.workspace,
+      ...(input.branch ? { branch: input.branch } : {}),
+      branchPrefix: SESSION_BRANCH_PREFIX,
+      suffix: () => `${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`,
+    },
+    input.git,
+  );
+  const preparation = await Promise.resolve()
+    .then(() => input.prepare?.(created.worktree))
+    .catch(() => undefined);
+  const setup = preparation ? worktreeSetupReport(preparation) : undefined;
+  return { ...created, ...(setup ? { setup } : {}) };
+}
+
+/** Takes back a session's new worktree when the session never started: nothing ran in it. Never throws. */
+export function discardSessionWorktree(created: SessionWorktree, git: GitRunner = runGit): Promise<void> {
+  return discardNewWorktree(git, created.worktree.sourceWorkspace, created.worktree.path, created.worktree.branch, {
+    keepBranch: created.branchExisted,
+  });
 }

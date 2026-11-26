@@ -91,16 +91,16 @@ export function NewSessionDialog({
 }: NewSessionDialogProps) {
   const defaultTitle = t("새 세션");
   const terminalBridge = window.agentControlDesktop?.terminal;
-  // A request handed over with a prompt, screenshots or a worktree is GJC's: only GJC takes
-  // them. A folder alone (a project's 새 세션) opens in any agent installed here, when the
-  // backend runs terminal sessions (not a remote device, not the sample data). The last
-  // choice comes first.
+  // A request handed over with a prompt, screenshots, or a branch that must exist (an issue's,
+  // a pull request's) is GJC's: only GJC takes them. A folder alone (a project's 새 세션), even
+  // in a worktree of its own, opens in any agent installed here, when the backend runs
+  // terminal sessions (not a remote device, not the sample data). The last choice comes first.
   const gjcOnly = Boolean(
     prefill &&
       (prefill.prompt?.trim() ||
         (prefill.images?.length ?? 0) > 0 ||
-        prefill.isolation === "worktree" ||
-        prefill.worktreeBranch ||
+        prefill.worktreeBranchExisting ||
+        prefill.worktreePull ||
         prefill.workLink ||
         prefill.mainCheckout),
   );
@@ -116,8 +116,9 @@ export function NewSessionDialog({
   const [workspace, setWorkspace] = useState(
     prefill?.workspace || defaultWorkspace,
   );
-  const [isolation, setIsolation] = useState<"workspace" | "worktree">(
-    prefill?.isolation ?? "workspace",
+  // What the user or the request chose; until then the project's own default decides.
+  const [pickedIsolation, setIsolation] = useState<"workspace" | "worktree" | undefined>(
+    prefill?.isolation,
   );
   const [worktreeBranch, setWorktreeBranch] = useState(
     prefill?.worktreeBranch ?? "",
@@ -174,10 +175,11 @@ export function NewSessionDialog({
 
   // An answer for a folder the user has since left must not decide anything.
   const info = inspection?.workspace === workspace ? inspection.info : undefined;
+  // a project that starts new sessions in a worktree by default opens the dialog on it
+  const isolation = pickedIsolation ?? (info?.newSessionWorktreeRoot ? "worktree" : "workspace");
   const broad = !terminal && info?.broad === true;
   const showIsolation =
-    !terminal &&
-    (info?.git === true || isolation === "worktree" || prefill?.mainCheckout === true);
+    info?.git === true || isolation === "worktree" || prefill?.mainCheckout === true;
   const agentEntry = agentCatalogEntry(agentKind);
   const modes = permissionModes(agentKind);
 
@@ -217,6 +219,7 @@ export function NewSessionDialog({
   function create(): void {
     if (!workspace) return;
     const trimmedTitle = title.trim();
+    const branch = worktreeBranch.trim() || undefined;
     if (terminal) {
       if (submitting) return;
       setSubmitError("");
@@ -235,6 +238,7 @@ export function NewSessionDialog({
           ...(agentKind !== "shell" ? { agentKind } : {}),
           surface,
           ...(Object.keys(launch).length > 0 ? { launch } : {}),
+          ...(isolation === "worktree" ? { isolation, ...(branch ? { worktreeBranch: branch } : {}) } : {}),
           remember: true,
         }),
       )
@@ -244,7 +248,6 @@ export function NewSessionDialog({
         .finally(() => setSubmitting(false));
       return;
     }
-    const branch = worktreeBranch.trim() || undefined;
     const suggestedBranch =
       isolation === "worktree" && branch === prefill?.worktreeBranch;
     onCreate({

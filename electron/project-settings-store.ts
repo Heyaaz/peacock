@@ -29,8 +29,13 @@ export class ProjectSettingsStore {
 
   /** The settings of the project a path belongs to; the defaults when it has none. */
   async get(projectPath: string): Promise<ProjectSettings> {
+    return (await this.lookup(projectPath)).settings;
+  }
+
+  /** The same, with the project root the path resolved to. */
+  async lookup(projectPath: string): Promise<{ root: string; settings: ProjectSettings }> {
     const root = await this.resolveRoot(projectPath);
-    return copy(this.projects.get(root) ?? DEFAULT_PROJECT_SETTINGS);
+    return { root, settings: copy(this.projects.get(root) ?? DEFAULT_PROJECT_SETTINGS) };
   }
 
   /** Validates, then saves what the window sent; settings equal to the defaults are forgotten. */

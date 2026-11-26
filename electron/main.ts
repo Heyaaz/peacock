@@ -42,7 +42,7 @@ import { SettingsStore, validDirectory } from "./settings-store.js";
 import { SessionMetadataStore } from "./session-metadata-store.js";
 import { CommandRuleStore } from "./command-rule-store.js";
 import { ProjectSettingsStore } from "./project-settings-store.js";
-import { prepareWorktree } from "./worktree-service.js";
+import { prepareWorktree, type PrepareWorktree } from "./worktree-service.js";
 import { TerminalSessionStore } from "./terminal-session-store.js";
 import { hostText, setHostLanguage } from "./host-text.js";
 import { ManagementService } from "./desktop-services.js";
@@ -547,6 +547,14 @@ function installApplicationMenu(): void {
   );
 }
 
+// a new worktree is filled from its project's settings: copied files, then the setup script
+const prepareProjectWorktree: PrepareWorktree = async (worktree) =>
+  prepareWorktree({
+    settings: await projectSettings.get(worktree.sourceWorkspace),
+    sourceRoot: worktree.sourceWorkspace,
+    worktreePath: worktree.path,
+    branch: worktree.branch,
+  });
 const gjcController = new GjcSdkController({
   workspace,
   executable: gjcExecutableOf(preferences, process.env) || undefined,
@@ -554,14 +562,7 @@ const gjcController = new GjcSdkController({
   permissionHandling: preferences.permissionHandling,
   sessionMetadata,
   commandRules,
-  // a new worktree is filled from its project's settings: copied files, then the setup script
-  prepareWorktree: async (worktree) =>
-    prepareWorktree({
-      settings: await projectSettings.get(worktree.sourceWorkspace),
-      sourceRoot: worktree.sourceWorkspace,
-      worktreePath: worktree.path,
-      branch: worktree.branch,
-    }),
+  prepareWorktree: prepareProjectWorktree,
   artifactDirectory: path.join(userDataDirectory, "artifacts"),
   emit: broadcastAgentEvent,
 });
@@ -902,6 +903,7 @@ herdrAgents =
         ompExtensionPath: () => (agentHooksReady ? agentHooks?.ompExtensionPath : undefined),
         hooksListening: () => agentHooks?.listening === true,
         commandRules,
+        prepareWorktree: prepareProjectWorktree,
         emit: (event) => broadcastAgentEvent(event),
         claim: (sessionId) => agentRouter.claimSession(sessionId, "herdr"),
         home: homedir(),
@@ -915,6 +917,7 @@ const ompRpc = new OmpRpcController({
   detect: () => agentDetector.detect("omp"),
   environment: () => userLoginPath().then((pathValue) => agentEnvironment(process.env, pathValue)),
   commandRules,
+  prepareWorktree: prepareProjectWorktree,
   emit: (event) => broadcastAgentEvent(event),
   claim: (sessionId) => agentRouter.claimSession(sessionId, "omp-rpc"),
   // the agent smoke runs omp apart from the user's own extras (prewalk): GAJAE_SMOKE_OMP_ARGS, read only there

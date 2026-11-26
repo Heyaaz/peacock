@@ -53,6 +53,7 @@ import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
 import { parseContextReport } from "./context-report.js";
 import { commitChanges, getGitStatus, pushChanges, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
 import { workspaceDiff } from "../herdr-core/workspace-diff.js";
+import { createSessionWorktree, discardSessionWorktree, type GitRunner, type PrepareWorktree } from "../worktree-service.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
 import { OmpRpcClient, type RpcFrame, type RpcProcess, type RpcPromptResult } from "./rpc-client.js";
 import { OMP_RPC_SESSION_PREFIX, type OmpRpcSessionRecord, type OmpRpcSessionStore } from "./session-store.js";
@@ -93,6 +94,10 @@ export interface OmpRpcControllerOptions {
   };
   /** How long a chat stays idle before its recap is asked for (tests shorten it). */
   recapIdleMs?: number;
+  /** Fills a new chat's worktree from its project's settings (copied files, setup script). */
+  prepareWorktree?: PrepareWorktree;
+  /** Git for making and taking back a chat's worktree (tests hand in a fake). */
+  git?: GitRunner;
 }
 
 /** An approval card waiting for its answer. */
@@ -294,15 +299,33 @@ export class OmpRpcController implements AgentRuntimeController {
     const launch = launchOptions("omp", input.launch);
     const agent = await this.options.detect();
     if (!agent.installed) throw new Error(`${agent.name}: ${agent.reason ?? "not installed"}`);
-    const record = this.options.store.create({
-      title: input.title?.trim() || path.basename(input.workspace) || "omp",
-      workspace: input.workspace,
-      ...(launch ? { launch } : {}),
-    });
-    this.options.claim?.(record.id);
-    const session = this.row(record);
+    // everything the chat can be refused for is checked above, so a worktree is made only for one that starts
+    const made =
+      input.isolation === "worktree"
+        ? await createSessionWorktree({
+            workspace: input.workspace,
+            ...(input.worktreeBranch ? { branch: input.worktreeBranch } : {}),
+            ...(this.options.prepareWorktree ? { prepare: this.options.prepareWorktree } : {}),
+            ...(this.options.git ? { git: this.options.git } : {}),
+          })
+        : undefined;
+    let created: OmpRpcSessionRecord;
+    try {
+      created = this.options.store.create({
+        title: input.title?.trim() || path.basename(input.workspace) || "omp",
+        workspace: made?.worktree.path ?? input.workspace,
+        ...(launch ? { launch } : {}),
+        ...(made ? { worktree: made.worktree } : {}),
+      });
+    } catch (error) {
+      if (made) await discardSessionWorktree(made, this.options.git);
+      throw error;
+    }
+    this.options.claim?.(created.id);
+    const session = this.row(created);
     this.options.emit({ type: "session.created", session });
-    return session;
+    // only the answer to this call carries what the worktree's setup reported
+    return made?.setup ? { ...session, worktreeSetup: made.setup } : session;
   }
 
   /** Renames the row and omp's session (`set_session_name`), now or when its omp next starts. */
@@ -607,6 +630,8 @@ export class OmpRpcController implements AgentRuntimeController {
       workspace: source.workspace,
       ...(source.launch ? { launch: source.launch } : {}),
       parentId: source.id,
+      // a fork works in the same folder, so it is in the same worktree
+      ...(source.worktree ? { worktree: source.worktree } : {}),
     });
     this.options.store.reportSession(created.id, { sessionFile: source.sessionFile });
     try {
@@ -1988,6 +2013,7 @@ export class OmpRpcController implements AgentRuntimeController {
       agentKind: "omp",
       surfaces: ["chat"],
       capabilities,
+      ...(record.worktree ? { worktree: { ...record.worktree } } : {}),
       ...this.rowExtras(record),
     };
   }

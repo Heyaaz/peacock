@@ -57,6 +57,11 @@ export interface WorkspaceInspection {
   broad: boolean;
   /** Whether the folder is inside a git repository. */
   git: boolean;
+  /**
+   * Set when the folder's project starts new sessions in a new worktree by default (Settings ›
+   * 프로젝트): the project's main working tree, which the worktree is made from.
+   */
+  newSessionWorktreeRoot?: string;
 }
 
 export const DESKTOP_IPC = {

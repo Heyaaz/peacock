@@ -15,7 +15,7 @@ import { isAgentKindId, normalizeRuntimeKind, parseSessionWorkLink } from "../sh
 import { agentSupportsSurface } from "../shared/agent-catalog.js";
 import { launchOptions, launchOptionsFault } from "../shared/agent-launch.js";
 import { normalizeRulePrefix } from "../shared/command-rules.js";
-import { safeModelPreset } from "../shared/parallel-run.js";
+import { safeBranchName, safeModelPreset } from "../shared/parallel-run.js";
 
 /**
  * Input validation shared by the Electron IPC surface and the remote access
@@ -65,8 +65,32 @@ export function attachmentName(value: unknown): string {
 }
 
 /**
- * A terminal session (herdr): an agent other than GJC, or a shell, in a folder as it is
- * (no worktree), with launch options its agent takes and a screen it has.
+ * What a terminal or chat session may ask of its folder: to run in it as it is, or in a new
+ * worktree of its repository on a branch of its own. A branch that must already exist, and a
+ * fork's pull request, are GJC's.
+ */
+export function terminalIsolation(candidate: {
+  isolation?: unknown;
+  worktreeBranch?: unknown;
+  worktreeBranchExisting?: unknown;
+  worktreePull?: unknown;
+}): Pick<CreateSessionInput, "isolation" | "worktreeBranch"> {
+  if (candidate.isolation !== undefined && candidate.isolation !== "workspace" && candidate.isolation !== "worktree")
+    throw new Error("Session isolation must be workspace or worktree");
+  if (candidate.worktreeBranchExisting !== undefined || candidate.worktreePull !== undefined)
+    throw new Error("Only GJC can start a worktree from an existing branch or a pull request");
+  if (candidate.isolation !== "worktree") return { isolation: "workspace" };
+  if (candidate.worktreeBranch !== undefined && !safeBranchName(candidate.worktreeBranch))
+    throw new Error("Session worktree branch is invalid");
+  return {
+    isolation: "worktree",
+    ...(typeof candidate.worktreeBranch === "string" ? { worktreeBranch: candidate.worktreeBranch } : {}),
+  };
+}
+
+/**
+ * A terminal session (herdr): an agent other than GJC, or a shell, in a folder as it is or in
+ * a new worktree, with launch options its agent takes and a screen it has.
  */
 function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInput {
   const agentKind = candidate.agentKind === undefined ? "shell" : candidate.agentKind;
@@ -74,8 +98,7 @@ function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInp
   if (candidate.title !== undefined && typeof candidate.title !== "string") throw new Error("Session title must be a string");
   if (typeof candidate.workspace !== "string" || !path.isAbsolute(candidate.workspace))
     throw new Error("Session workspace must be an absolute directory");
-  if (candidate.isolation !== undefined && candidate.isolation !== "workspace")
-    throw new Error("A terminal session runs in its folder as it is");
+  const isolation = terminalIsolation(candidate);
   if (candidate.surface !== undefined && (typeof candidate.surface !== "string" || !agentSupportsSurface(agentKind, candidate.surface as SessionSurface)))
     throw new Error("Terminal session screen is invalid");
   const fault = launchOptionsFault(agentKind, candidate.launch);
@@ -89,7 +112,7 @@ function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInp
   return {
     runtime: "herdr",
     workspace: path.resolve(candidate.workspace),
-    isolation: "workspace",
+    ...isolation,
     agentKind,
     ...(candidate.title ? { title: candidate.title } : {}),
     ...(candidate.surface ? { surface: candidate.surface as SessionSurface } : {}),
@@ -97,14 +120,13 @@ function herdrSessionInput(candidate: Record<string, unknown>): CreateSessionInp
   };
 }
 
-/** An omp RPC chat (design §10): omp, in a folder as it is, with the launch options omp takes. */
+/** An omp RPC chat (design §10): omp, in a folder as it is or in a new worktree, with the launch options omp takes. */
 function ompRpcSessionInput(candidate: Record<string, unknown>): CreateSessionInput {
   if (candidate.agentKind !== undefined && candidate.agentKind !== "omp") throw new Error("An omp chat runs omp");
   if (candidate.title !== undefined && typeof candidate.title !== "string") throw new Error("Session title must be a string");
   if (typeof candidate.workspace !== "string" || !path.isAbsolute(candidate.workspace))
     throw new Error("Session workspace must be an absolute directory");
-  if (candidate.isolation !== undefined && candidate.isolation !== "workspace")
-    throw new Error("An omp chat runs in its folder as it is");
+  const isolation = terminalIsolation(candidate);
   const fault = launchOptionsFault("omp", candidate.launch);
   if (fault) throw new Error(fault);
   const launch = launchOptions("omp", candidate.launch);
@@ -116,7 +138,7 @@ function ompRpcSessionInput(candidate: Record<string, unknown>): CreateSessionIn
   return {
     runtime: "omp-rpc",
     workspace: path.resolve(candidate.workspace),
-    isolation: "workspace",
+    ...isolation,
     agentKind: "omp",
     surface: "chat",
     ...(candidate.title ? { title: candidate.title } : {}),

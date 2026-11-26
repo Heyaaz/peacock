@@ -33,6 +33,16 @@ describe("ProjectSettingsStore", () => {
     expect(reloaded.list()).toEqual([{ root: "/repo", settings: SETTINGS }]);
   });
 
+  it("looks a project up with the root its path resolved to", async () => {
+    const store = new ProjectSettingsStore(directory, async (projectPath) => (projectPath.startsWith("/repo") ? "/repo" : projectPath));
+    await store.set("/repo", SETTINGS);
+    expect(await store.lookup("/repo.gajae-worktrees/a")).toEqual({ root: "/repo", settings: SETTINGS });
+    expect(await store.lookup("/other")).toEqual({
+      root: "/other",
+      settings: { newSessionWorktree: false, setupScript: "", copyFiles: [] },
+    });
+  });
+
   it("writes a private file", async () => {
     await new ProjectSettingsStore(directory, identity).set("/repo", SETTINGS);
     expect((await stat(file())).mode & 0o777).toBe(0o600);

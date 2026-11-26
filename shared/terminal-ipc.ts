@@ -5,7 +5,7 @@
  * and this channel set only carries bytes, size, and flow control.
  */
 
-import type { AgentKindId, AgentSession } from "./agent-contract.js";
+import type { AgentKindId, AgentSession, ManagedWorktree } from "./agent-contract.js";
 import type { AgentLaunchOptions } from "./agent-launch.js";
 
 export const TERMINAL_IPC = {
@@ -54,6 +54,8 @@ export interface TerminalSessionRecord {
   agentSessionRef?: string;
   /** Where the agent writes that session's transcript, as it last reported. */
   transcriptPath?: string;
+  /** The worktree this app made for the session; `workspace` is its folder. */
+  worktree?: ManagedWorktree;
 }
 
 /** Whether an agent can be started here, and where it was found. */
@@ -76,6 +78,10 @@ export interface TerminalSessionCreateInput {
   /** The agent the terminal runs; a shell when unset. */
   agentKind?: AgentKindId;
   launch?: AgentLaunchOptions;
+  /** `worktree` starts the session in a new worktree of `workspace`'s repository; unset runs in the folder as it is. */
+  isolation?: "workspace" | "worktree";
+  /** The new worktree's branch; a new `peacock/<id>` branch when unset. */
+  worktreeBranch?: string;
 }
 
 export interface TerminalStartRequest {

@@ -1335,4 +1335,5 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "setup 스크립트가 중간에 중단되었습니다.": "The setup script was interrupted.",
   "setup 스크립트가 종료 코드 {0}(으)로 끝났습니다.": "The setup script exited with code {0}.",
   "마지막 출력: {0}": "Last output: {0}",
+  "worktree 준비 중…": "Preparing worktree…",
 };

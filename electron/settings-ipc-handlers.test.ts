@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -285,6 +286,79 @@ describe("project settings channel", () => {
     try {
       expect(handled.has(SETTINGS_IPC.listProjectSettings)).toBe(false);
       expect(handled.has(SETTINGS_IPC.setProjectSettings)).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+});
+
+describe("workspace inspection with project settings", () => {
+  function inspect(settings: { lookup: (path: string) => Promise<{ root: string; settings: { newSessionWorktree: boolean } }> } | undefined) {
+    const directory = mkdtempSync(path.join(tmpdir(), "gajae-settings-ipc-"));
+    created.push(directory);
+    const security = { guarded: (handler: (...args: unknown[]) => unknown) => handler } as unknown as IpcSecurity;
+    const dispose = registerSettingsIpcHandlers(
+      new SettingsStore(directory, directory), {} as AttachmentStore, security,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined,
+      settings as never,
+    );
+    return { directory, dispose };
+  }
+  const repoIn = (directory: string): string => {
+    const repo = path.join(directory, "repo");
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q", repo]);
+    return repo;
+  };
+
+  it("names the project root when the project starts new sessions in a worktree", async () => {
+    const lookup = vi.fn(async () => ({ root: "/work/project", settings: { newSessionWorktree: true } }));
+    const { directory, dispose } = inspect({ lookup });
+    try {
+      const repo = repoIn(directory);
+      expect(await handled.get(SETTINGS_IPC.inspectWorkspace)?.({}, repo)).toEqual({
+        broad: false,
+        git: true,
+        newSessionWorktreeRoot: "/work/project",
+      });
+      expect(lookup).toHaveBeenCalledWith(repo);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("says nothing of it when the project does not, the folder is not a repository, or no settings are kept", async () => {
+    const off = inspect({ lookup: async () => ({ root: "/work/project", settings: { newSessionWorktree: false } }) });
+    try {
+      expect(await handled.get(SETTINGS_IPC.inspectWorkspace)?.({}, repoIn(off.directory))).toEqual({ broad: false, git: true });
+    } finally {
+      off.dispose();
+    }
+    const lookup = vi.fn(async () => ({ root: "/work/project", settings: { newSessionWorktree: true } }));
+    const plain = inspect({ lookup });
+    try {
+      expect(await handled.get(SETTINGS_IPC.inspectWorkspace)?.({}, plain.directory)).toEqual({ broad: false, git: false });
+      expect(lookup).not.toHaveBeenCalled();
+    } finally {
+      plain.dispose();
+    }
+    const none = inspect(undefined);
+    try {
+      expect(await handled.get(SETTINGS_IPC.inspectWorkspace)?.({}, repoIn(none.directory))).toEqual({ broad: false, git: true });
+    } finally {
+      none.dispose();
+    }
+  });
+
+  it("still answers when the settings cannot be read", async () => {
+    const { directory, dispose } = inspect({
+      lookup: async () => {
+        throw new Error("unreadable");
+      },
+    });
+    try {
+      expect(await handled.get(SETTINGS_IPC.inspectWorkspace)?.({}, repoIn(directory))).toEqual({ broad: false, git: true });
     } finally {
       dispose();
     }

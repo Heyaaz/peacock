@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import type { AgentAvailability } from "../../shared/terminal-ipc.js";
 import { OmpRpcController, ompRpcArgs, sessionOfOmpToolId } from "./controller.js";
 import { FakeRpcProcess, settle } from "./fake-process.test-util.js";
 import { OmpRpcSessionStore } from "./session-store.js";
+import type { PrepareWorktree } from "../worktree-service.js";
 
 type Row = { dir: string; frame: Record<string, unknown> };
 
@@ -35,7 +36,7 @@ const CONTEXT_REPORT = [
   "  Free             [███░] 83%  793150 tokens",
 ].join("\n");
 
-function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject">; recapIdleMs?: number } = {}) {
+function setup(options: { installed?: boolean; rules?: Record<string, "allow" | "reject">; recapIdleMs?: number; prepareWorktree?: PrepareWorktree } = {}) {
   const addRule = vi.fn(async () => undefined);
   const commandRules = {
     decide: vi.fn(async (_root: string, _tool: string, command: string) => {
@@ -209,6 +210,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
     resyncDelaysMs: [0, 5, 5],
     ...(options.recapIdleMs !== undefined ? { recapIdleMs: options.recapIdleMs } : {}),
     commandRules: commandRules as never,
+    ...(options.prepareWorktree ? { prepareWorktree: options.prepareWorktree } : {}),
   });
   const answerBash = (data: Record<string, unknown>) => {
     const call = bashCalls.shift()!;
@@ -1218,6 +1220,107 @@ describe("OmpRpcController tree navigation in one file", () => {
     await expect(context.controller.navigateSessionTree(session.id, "u1")).resolves.toBe("first question");
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(await texts()).toEqual([]);
+  });
+});
+
+describe("OmpRpcController chats in a worktree", () => {
+  function repository(): string {
+    const parent = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-omp-repo-")));
+    const repo = path.join(parent, "repo");
+    mkdirSync(repo);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "pipe" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README"), "seed");
+    git("add", "README");
+    git("commit", "-q", "-m", "seed");
+    return repo;
+  }
+  const worktreeChat = (context: ReturnType<typeof setup>, workspace: string, extra: { worktreeBranch?: string } = {}) =>
+    context.controller.createSession({ runtime: "omp-rpc", workspace, isolation: "worktree", agentKind: "omp", title: "wt", ...extra });
+
+  it("starts omp in a new worktree on a branch of its own, and shows it on the row", async () => {
+    const repo = repository();
+    const prepare = vi.fn<PrepareWorktree>(async () => ({ problems: { copy: [] } }));
+    const context = setup({ prepareWorktree: prepare });
+    const session = await worktreeChat(context, repo);
+    const worktree = session.worktree!;
+    expect(worktree).toMatchObject({ sourceWorkspace: repo, managed: true });
+    expect(worktree.branch).toMatch(/^peacock\//u);
+    expect(session.workspace).toBe(worktree.path);
+    expect(existsSync(path.join(worktree.path, "README"))).toBe(true);
+    expect(prepare).toHaveBeenCalledWith(worktree);
+    expect(context.store.get(session.id)).toMatchObject({ workspace: worktree.path, worktree });
+    expect(context.events[0]).toEqual({ type: "session.created", session });
+    // omp runs in the worktree
+    await context.controller.refreshSessionContext(session.id);
+    expect(context.spawn.mock.calls[0]![2].cwd).toBe(worktree.path);
+    expect(context.processes[0]!.args).toEqual(expect.arrayContaining(["--cwd", worktree.path]));
+  });
+
+  it("reports what the setup did not manage on the answer only", async () => {
+    const repo = repository();
+    const context = setup({
+      prepareWorktree: async () => ({ problems: { copy: [{ path: "big.bin", reason: "too-large" }] } }),
+    });
+    const session = await worktreeChat(context, repo);
+    expect(session.worktreeSetup).toEqual({ copyProblems: [{ path: "big.bin", reason: "too-large" }] });
+    expect(context.events[0]).toMatchObject({ session: expect.not.objectContaining({ worktreeSetup: expect.anything() }) });
+    expect((await context.controller.listSessions())[0]).not.toHaveProperty("worktreeSetup");
+  });
+
+  it("makes no worktree when omp is not installed", async () => {
+    const repo = repository();
+    const context = setup({ installed: false });
+    await expect(worktreeChat(context, repo)).rejects.toThrow("설치되어 있지 않습니다");
+    expect(existsSync(path.join(path.dirname(repo), "repo.gajae-worktrees"))).toBe(false);
+  });
+
+  it("takes the worktree back when the chat cannot be recorded", async () => {
+    const repo = repository();
+    const context = setup();
+    vi.spyOn(context.store, "create").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    await expect(worktreeChat(context, repo, { worktreeBranch: "feat/omp" })).rejects.toThrow("disk full");
+    expect(execFileSync("git", ["-C", repo, "worktree", "list", "--porcelain"], { encoding: "utf8" })).not.toContain("gajae-worktrees");
+    expect(execFileSync("git", ["-C", repo, "branch", "--list", "feat/omp"], { encoding: "utf8" }).trim()).toBe("");
+    expect(context.claim).not.toHaveBeenCalled();
+  });
+
+  it("lets the git panel stage and commit in the chat's worktree, which it refuses outside one", async () => {
+    for (const key of ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]) vi.stubEnv(key, "t");
+    for (const key of ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]) vi.stubEnv(key, "t@t");
+    const repo = repository();
+    const context = setup();
+    const session = await worktreeChat(context, repo);
+    writeFileSync(path.join(session.workspace, "note.txt"), "hi\n");
+    expect((await context.controller.getGitStatus(session.id)).files.map((file) => file.path)).toContain("note.txt");
+    const staged = await context.controller.stageFiles(session.id, ["note.txt"]);
+    expect(staged.files.find((file) => file.path === "note.txt")?.index).toBe("A");
+    const committed = await context.controller.commitChanges(session.id, "add note");
+    expect(committed.files).toEqual([]);
+    expect(execFileSync("git", ["-C", repo, "log", "-1", "--format=%s", session.worktree!.branch], { encoding: "utf8" }).trim()).toBe("add note");
+    vi.unstubAllEnvs();
+  });
+
+  it("puts a fork in its source's worktree", async () => {
+    const repo = repository();
+    const context = setup();
+    const source = await worktreeChat(context, repo);
+    await context.controller.refreshSessionContext(source.id);
+    writeFileSync(context.sessionFile, "{}\n");
+    const fork = await context.controller.forkSession({ sourceSessionId: source.id, entryId: "u1" });
+    expect(fork.worktree).toEqual(source.worktree);
+    expect(fork.workspace).toBe(source.workspace);
+    expect(context.store.get(fork.id)?.worktree).toEqual(source.worktree);
+  });
+
+  it("opens a chat that runs in its folder as it is without a worktree", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    expect(session.worktree).toBeUndefined();
+    expect(session.workspace).toBe(context.workspace);
   });
 });
 

@@ -18,8 +18,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   COPY_FILE_MAX_BYTES,
   copyProjectFiles,
+  createSessionWorktree,
   createWorktree,
   discardNewWorktree,
+  discardSessionWorktree,
   discardUnusedWorktree,
   inspectWorktree,
   listWorktreePaths,
@@ -178,6 +180,88 @@ describe("createWorktree", () => {
   });
 });
 
+describe("a worktree for a terminal or chat session", () => {
+  it("names the branch peacock/<id> and the folder by the same id, and fills the worktree", async () => {
+    const { parent, repo } = repository();
+    const prepare = vi.fn(async () => ({ problems: { copy: [] } }));
+    const made = await createSessionWorktree({ workspace: repo, prepare });
+    expect(made.branchExisted).toBe(false);
+    expect(made.setup).toBeUndefined();
+    expect(made.worktree.branch).toMatch(/^peacock\/[0-9a-z]+-[0-9a-f]{6}$/u);
+    expect(made.worktree.path).toBe(path.join(parent, "repo.gajae-worktrees", made.worktree.branch.slice("peacock/".length)));
+    expect(prepare).toHaveBeenCalledWith(made.worktree);
+  });
+
+  it("makes a branch of its own every time, even in the same millisecond", async () => {
+    const { repo } = repository();
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    const first = await createSessionWorktree({ workspace: repo });
+    const second = await createSessionWorktree({ workspace: repo });
+    vi.restoreAllMocks();
+    expect(first.worktree.branch).not.toBe(second.worktree.branch);
+    expect(first.worktree.path).not.toBe(second.worktree.path);
+  });
+
+  it("uses the branch it is given, and says the branch was there when it was", async () => {
+    const { repo } = repository();
+    git(repo, "branch", "mine");
+    const made = await createSessionWorktree({ workspace: repo, branch: "mine" });
+    expect(made.worktree.branch).toBe("mine");
+    expect(made.branchExisted).toBe(true);
+  });
+
+  it("reports a setup that did not go as asked, and carries on when preparing itself fails", async () => {
+    const { repo } = repository();
+    const reported = await createSessionWorktree({
+      workspace: repo,
+      prepare: async () => ({ problems: { copy: [], setup: { status: "timeout", output: "tail", durationMs: 5 } } }),
+    });
+    expect(reported.setup).toEqual({ setup: { status: "timeout", output: "tail" } });
+    const failed = await createSessionWorktree({
+      workspace: repo,
+      prepare: async () => {
+        throw new Error("settings unreadable");
+      },
+    });
+    expect(failed.setup).toBeUndefined();
+    expect(existsSync(failed.worktree.path)).toBe(true);
+  });
+
+  it("fills the worktree from a settings lookup that runs synchronously, too", async () => {
+    const { repo } = repository();
+    const made = await createSessionWorktree({
+      workspace: repo,
+      prepare: (() => {
+        throw new Error("thrown at once");
+      }) as never,
+    });
+    expect(made.setup).toBeUndefined();
+  });
+
+  it("takes the worktree back with its branch, or without it when the branch was there before", async () => {
+    const { repo } = repository();
+    const fresh = await createSessionWorktree({ workspace: repo });
+    writeFileSync(path.join(fresh.worktree.path, "setup-output.txt"), "x");
+    await discardSessionWorktree(fresh);
+    expect(existsSync(fresh.worktree.path)).toBe(false);
+    expect(git(repo, "branch", "--list", fresh.worktree.branch)).toBe("");
+
+    git(repo, "branch", "mine");
+    const existing = await createSessionWorktree({ workspace: repo, branch: "mine" });
+    await discardSessionWorktree(existing);
+    expect(existsSync(existing.worktree.path)).toBe(false);
+    expect(git(repo, "branch", "--list", "mine")).toContain("mine");
+  });
+
+  it("makes a worktree for GJC under gajae/ unless asked otherwise", async () => {
+    const { repo } = repository();
+    const gjc = await createWorktree({ workspace: repo, suffix: () => "s-1" });
+    expect(gjc.worktree.branch).toBe("gajae/s-1");
+    const other = await createWorktree({ workspace: repo, suffix: () => "s-2", branchPrefix: "team" });
+    expect(other.worktree.branch).toBe("team/s-2");
+  });
+});
+
 describe("discarding a worktree", () => {
   it("takes back an unused worktree with the branch it made", async () => {
     const { repo } = repository();
@@ -198,6 +282,15 @@ describe("discarding a worktree", () => {
     const existing = await createWorktree({ workspace: repo, branch: "mine", suffix });
     await discardUnusedWorktree(runGit, existing.worktree, existing.branchExisted);
     expect(existsSync(existing.worktree.path)).toBe(false);
+    expect(git(repo, "branch", "--list", "mine")).toContain("mine");
+  });
+
+  it("keeps the branch when told it was there before", async () => {
+    const { repo } = repository();
+    git(repo, "branch", "mine");
+    const { worktree } = await createWorktree({ workspace: repo, branch: "mine", suffix });
+    await discardNewWorktree(runGit, repo, worktree.path, "mine", { keepBranch: true });
+    expect(existsSync(worktree.path)).toBe(false);
     expect(git(repo, "branch", "--list", "mine")).toContain("mine");
   });
 

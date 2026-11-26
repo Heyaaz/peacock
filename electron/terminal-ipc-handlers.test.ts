@@ -557,3 +557,60 @@ describe("terminal agent sessions", () => {
     expect(() => handled.get(TERMINAL_IPC.createSession)!(event, { title: "c", workspace: directory, agentKind: "claude" })).toThrow(/herdr-core/u);
   });
 });
+
+describe("terminal session creation in a worktree", () => {
+  function setup(agents = true) {
+    const directory = mkdtempSync(path.join(tmpdir(), "terminal-wt-create-"));
+    const store = new TerminalSessionStore(directory);
+    const createTerminalSession = vi.fn(async (input: { title: string; workspace: string }) => ({ id: "terminal-1", title: input.title, workspace: input.workspace }) as unknown as AgentSession);
+    const registration = registerTerminalIpcHandlers(security(true), {
+      store,
+      ...(agents
+        ? { agents: { listSessions: () => [], createTerminalSession, listAgents: async () => [], forget: () => undefined } }
+        : {}),
+    });
+    const event = { sender: { id: 41, isDestroyed: () => false, send: vi.fn() } } as unknown as IpcMainInvokeEvent;
+    const call = (...args: unknown[]) => handled.get(TERMINAL_IPC.createSession)!(event, ...args);
+    return { directory, store, createTerminalSession, registration, call };
+  }
+
+  it("hands the controller the isolation and the branch it asked for", async () => {
+    const { directory, createTerminalSession, call } = setup();
+    await call({ title: "a", workspace: directory, agentKind: "claude", isolation: "worktree", worktreeBranch: "peacock/a-1" });
+    expect(createTerminalSession).toHaveBeenLastCalledWith({
+      title: "a",
+      workspace: directory,
+      agentKind: "claude",
+      isolation: "worktree",
+      worktreeBranch: "peacock/a-1",
+    });
+    await call({ title: "b", workspace: directory, agentKind: "codex", isolation: "worktree" });
+    expect(createTerminalSession.mock.lastCall![0]).toEqual({ title: "b", workspace: directory, agentKind: "codex", isolation: "worktree" });
+  });
+
+  it("asks nothing of the folder for a session that runs in it as it is", async () => {
+    const { directory, createTerminalSession, call } = setup();
+    await call({ title: "a", workspace: directory, agentKind: "claude", isolation: "workspace", worktreeBranch: "ignored" });
+    await call({ title: "b", workspace: directory, agentKind: "claude" });
+    expect(createTerminalSession.mock.calls.map(([input]) => input)).toEqual([
+      { title: "a", workspace: directory, agentKind: "claude" },
+      { title: "b", workspace: directory, agentKind: "claude" },
+    ]);
+  });
+
+  it("refuses an isolation or a branch it does not know, and a branch that must exist", () => {
+    const { directory, createTerminalSession, call } = setup();
+    expect(() => call({ title: "a", workspace: directory, isolation: "sandbox" })).toThrow("workspace or worktree");
+    expect(() => call({ title: "a", workspace: directory, isolation: "worktree", worktreeBranch: "-rf" })).toThrow("branch is invalid");
+    expect(() => call({ title: "a", workspace: directory, isolation: "worktree", worktreeBranch: "x", worktreeBranchExisting: true })).toThrow("Only GJC");
+    expect(createTerminalSession).not.toHaveBeenCalled();
+  });
+
+  it("makes no worktree session without herdr-core, and no session at all", async () => {
+    const { directory, store, call } = setup(false);
+    expect(() => call({ title: "a", workspace: directory, isolation: "worktree" })).toThrow("herdr-core");
+    expect(store.list()).toEqual([]);
+    // a shell in the folder as it is still opens
+    expect(call({ title: "a", workspace: directory })).toMatchObject({ runtime: "herdr" });
+  });
+});

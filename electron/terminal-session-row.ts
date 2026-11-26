@@ -35,5 +35,6 @@ export function terminalAgentSession(
     // (omp-rpc); the transcript still feeds search and the phone, which reaches no terminal.
     surfaces: agent.chatRuntime ? ["terminal"] : [...agent.surfaces],
     ...(live.capabilities ? { capabilities: live.capabilities } : {}),
+    ...(record.worktree ? { worktree: { ...record.worktree } } : {}),
   };
 }

@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import { HerdrAgentController } from "./agent-controller.js";
 import { claudeTranscriptPath } from "./claude-session.js";
 import { HcReplyError, type ChannelHandlers, type HcConnection, type HelloInfo } from "./connection.js";
 import type { HookChannel } from "./agent-hooks.js";
+import type { PrepareWorktree } from "../worktree-service.js";
 
 function hookChannel() {
   const replies: string[] = [];
@@ -39,6 +41,7 @@ function setup(
     installed?: boolean;
     startTerminal?: (record: { id: string }) => Promise<void>;
     readiness?: { timeoutMs?: number; pollMs?: number };
+    prepareWorktree?: PrepareWorktree;
   } = {},
 ) {
   const directory = mkdtempSync(path.join(tmpdir(), "gajae-agents-"));
@@ -82,6 +85,7 @@ function setup(
     log: () => undefined,
     ...(options.startTerminal ? { startTerminal: options.startTerminal } : {}),
     ...(options.readiness ? { readiness: options.readiness } : {}),
+    ...(options.prepareWorktree ? { prepareWorktree: options.prepareWorktree } : {}),
   });
   const push = (type: string, terminal: string, data: Record<string, unknown>) =>
     stream!.onData(new TextEncoder().encode(`${JSON.stringify({ jsonrpc: "2.0", method: "event", params: { type, terminal, data, seq: 1 } })}\n`));
@@ -156,6 +160,137 @@ describe("HerdrAgentController sessions", () => {
     expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: false });
     expect(shell.surfaces).toEqual(["terminal"]);
     expect(await controller.getTranscriptPage(shell.id)).toMatchObject({ items: [] });
+  });
+});
+
+describe("HerdrAgentController sessions in a worktree", () => {
+  /** A repository with one commit; its worktrees land beside it, inside its own parent folder. */
+  function repository(): string {
+    const parent = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-agents-repo-")));
+    const repo = path.join(parent, "repo");
+    mkdirSync(repo);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "pipe", encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README"), "seed");
+    git("add", "README");
+    git("commit", "-q", "-m", "seed");
+    return repo;
+  }
+  const gitIn = (repo: string, ...args: string[]) =>
+    execFileSync("git", ["-C", repo, ...args], { stdio: "pipe", encoding: "utf8" });
+
+  it("starts the session in a new worktree on a branch of its own, records it, and fills it from the project's settings", async () => {
+    const repo = repository();
+    const prepare = vi.fn<PrepareWorktree>(async () => ({ problems: { copy: [] } }));
+    const { controller, store, events, claim } = setup({ prepareWorktree: prepare });
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" });
+    const worktree = session.worktree!;
+    expect(worktree).toMatchObject({ sourceWorkspace: repo, managed: true });
+    expect(worktree.path).toContain(`${path.sep}repo.gajae-worktrees${path.sep}`);
+    expect(worktree.branch).toMatch(/^peacock\/[0-9a-z]+-[0-9a-f]{6}$/u);
+    expect(session.workspace).toBe(worktree.path);
+    expect(existsSync(path.join(worktree.path, "README"))).toBe(true);
+    expect(gitIn(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe(worktree.branch);
+    expect(prepare).toHaveBeenCalledWith(worktree);
+    expect(store.get(session.id)).toMatchObject({ workspace: worktree.path, worktree });
+    expect(claim).toHaveBeenCalledWith(session.id);
+    expect(events[0]).toEqual({ type: "session.created", session });
+  });
+
+  it("keeps the worktree across a restart, and offers it on the listed row", async () => {
+    const repo = repository();
+    const { controller, directory } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "codex", isolation: "worktree", worktreeBranch: "feat/own" });
+    expect(session.worktree?.branch).toBe("feat/own");
+    const reloaded = new TerminalSessionStore(directory);
+    expect(reloaded.get(session.id)?.worktree).toEqual(session.worktree);
+    expect((await controller.listSessions()).find((row) => row.id === session.id)?.worktree).toEqual(session.worktree);
+  });
+
+  it("tells the caller, and only the caller, what the worktree's setup did not manage", async () => {
+    const repo = repository();
+    const prepare: PrepareWorktree = async () => ({
+      problems: { copy: [{ path: ".env", reason: "symlink" }], setup: { status: "failed", exitCode: 2, output: "boom", durationMs: 1 } },
+    });
+    const { controller, events } = setup({ prepareWorktree: prepare });
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" });
+    expect(session.worktreeSetup).toEqual({
+      copyProblems: [{ path: ".env", reason: "symlink" }],
+      setup: { status: "failed", exitCode: 2, output: "boom" },
+    });
+    expect(events[0]).toMatchObject({ type: "session.created", session: expect.not.objectContaining({ worktreeSetup: expect.anything() }) });
+    expect((await controller.listSessions())[0]).not.toHaveProperty("worktreeSetup");
+  });
+
+  it("opens the session even when preparing the worktree fails", async () => {
+    const repo = repository();
+    const { controller } = setup({
+      prepareWorktree: async () => {
+        throw new Error("settings unreadable");
+      },
+    });
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "shell", isolation: "worktree" });
+    expect(session.worktree).toBeDefined();
+    expect(session).not.toHaveProperty("worktreeSetup");
+  });
+
+  it("makes no worktree for a session it refuses", async () => {
+    const repo = repository();
+    const missing = setup({ installed: false });
+    await expect(missing.controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" })).rejects.toThrow("설치되어 있지 않습니다");
+    expect(gitIn(repo, "worktree", "list", "--porcelain")).not.toContain("gajae-worktrees");
+    expect(existsSync(path.join(path.dirname(repo), "repo.gajae-worktrees"))).toBe(false);
+  });
+
+  it("takes the worktree and its branch back when the session cannot be recorded", async () => {
+    const repo = repository();
+    const { controller, store, claim } = setup();
+    vi.spyOn(store, "create").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    await expect(controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" })).rejects.toThrow("disk full");
+    expect(claim).not.toHaveBeenCalled();
+    expect(gitIn(repo, "worktree", "list", "--porcelain")).not.toContain("gajae-worktrees");
+    expect(gitIn(repo, "branch", "--list", "peacock/*").trim()).toBe("");
+  });
+
+  it("keeps a branch that was there before when it takes the worktree back", async () => {
+    const repo = repository();
+    gitIn(repo, "branch", "mine");
+    const { controller, store } = setup();
+    vi.spyOn(store, "create").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    await expect(
+      controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree", worktreeBranch: "mine" }),
+    ).rejects.toThrow("disk full");
+    expect(gitIn(repo, "branch", "--list", "mine")).toContain("mine");
+    expect(gitIn(repo, "worktree", "list", "--porcelain")).not.toContain("gajae-worktrees");
+  });
+
+  it("refuses a folder that is not in a repository, leaving no session", async () => {
+    const { controller, store, directory } = setup();
+    await expect(controller.createTerminalSession({ title: "a", workspace: directory, agentKind: "shell", isolation: "worktree" })).rejects.toThrow();
+    expect(store.list()).toEqual([]);
+  });
+
+  it("asks nothing of the folder for a session that runs in it as it is", async () => {
+    const repo = repository();
+    const prepare = vi.fn<PrepareWorktree>(async () => ({ problems: { copy: [] } }));
+    const { controller } = setup({ prepareWorktree: prepare });
+    const session = await controller.createSession({ runtime: "herdr", agentKind: "claude", workspace: repo, isolation: "workspace" });
+    expect(session.workspace).toBe(repo);
+    expect(session.worktree).toBeUndefined();
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("takes the isolation of a session made through the router", async () => {
+    const repo = repository();
+    const { controller } = setup();
+    const session = await controller.createSession({ runtime: "herdr", agentKind: "claude", workspace: repo, isolation: "worktree", worktreeBranch: "feat/router" });
+    expect(session.worktree?.branch).toBe("feat/router");
+    expect(readFileSync(path.join(session.workspace, "README"), "utf8")).toBe("seed");
   });
 });
 

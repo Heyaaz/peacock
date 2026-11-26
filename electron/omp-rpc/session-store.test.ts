@@ -18,6 +18,21 @@ describe("OmpRpcSessionStore", () => {
     expect(new OmpRpcSessionStore(directory).get(second.id)).toEqual(second);
   });
 
+  it("keeps the worktree a chat was made in, and reads a damaged one as none", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "gajae-omp-store-"));
+    const store = new OmpRpcSessionStore(directory);
+    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const };
+    const made = store.create({ title: "in a worktree", workspace: worktree.path, worktree });
+    const plain = store.create({ title: "plain", workspace: "/tmp/work" });
+    expect(plain).not.toHaveProperty("worktree");
+    expect(new OmpRpcSessionStore(directory).get(made.id)?.worktree).toEqual(worktree);
+    const file = path.join(directory, "omp-rpc-sessions.json");
+    const raw = JSON.parse(readFileSync(file, "utf8")) as { sessions: Record<string, unknown>[] };
+    raw.sessions = raw.sessions.map((record) => (record.id === made.id ? { ...record, worktree: { ...worktree, managed: false } } : record));
+    writeFileSync(file, JSON.stringify(raw));
+    expect(new OmpRpcSessionStore(directory).get(made.id)).not.toHaveProperty("worktree");
+  });
+
   it("records omp's session file and id, renames, touches and deletes", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "gajae-omp-store-"));
     const store = new OmpRpcSessionStore(directory, () => new Date("2026-11-25T02:00:00Z"));

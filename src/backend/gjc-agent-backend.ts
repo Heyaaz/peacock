@@ -93,6 +93,8 @@ export class GjcAgentBackend implements AgentBackend {
         workspace: input.workspace,
         ...(input.agentKind ? { agentKind: input.agentKind } : {}),
         ...(input.launch ? { launch: input.launch } : {}),
+        ...(input.isolation === "worktree" ? { isolation: "worktree" as const } : {}),
+        ...(input.worktreeBranch ? { worktreeBranch: input.worktreeBranch } : {}),
       });
     }
     // an omp chat (design §10) is a session of the main process's router, like GJC's

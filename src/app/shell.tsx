@@ -70,6 +70,7 @@ import type { OnboardingStep } from "../../shared/onboarding";
 import { useComposerCallbacks } from "./use-composer-callbacks";
 import { usePreferenceToggles } from "./use-preference-toggles";
 import { useComposerModel } from "./use-composer-model";
+import { defaultSessionInput } from "./default-new-session";
 import { useCreateSession } from "./use-create-session";
 import { useSessionRemoval } from "./use-session-removal";
 import { useProjectModel } from "./use-project-model";
@@ -885,7 +886,7 @@ export default function App() {
   // ⌘T creates at once, so it reads the same default the dialog's first screen shows:
   // the agent remembered in Settings → 새 세션, or the first installed one.
   const defaultNewSessionInput = useCallback(
-    async (workspace: string): Promise<NewSessionInput> => {
+    async (workspace: string, worktreeRoot?: string): Promise<NewSessionInput> => {
       const remembered = preferencesRef.current.newSession;
       const listAgents = window.agentControlDesktop?.terminal?.listAgents;
       let choice: NewSessionChoice = { agentKind: "gjc", surface: "chat" };
@@ -896,16 +897,13 @@ export default function App() {
           // detection failed: GJC is the one agent a session needs no other program for
         }
       }
-      if (choice.agentKind === "gjc") return { title: DEFAULT_SESSION_TITLE, workspace };
-      const launch = preferencesRef.current.agents?.[choice.agentKind]?.launch;
-      return {
-        title: DEFAULT_SESSION_TITLE,
+      const launch = choice.agentKind === "gjc" ? undefined : preferencesRef.current.agents?.[choice.agentKind]?.launch;
+      return defaultSessionInput({
+        choice,
         workspace,
-        kind: "terminal",
-        ...(choice.agentKind !== "shell" ? { agentKind: choice.agentKind } : {}),
-        surface: choice.surface,
         ...(launch ? { launch } : {}),
-      };
+        ...(worktreeRoot ? { worktreeRoot } : {}),
+      });
     },
     [backend],
   );

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { parseManagedWorktree, type ManagedWorktree } from "../../shared/agent-contract.js";
 import { launchOptions, type AgentLaunchOptions } from "../../shared/agent-launch.js";
 
 /** omp RPC chat ids carry this prefix, so a row or a tool id says which runtime owns it. */
@@ -31,6 +32,8 @@ export interface OmpRpcSessionRecord {
   launch?: AgentLaunchOptions;
   /** The chat this one was forked from. */
   parentId?: string;
+  /** The worktree this app made for the chat; `workspace` is its folder. */
+  worktree?: ManagedWorktree;
 }
 
 /**
@@ -58,7 +61,13 @@ export class OmpRpcSessionStore {
     return session ? { ...session } : undefined;
   }
 
-  create(input: { title: string; workspace: string; launch?: AgentLaunchOptions; parentId?: string }): OmpRpcSessionRecord {
+  create(input: {
+    title: string;
+    workspace: string;
+    launch?: AgentLaunchOptions;
+    parentId?: string;
+    worktree?: ManagedWorktree;
+  }): OmpRpcSessionRecord {
     const launch = launchOptions("omp", input.launch);
     const session: OmpRpcSessionRecord = {
       id: `${OMP_RPC_SESSION_PREFIX}${randomUUID()}`,
@@ -67,6 +76,7 @@ export class OmpRpcSessionStore {
       createdAt: this.now().toISOString(),
       ...(launch ? { launch } : {}),
       ...(input.parentId ? { parentId: input.parentId } : {}),
+      ...(input.worktree ? { worktree: { ...input.worktree } } : {}),
     };
     this.sessions = [session, ...this.sessions];
     this.write();
@@ -158,6 +168,7 @@ function parseRecord(raw: unknown): OmpRpcSessionRecord[] {
   } catch {
     launch = undefined;
   }
+  const worktree = parseManagedWorktree(value.worktree);
   return [
     {
       id: value.id,
@@ -169,6 +180,7 @@ function parseRecord(raw: unknown): OmpRpcSessionRecord[] {
       ...(typeof value.ompSessionId === "string" && OMP_SESSION_ID.test(value.ompSessionId) ? { ompSessionId: value.ompSessionId } : {}),
       ...(launch ? { launch } : {}),
       ...(typeof value.parentId === "string" && SESSION_ID.test(value.parentId) ? { parentId: value.parentId } : {}),
+      ...(worktree ? { worktree } : {}),
     },
   ];
 }

@@ -35,6 +35,26 @@ describe("TerminalSessionStore", () => {
     expect(reread.terminalAddress).toBeUndefined();
   });
 
+  it("keeps the worktree a session was made in, and drops one that is not whole", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "gajae-terminal-store-"));
+    const store = new TerminalSessionStore(directory);
+    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const };
+    const created = store.create({ title: "a", workspace: worktree.path, agentKind: "claude", worktree });
+    expect(created.worktree).toEqual(worktree);
+    expect(new TerminalSessionStore(directory).get(created.id)?.worktree).toEqual(worktree);
+    // a record from before worktrees has none, and a damaged one is read as having none
+    const raw = JSON.parse(readFileSync(file(directory), "utf8")) as { sessions: Record<string, unknown>[] };
+    raw.sessions.push(
+      { id: "terminal-old", title: "old", workspace: "/tmp", createdAt: "2026-11-01T00:00:00.000Z", agentKind: "shell" },
+      { id: "terminal-bad", title: "bad", workspace: "/tmp", createdAt: "2026-11-01T00:00:00.000Z", agentKind: "shell", worktree: { path: "rel", branch: "", managed: true } },
+    );
+    writeFileSync(file(directory), JSON.stringify(raw));
+    const reread = new TerminalSessionStore(directory);
+    expect(reread.get("terminal-old")).not.toHaveProperty("worktree");
+    expect(reread.get("terminal-bad")).not.toHaveProperty("worktree");
+    expect(reread.get(created.id)?.worktree).toEqual(worktree);
+  });
+
   it("drops a binding that is not one", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "gajae-terminal-store-"));
     writeFileSync(

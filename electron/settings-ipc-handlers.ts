@@ -147,7 +147,7 @@ export function registerSettingsIpcHandlers(
   commandRules?: Pick<CommandRuleStore, 'list' | 'remove'>,
   system?: { info(): Promise<SystemInfo>; revealDataFolder(): Promise<void> },
   installAppUpdate?: () => Promise<AppUpdateInstallResult>,
-  projectSettings?: Pick<ProjectSettingsStore, 'list' | 'get' | 'set'>,
+  projectSettings?: Pick<ProjectSettingsStore, 'list' | 'get' | 'set' | 'lookup'>,
 ): () => void {
   ipcMain.handle(SETTINGS_IPC.getPreferences, security.guarded(() => store.get()))
   ipcMain.handle(SETTINGS_IPC.chooseWorkspace, security.guarded(async (event, currentPath: unknown) => {
@@ -162,7 +162,12 @@ export function registerSettingsIpcHandlers(
   }))
   ipcMain.handle(SETTINGS_IPC.inspectWorkspace, security.guarded(async (_event, workspace: unknown): Promise<WorkspaceInspection> => {
     if (typeof workspace !== 'string' || !path.isAbsolute(workspace)) return { broad: false, git: false }
-    return { broad: isBroadWorkspace(workspace, knownBroadFolders()), git: await isGitRepository(workspace) }
+    const broad = isBroadWorkspace(workspace, knownBroadFolders())
+    const git = await isGitRepository(workspace)
+    // a project that starts new sessions in a worktree by default says so here, with the
+    // main working tree the worktree is made from: one answer for the dialog and for ⌘T
+    const project = git && projectSettings ? await projectSettings.lookup(workspace).catch(() => undefined) : undefined
+    return { broad, git, ...(project?.settings.newSessionWorktree ? { newSessionWorktreeRoot: project.root } : {}) }
   }))
   ipcMain.handle(SETTINGS_IPC.prepareImages, security.guarded(async (event, records: unknown) => {
     if (!Array.isArray(records) || records.some((value) => !value || typeof value !== 'object' || typeof (value as { path?: unknown }).path !== 'string' || !path.isAbsolute((value as { path: string }).path))) {

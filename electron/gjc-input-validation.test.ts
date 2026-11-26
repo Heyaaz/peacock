@@ -13,9 +13,23 @@ describe("createSessionInput for an omp chat (design §10)", () => {
     ).toEqual({ runtime: "omp-rpc", workspace, isolation: "workspace", agentKind: "omp", surface: "chat", title: "chat", launch: { permissionMode: "always-ask" } });
   });
 
-  it("refuses another agent, a worktree, an option omp does not take and a missing folder", () => {
+  it("takes a new worktree, with or without a branch name", () => {
+    expect(createSessionInput({ runtime: "omp-rpc", workspace, isolation: "worktree" })).toEqual({
+      runtime: "omp-rpc",
+      workspace,
+      isolation: "worktree",
+      agentKind: "omp",
+      surface: "chat",
+    });
+    expect(createSessionInput({ runtime: "omp-rpc", workspace, isolation: "worktree", worktreeBranch: "peacock/a-1" })).toMatchObject({
+      isolation: "worktree",
+      worktreeBranch: "peacock/a-1",
+    });
+  });
+
+  it("refuses another agent, an unknown isolation, an option omp does not take and a missing folder", () => {
     expect(() => createSessionInput({ runtime: "omp-rpc", workspace, agentKind: "claude" })).toThrow("An omp chat runs omp");
-    expect(() => createSessionInput({ runtime: "omp-rpc", workspace, isolation: "worktree" })).toThrow("folder as it is");
+    expect(() => createSessionInput({ runtime: "omp-rpc", workspace, isolation: "sandbox" })).toThrow("workspace or worktree");
     expect(() => createSessionInput({ runtime: "omp-rpc", workspace, launch: { effort: "high" } })).toThrow("omp does not take effort");
     expect(() => createSessionInput({ runtime: "omp-rpc", workspace: path.join(workspace, "gone") })).toThrow("existing directory");
   });

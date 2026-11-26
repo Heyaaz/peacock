@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { isAgentKindId } from "../shared/agent-contract.js";
+import { isAgentKindId, parseManagedWorktree, type ManagedWorktree } from "../shared/agent-contract.js";
 import { launchOptions, type AgentLaunchOptions } from "../shared/agent-launch.js";
 import {
   TERMINAL_SESSION_PREFIX,
@@ -56,7 +56,12 @@ export class TerminalSessionStore {
   }
 
   create(
-    input: TerminalSessionCreateInput & { launch?: AgentLaunchOptions; agentSessionRef?: string },
+    input: Omit<TerminalSessionCreateInput, "isolation" | "worktreeBranch"> & {
+      launch?: AgentLaunchOptions;
+      agentSessionRef?: string;
+      /** The worktree the session's `workspace` is the folder of. */
+      worktree?: ManagedWorktree;
+    },
   ): TerminalSessionRecord {
     const agentKind = input.agentKind ?? "shell";
     const launch = launchOptions(agentKind, input.launch);
@@ -70,6 +75,7 @@ export class TerminalSessionStore {
       ...(input.agentSessionRef && AGENT_SESSION_REF.test(input.agentSessionRef)
         ? { agentSessionRef: input.agentSessionRef }
         : {}),
+      ...(input.worktree ? { worktree: { ...input.worktree } } : {}),
     };
     this.sessions = [session, ...this.sessions];
     this.write();
@@ -190,6 +196,7 @@ function parseRecord(raw: unknown): TerminalSessionRecord[] {
     /^[A-Za-z0-9]{1,128}$/u.test(value.coreId) &&
     typeof value.terminalAddress === "string" &&
     TERMINAL_ADDRESS.test(value.terminalAddress);
+  const worktree = parseManagedWorktree(value.worktree);
   return [
     {
       id: value.id,
@@ -209,6 +216,7 @@ function parseRecord(raw: unknown): TerminalSessionRecord[] {
       value.transcriptPath.length <= 4096
         ? { transcriptPath: value.transcriptPath }
         : {}),
+      ...(worktree ? { worktree } : {}),
     },
   ];
 }

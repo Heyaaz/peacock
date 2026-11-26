@@ -4,6 +4,7 @@ import {
   capabilitiesOf,
   isAgentKindId,
   normalizeRuntimeKind,
+  parseManagedWorktree,
   runsInTerminal,
   SESSION_CAPABILITY_KEYS,
   type AgentSession,
@@ -143,5 +144,29 @@ describe("agent kinds", () => {
     for (const id of AGENT_KIND_IDS) expect(isAgentKindId(id)).toBe(true);
     for (const value of ["", "Claude", "hermes", "terminal", undefined, 3, {}])
       expect(isAgentKindId(value)).toBe(false);
+  });
+});
+
+describe("parseManagedWorktree", () => {
+  const whole = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true };
+
+  it("keeps a whole record, and nothing it was not given", () => {
+    expect(parseManagedWorktree({ ...whole, extra: "x" })).toEqual(whole);
+  });
+
+  it.each([
+    ["nothing", undefined],
+    ["a string", "worktree"],
+    ["a list", []],
+    ["a record that is not managed", { ...whole, managed: false }],
+    ["a record with no flag", { sourceWorkspace: whole.sourceWorkspace, path: whole.path, branch: whole.branch }],
+    ["a relative folder", { ...whole, path: "wt/a" }],
+    ["a relative source", { ...whole, sourceWorkspace: "repo" }],
+    ["a folder with a NUL", { ...whole, path: "/wt/a\0b" }],
+    ["no branch", { ...whole, branch: "" }],
+    ["a branch that is not text", { ...whole, branch: 4 }],
+    ["a branch that is too long", { ...whole, branch: "b".repeat(257) }],
+  ])("drops %s", (_label, value) => {
+    expect(parseManagedWorktree(value)).toBeUndefined();
   });
 });
