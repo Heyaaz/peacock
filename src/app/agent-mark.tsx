@@ -23,7 +23,6 @@ export function AgentMark({ agentKind, size = 14 }: { agentKind?: AgentKindId | 
             <stop offset="1" stopColor="#00dbe4" />
           </linearGradient>
         </defs>
-        <rect width="64" height="64" rx="12" fill="#0f0a14" />
         <path fill={`url(#${gradient})`} d="M10 14h45v9h-9v33h-9V23h-9v22h-9V23h-9z" />
       </svg>
     );
