@@ -6,7 +6,7 @@ import { BackendProvider } from './backend/backend-provider'
 import { GjcAgentBackend } from './backend/gjc-agent-backend'
 import { RemoteAgentBackend } from './backend/remote-agent-backend'
 import { initializeTheme } from './theme'
-import { ensureEnglishDictionary, hasStoredLanguageMode, initializeLanguage, getLanguage, setLanguageMode } from './i18n'
+import { ensureEnglishDictionary, initializeLanguage, getLanguage, getLanguageMode, setLanguageMode } from './i18n'
 import './index.css'
 
 initializeLanguage()
@@ -15,10 +15,10 @@ const quickInputBridge =
     ? window.agentControlDesktop?.quickInput
     : undefined
 const settingsBridge = window.agentControlDesktop?.settings
-// A window that never chose a mode follows the host's saved language: Settings is
-// where the desktop records it, and the renderer's own storage starts empty.
-const storedMode = hasStoredLanguageMode()
-if (!quickInputBridge && !storedMode && settingsBridge) {
+// Settings holds the language the user picked. The renderer's own record is only a
+// cache and can disagree (a window that never chose defaults to Korean), so the host
+// value wins — except in system mode, where the OS locale decides.
+if (!quickInputBridge && settingsBridge && getLanguageMode() !== 'system') {
   const loaded = await settingsBridge.getPreferences().catch(() => undefined)
   if (loaded) setLanguageMode(loaded.language)
 }
@@ -43,7 +43,6 @@ if (quickInputBridge) {
     </StrictMode>,
   )
 } else {
-  if (settingsBridge && storedMode) void settingsBridge.setLanguage(getLanguage()).catch(() => undefined)
   createRoot(mount).render(
     <StrictMode>
       <BackendProvider backend={await selectBackend()}>
