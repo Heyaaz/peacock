@@ -1,5 +1,5 @@
 import { PeacockMark } from "./peacock-mark";
-import type { ArtifactContent } from "../../shared/agent-contract";
+import type { AgentKindId, ArtifactContent } from "../../shared/agent-contract";
 import type { QuestionSubmission, SessionRetry, ToolViewMode, TranscriptItem } from "../backend/types";
 import type { MessageDeliveryAttempt } from "../message-delivery";
 import {
@@ -55,7 +55,7 @@ import {
 } from "./transcript-scroll";
 import { SKILL_ARGS_VIEW } from "./skill-activity";
 import { TranscriptItemView } from "./transcript-item-view";
-import { AssistantNameContext } from "./assistant-name";
+import { AssistantAgentKindContext, AssistantNameContext } from "./assistant-name";
 import { ToolRunBlockView } from "./transcript-tool-run";
 import { NO_OPEN_FOLDS, TurnFoldRow } from "./transcript-turn-fold";
 export { ThoughtCard, TranscriptItemView } from "./transcript-item-view";
@@ -158,6 +158,8 @@ export interface TranscriptProps {
   };
   /** The session's agent, as the assistant's label and the empty state name it. */
   assistantName?: string;
+  /** That agent's kind, for the mark beside the label. */
+  assistantKind?: AgentKindId | null;
 }
 
 const exampleRequests = (): string[] => [
@@ -199,6 +201,7 @@ export function Transcript({
   onStopTool,
   onPickExample,
   assistantName,
+  assistantKind,
 }: TranscriptProps) {
   const items = useMemo(
     () => allItems.filter((item) => !isEmptyTodoSnapshot(item)),
@@ -1255,6 +1258,7 @@ export function Transcript({
 
   return (
     <AssistantNameContext.Provider value={assistantName ?? ""}>
+    <AssistantAgentKindContext.Provider value={assistantKind ?? null}>
     <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0 }}>
       {loadingPage && items.length > 0 && (
         <div role="status" style={{ flex: "none", padding: "4px 12px", textAlign: "center" }}>
@@ -1386,6 +1390,7 @@ export function Transcript({
       )}
       </div>
     </div>
+    </AssistantAgentKindContext.Provider>
     </AssistantNameContext.Provider>
   );
 }

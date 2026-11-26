@@ -5,7 +5,7 @@ import {
   copyableMessageText,
   parseSkillInvocation,
 } from "../transcript-utils";
-import { Bot, Brain, Check, ListChecks, Paperclip } from "lucide-react";
+import { Brain, Check, ListChecks, Paperclip } from "lucide-react";
 import { memo, useContext } from "react";
 import { httpUrls } from "./format";
 import { LinkPreviewCard, MessageCopyButton } from "./primitives";
@@ -16,7 +16,8 @@ import { MarkdownBody, StreamingMarkdown } from "./transcript-markdown";
 import { TodoCard } from "./transcript-todo";
 import { ToolCard } from "./transcript-tool-card";
 import type { TranscriptProps } from "./transcript";
-import { AssistantNameContext } from "./assistant-name";
+import { AssistantAgentKindContext, AssistantNameContext } from "./assistant-name";
+import { AgentMark } from "./agent-mark";
 
 /**
  * A reasoning card. Whether it is open is not the card's own business: the transcript
@@ -97,6 +98,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
 }) {
   useLanguage();
   const assistant = useContext(AssistantNameContext) || t("에이전트");
+  const assistantKind = useContext(AssistantAgentKindContext);
   if (item.kind === "message") {
     const copyText = copyableMessageText(item.content);
     const attachments = attachmentSummaryText(item.content);
@@ -106,7 +108,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
         {item.role === "assistant" && (
           <div className="message-author">
             <span className="assistant-mark">
-              <Bot size={14} aria-hidden="true" />
+              <AgentMark agentKind={assistantKind} />
             </span>
             <strong>{assistant}</strong>
             <time>{item.createdAt}</time>

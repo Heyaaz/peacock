@@ -25,7 +25,7 @@ import { TerminalView } from "./terminal-view";
 import { TerminalSessionPane } from "./terminal-session-pane";
 import { TerminalChatComposer } from "./terminal-chat-composer";
 import { capabilitiesOf, runsInTerminal, type MessageDelivery, type SessionCapabilities, type SessionSurface } from "../../shared/agent-contract";
-import { agentCatalogEntry } from "../../shared/agent-catalog";
+import { agentCatalogEntry, sessionAgentKind } from "../../shared/agent-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Composer,
@@ -1555,6 +1555,7 @@ export default function App() {
                     : (text) => prefillComposerDraft(selectedSession.id, text)
                 }
                 assistantName={sessionAgentName(selectedSession)}
+                assistantKind={sessionAgentKind(selectedSession)}
                 emptyStateMeta={
                   agentChat
                     ? // a terminal agent's chat reads its terminal: the app knows neither its model nor its commands
