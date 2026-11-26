@@ -25,10 +25,16 @@ function appUpdateSummary(status: AppUpdateStatus): string {
 export function AppUpdateRow({
   bridge,
 }: {
-  bridge: Pick<SettingsDesktopBridge, "getAppUpdateStatus" | "checkAppUpdate"> | undefined;
+  bridge:
+    | (Pick<SettingsDesktopBridge, "getAppUpdateStatus" | "checkAppUpdate"> & {
+        /** Absent on a host from before in-app updates. */
+        installAppUpdate?: SettingsDesktopBridge["installAppUpdate"];
+      })
+    | undefined;
 }) {
   const [status, setStatus] = useState<AppUpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     if (typeof bridge?.getAppUpdateStatus !== "function") return;
@@ -56,6 +62,17 @@ export function AppUpdateRow({
     }
   }
 
+  async function installNow(): Promise<void> {
+    if (!bridge?.installAppUpdate || status?.state !== "available") return;
+    setInstalling(true);
+    try {
+      await bridge.installAppUpdate();
+    } catch {
+      // The app stays open and the button returns to its idle label.
+      setInstalling(false);
+    }
+  }
+
   return (
     <div className="settings-toggle-row">
       <span>
@@ -70,10 +87,19 @@ export function AppUpdateRow({
         >
           {checking ? t("확인 중…") : t("지금 확인")}
         </button>
-        {status?.state === "available" && (
+        {status?.state === "available" && status.asset && bridge?.installAppUpdate && (
           <button
             type="button"
             className="button-primary"
+            disabled={installing}
+            onClick={() => void installNow()}
+          >
+            {installing ? t("업데이트 중…") : t("지금 업데이트")}
+          </button>
+        )}
+        {status?.state === "available" && (
+          <button
+            type="button"
             onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")}
           >
             {t("릴리스 페이지")}

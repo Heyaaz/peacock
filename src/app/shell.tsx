@@ -108,6 +108,7 @@ import {
 } from "../../shared/desktop-integration";
 import type { NewSessionPrefill } from "../../shared/settings-ipc";
 import type { NewSessionChoice } from "../../shared/agent-contract";
+import type { AppUpdateStatus } from "../../shared/app-update";
 import { EmptyWorkspaceAgents } from "./empty-workspace-agents";
 import {
   EMPTY_TRANSCRIPT_PAGE_STATE,
@@ -265,6 +266,9 @@ export default function App() {
     runningSubmission: "queue",
   });
   const preferencesRef = useRef(preferences);
+  // A release the footer can install, read at launch and every ten minutes after.
+  const [appUpdate, setAppUpdate] = useState<AppUpdateStatus | null>(null);
+  const [installingAppUpdate, setInstallingAppUpdate] = useState(false);
   // The card toggle is a stable callback so the memo'd transcript rows keep their
   // identity, which means it reads the current value through this ref rather than
   // closing over the render that created it.
@@ -391,6 +395,38 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  // The background check in the main process records the status; the footer reads
+  // it without asking GitHub again. Ten minutes keeps a long session current.
+  useEffect(() => {
+    const bridge = window.agentControlDesktop?.settings;
+    if (typeof bridge?.getAppUpdateStatus !== "function") return;
+    let active = true;
+    const read = (): void => {
+      void bridge.getAppUpdateStatus().then(
+        (status) => {
+          if (active) setAppUpdate(status);
+        },
+        () => undefined,
+      );
+    };
+    read();
+    const timer = window.setInterval(read, 10 * 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const installAppUpdate = useCallback((): void => {
+    const bridge = window.agentControlDesktop?.settings;
+    if (typeof bridge?.installAppUpdate !== "function" || installingAppUpdate) return;
+    setInstallingAppUpdate(true);
+    void bridge.installAppUpdate().catch((error: unknown) => {
+      setInstallingAppUpdate(false);
+      setAppError(humanErrorMessage(error));
+    });
+  }, [installingAppUpdate]);
 
   /**
    * Everything the shell holds for a session that is gone: its row, its cached
@@ -1326,6 +1362,9 @@ export default function App() {
         onHide={onHideSession}
         onExportHtml={backend.exportSessionHtml ? exportSessionHtml : undefined}
         onSettings={openSettings}
+        {...(appUpdate ? { appUpdate } : {})}
+        onInstallAppUpdate={installAppUpdate}
+        installingAppUpdate={installingAppUpdate}
         parallelGroups={parallelGroups}
         openParallelGroupId={centerView === "parallel" ? parallelGroupId : null}
         onOpenParallelGroup={openParallelGroup}

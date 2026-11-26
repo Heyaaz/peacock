@@ -1,4 +1,4 @@
-import type { AppUpdateStatus } from "./app-update.js";
+import type { AppUpdateInstallResult, AppUpdateStatus } from "./app-update.js";
 import type { SystemInfo, WorkspaceInspection } from "./settings-ipc.js";
 import type { DesktopIntegrationPreferences } from "./desktop-integration.js";
 import type { CommandRuleMatch, ProjectCommandRules } from "./command-rules.js";
@@ -1595,6 +1595,8 @@ export interface SettingsDesktopBridge {
   getAppUpdateStatus(): Promise<AppUpdateStatus>;
   /** Asks GitHub for the latest Gajae release now. */
   checkAppUpdate(): Promise<AppUpdateStatus>;
+  /** Downloads the newest release, swaps the app bundle and reopens the app. */
+  installAppUpdate(): Promise<AppUpdateInstallResult>;
   /** Looks for bun, GJC, the model profile, gh and tailscale. Installs nothing. */
   checkEnvironment(): Promise<EnvironmentReport>;
   /** GJC's own boolean and number settings that apply to app sessions. */

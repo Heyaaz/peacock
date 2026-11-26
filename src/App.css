@@ -1067,6 +1067,17 @@
   color: var(--text-primary);
   background: var(--bg-hover);
 }
+.sidebar-footer > button.sidebar-update {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.sidebar-footer > button.sidebar-update:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.sidebar-footer > button.sidebar-update:disabled {
+  opacity: 0.6;
+}
 
 .header-avatar img,
 .inspector-avatar img {

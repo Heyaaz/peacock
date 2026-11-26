@@ -832,6 +832,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "{0} · 아직 확인하지 않았습니다": "{0} · Not checked yet",
   "{0} · 확인할 수 없음": "{0} · Cannot check",
   "지금 확인": "Check now",
+  "지금 업데이트": "Update now",
+  "{0}로 업데이트": "Update to {0}",
   "릴리스 페이지": "Release page",
   "기본 모델 프로필": "Default model profile",
   "GitHub CLI 로그인": "GitHub CLI sign-in",

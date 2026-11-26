@@ -15,8 +15,11 @@ import {
   type WebContents,
 } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { execFile } from "node:child_process";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -85,6 +88,8 @@ import {
 import { desktopStatusRenderer } from "./desktop-status.js";
 import { electronStatusSurface } from "./desktop-status-surface.js";
 import { AppUpdateMonitor, githubRepository } from "./app-update.js";
+import { installAppUpdate as installAppUpdateFromRelease, sha256File } from "./app-update-install.js";
+import type { AppUpdateInstallResult, AppUpdateStatus } from "../shared/app-update.js";
 import { DesktopStateStore } from "./desktop-state-store.js";
 import {
   checkEnvironment,
@@ -275,6 +280,59 @@ const appUpdates = new AppUpdateMonitor({
     notification.show();
   },
 });
+
+function appBundlePath(executable: string): string | undefined {
+  const marker = executable.lastIndexOf(".app/");
+  return marker >= 0 ? executable.slice(0, marker + ".app".length) : undefined;
+}
+
+const runExecFile = promisify(execFile);
+
+/** Downloads the release the monitor found, swaps this bundle and quits so the helper can reopen it. */
+async function installAppUpdate(): Promise<AppUpdateInstallResult> {
+  const status = appUpdates.status();
+  if (status.state !== "available") throw new Error("설치할 새 버전이 없습니다.");
+  const bundlePath = appBundlePath(process.execPath);
+  if (!bundlePath) throw new Error("앱 번들 경로를 찾지 못했습니다.");
+  const result = await installAppUpdateFromRelease({
+    status,
+    bundlePath,
+    tempRoot: app.getPath("temp"),
+    download: async (url, file) => {
+      const response = await net.fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(300_000),
+      });
+      if (!response.ok || !response.body)
+        throw new Error(`업데이트 파일을 내려받지 못했습니다 (${response.status}).`);
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(file));
+    },
+    readText: async (url) => {
+      const response = await net.fetch(url, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok)
+        throw new Error(`체크섬을 내려받지 못했습니다 (${response.status}).`);
+      return response.text();
+    },
+    sha256File,
+    unzip: async (archive, into) => {
+      await runExecFile("/usr/bin/ditto", ["-x", "-k", archive, into]);
+    },
+    spawn,
+    pid: process.pid,
+  });
+  setTimeout(() => app.quit(), 800);
+  return result;
+}
+
+/** A development run cannot replace itself, so it keeps the release page and no install asset. */
+function installableStatus(status: AppUpdateStatus): AppUpdateStatus {
+  if (app.isPackaged || status.state !== "available" || !status.asset) return status;
+  const { asset: _asset, ...rest } = status;
+  return rest;
+}
 
 function broadcastAgentEvent(event: AgentEvent): void {
   applySearchInvalidation(event, (sessionId) => {
@@ -585,7 +643,10 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
     desktopIntegration.setPreferences(updated);
     quickInputShortcut.apply(updated.quickInputShortcut);
   },
-  appUpdates,
+  {
+    status: () => installableStatus(appUpdates.status()),
+    check: (options) => appUpdates.check(options).then(installableStatus),
+  },
   {
     async check() {
       const current = settingsStore.get();
@@ -650,6 +711,9 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
       if (failure) throw new Error(failure);
     },
   },
+  // A development run is not a bundle in Applications; swapping it would replace
+  // Electron's own app, so only a packaged app offers the in-app update.
+  app.isPackaged ? installAppUpdate : undefined,
 );
 const unregisterDesktopServicesIpc =
   registerDesktopServicesIpcHandlers(desktopManagement, ipcSecurity);

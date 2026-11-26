@@ -92,6 +92,8 @@ const ENGLISH: Readonly<Record<string, string>> = {
     "Apply runtime settings? The GJC connection may restart.",
   "GJC를 업데이트할까요? 업데이트 후 GJC runtime이 다시 연결됩니다.":
     "Update GJC? The GJC runtime will reconnect after the update.",
+  "Peacock을 새 버전으로 바꾸고 앱을 다시 열까요? 지금 열린 세션은 앱이 다시 뜬 뒤에도 남아 있습니다.":
+    "Replace Peacock with the new version and reopen it? Your sessions are still there after it restarts.",
   "확인 필요": "Needs input",
   "실행 중": "Working",
   "실패": "failed",

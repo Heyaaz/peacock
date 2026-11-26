@@ -28,6 +28,7 @@ export const SETTINGS_IPC = {
   confirm: "agent-control:settings:confirm",
   getAppUpdateStatus: "agent-control:settings:get-app-update-status",
   checkAppUpdate: "agent-control:settings:check-app-update",
+  installAppUpdate: "agent-control:settings:install-app-update",
   checkEnvironment: "agent-control:settings:check-environment",
   environmentCheckDue: "agent-control:settings:environment-check-due",
   quickInputShortcutStatus: "agent-control:settings:quick-input-shortcut-status",

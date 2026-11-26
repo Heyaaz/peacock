@@ -19,6 +19,8 @@ export type AppUpdateStatus =
       latestVersion: string;
       releaseUrl: string;
       checkedAtMs: number;
+      /** The macOS archive a user can install from inside the app. */
+      asset?: AppUpdateAsset;
     }
   | {
       state: "unknown";
@@ -26,6 +28,16 @@ export type AppUpdateStatus =
       reason: AppUpdateUnknownReason;
       checkedAtMs: number;
     };
+
+/** The release download the updater installs: the app archive and its SHA-256. */
+export interface AppUpdateAsset {
+  archiveUrl: string;
+  checksumUrl: string;
+  archiveName: string;
+}
+
+/** Started installing: the app replaces itself and reopens. */
+export type AppUpdateInstallResult = { state: "restarting"; version: string };
 
 export type AppUpdateUnknownReason =
   | "no-repository"

@@ -524,6 +524,7 @@ const settings: SettingsDesktopBridge = Object.freeze({
     ipcRenderer.invoke(SETTINGS_IPC.confirm, message, detail),
   getAppUpdateStatus: () => ipcRenderer.invoke(SETTINGS_IPC.getAppUpdateStatus),
   checkAppUpdate: () => ipcRenderer.invoke(SETTINGS_IPC.checkAppUpdate),
+  installAppUpdate: () => ipcRenderer.invoke(SETTINGS_IPC.installAppUpdate),
   checkEnvironment: () => ipcRenderer.invoke(SETTINGS_IPC.checkEnvironment),
   listGjcSettings: () => ipcRenderer.invoke(SETTINGS_IPC.listGjcSettings),
   applyGjcSettings: (changes: GjcSettingChange[]) => ipcRenderer.invoke(SETTINGS_IPC.applyGjcSettings, changes),

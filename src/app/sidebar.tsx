@@ -1,7 +1,9 @@
 import { capabilitiesOf, runsInTerminal } from "../../shared/agent-contract";
+import type { AppUpdateStatus } from "../../shared/app-update";
 import type { AgentSession } from "../backend/types";
 import {
   ChevronRight,
+  Download,
   ExternalLink,
   EyeOff,
   FolderGit2,
@@ -354,6 +356,10 @@ export interface SidebarProps {
   /** Saves a session as an HTML page, where its runtime can (omp's chat). */
   onExportHtml?: (session: AgentSession) => void;
   onSettings: () => void;
+  /** A newer Peacock release; the footer offers to install it beside Settings. */
+  appUpdate?: AppUpdateStatus;
+  onInstallAppUpdate?: () => void;
+  installingAppUpdate?: boolean;
   /** Best-of-N groups whose attempts the rail nests under one row. */
   parallelGroups?: readonly ParallelGroup[];
   /** The group the comparison view is showing, so its row reads as selected. */
@@ -400,6 +406,9 @@ function SidebarView({
   onHide,
   onExportHtml,
   onSettings,
+  appUpdate,
+  onInstallAppUpdate,
+  installingAppUpdate,
   parallelGroups,
   openParallelGroupId,
   onOpenParallelGroup,
@@ -747,6 +756,18 @@ function SidebarView({
       </div>
 
       <div className="sidebar-footer">
+        {appUpdate?.state === "available" && onInstallAppUpdate && (
+          <button
+            type="button"
+            className="sidebar-update"
+            title={t`${appUpdate.latestVersion}로 업데이트`}
+            disabled={installingAppUpdate}
+            onClick={onInstallAppUpdate}
+          >
+            <Download size={16} />
+            <span>{installingAppUpdate ? t("업데이트 중…") : t("업데이트")}</span>
+          </button>
+        )}
         {/* The title is what the narrow rail leans on: it hides footer labels, so
             without it this button becomes an unlabelled icon. */}
         <button type="button" title={t("설정")} onClick={onSettings}>

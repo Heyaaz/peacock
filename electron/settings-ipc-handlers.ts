@@ -16,6 +16,7 @@ import { applyGjcSettings, listGjcSettings } from './gjc-config.js'
 import type { GjcSettingChange } from '../shared/gjc-settings.js'
 import type { CommandRuleStore } from './command-rule-store.js'
 import type { AppUpdateMonitor } from './app-update.js'
+import type { AppUpdateInstallResult } from '../shared/app-update.js'
 import type { EnvironmentReport } from '../shared/environment-check.js'
 import type { QuickInputShortcutStatus } from '../shared/quick-input.js'
 import { hostText, setHostLanguage } from './host-text.js'
@@ -143,6 +144,7 @@ export function registerSettingsIpcHandlers(
   onGjcSettingsApplied?: (changes: readonly GjcSettingChange[]) => Promise<void>,
   commandRules?: Pick<CommandRuleStore, 'list' | 'remove'>,
   system?: { info(): Promise<SystemInfo>; revealDataFolder(): Promise<void> },
+  installAppUpdate?: () => Promise<AppUpdateInstallResult>,
 ): () => void {
   ipcMain.handle(SETTINGS_IPC.getPreferences, security.guarded(() => store.get()))
   ipcMain.handle(SETTINGS_IPC.chooseWorkspace, security.guarded(async (event, currentPath: unknown) => {
@@ -305,6 +307,15 @@ export function registerSettingsIpcHandlers(
     // The user is looking at the answer, so it is shown in the panel rather than
     // announced again as a notification.
     ipcMain.handle(SETTINGS_IPC.checkAppUpdate, security.guarded(() => appUpdates.check({ notify: false })))
+    if (installAppUpdate) {
+      ipcMain.handle(SETTINGS_IPC.installAppUpdate, security.guarded(async (event) => {
+        await security.authorizeDestructive(event, {
+          message: 'Peacock을 새 버전으로 바꾸고 앱을 다시 열까요? 지금 열린 세션은 앱이 다시 뜬 뒤에도 남아 있습니다.',
+          confirmLabel: '업데이트',
+        })
+        return installAppUpdate()
+      }))
+    }
   }
   if (quickInputShortcut)
     ipcMain.handle(SETTINGS_IPC.quickInputShortcutStatus, security.guarded(() => quickInputShortcut.status()))

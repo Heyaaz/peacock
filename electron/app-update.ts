@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAsset,
   AppUpdateStatus,
   AppUpdateUnknownReason,
   AvailableAppUpdate,
@@ -108,13 +109,58 @@ export async function checkLatestRelease(input: {
     )
       ? release.html_url
       : `https://github.com/${repository.owner}/${repository.repo}/releases/tag/${encodeURIComponent(tag)}`;
+  const asset = releaseAsset(release, repository);
   return {
     state: "available",
     currentVersion,
     latestVersion,
     releaseUrl,
     checkedAtMs,
+    ...(asset ? { asset } : {}),
   };
+}
+
+/**
+ * The macOS archive the in-app updater installs, plus its published checksum.
+ *
+ * Only this repository's own `releases/download` URLs qualify, and the checksum
+ * must be published beside the archive, so a release cannot point the updater at
+ * an unrelated file.
+ */
+export function releaseAsset(
+  release: Record<string, unknown>,
+  repository: GithubRepository,
+): AppUpdateAsset | undefined {
+  const prefix = `https://github.com/${repository.owner}/${repository.repo}/releases/download/`;
+  const entryName = (entry: unknown): string | undefined => {
+    if (!entry || typeof entry !== "object" || !("name" in entry))
+      return undefined;
+    return typeof entry.name === "string" ? entry.name : undefined;
+  };
+  const entryUrl = (entry: unknown): string | undefined => {
+    if (!entry || typeof entry !== "object" || !("browser_download_url" in entry))
+      return undefined;
+    const url = entry.browser_download_url;
+    return typeof url === "string" && url.startsWith(prefix) ? url : undefined;
+  };
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const archive = assets.find((entry) => {
+    const name = entryName(entry);
+    return (
+      name !== undefined &&
+      name.endsWith(".zip") &&
+      /darwin|macos|mac/iu.test(name)
+    );
+  });
+  const archiveName = entryName(archive);
+  const archiveUrl = entryUrl(archive);
+  if (!archiveName || !archiveUrl) return undefined;
+  const checksum = assets.find(
+    (entry) => entryName(entry) === `${archiveName}.sha256`,
+  );
+  const checksumUrl = entryUrl(checksum);
+  if (!checksumUrl) return undefined;
+  return { archiveName, archiveUrl, checksumUrl };
 }
 
 export interface AppUpdateMonitorOptions {

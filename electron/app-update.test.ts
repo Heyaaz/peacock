@@ -84,6 +84,52 @@ describe("checkLatestRelease", () => {
     });
   });
 
+  it("offers the published macOS archive and checksum for an in-app update", async () => {
+    const archive =
+      "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip";
+    const status = await check(
+      answering(200, {
+        ...release("v0.2.0"),
+        assets: [
+          { name: "Peacock-0.2.0-darwin-arm64.zip", browser_download_url: archive },
+          {
+            name: "Peacock-0.2.0-darwin-arm64.zip.sha256",
+            browser_download_url: `${archive}.sha256`,
+          },
+          {
+            name: "Peacock-0.2.0-darwin-arm64.zip.sha256.bak",
+            browser_download_url: "https://evil.example/other.zip",
+          },
+        ],
+      }),
+    );
+    expect(status).toMatchObject({
+      state: "available",
+      asset: {
+        archiveName: "Peacock-0.2.0-darwin-arm64.zip",
+        archiveUrl: archive,
+        checksumUrl: `${archive}.sha256`,
+      },
+    });
+  });
+
+  it("leaves the update as a page link when the release publishes no checksum", async () => {
+    const status = await check(
+      answering(200, {
+        ...release("v0.2.0"),
+        assets: [
+          {
+            name: "Peacock-0.2.0-darwin-arm64.zip",
+            browser_download_url:
+              "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip",
+          },
+        ],
+      }),
+    );
+    expect(status).toMatchObject({ state: "available" });
+    expect((status as { asset?: unknown }).asset).toBeUndefined();
+  });
+
   it("lands every failure in the quiet unknown state", async () => {
     const failing: ReleaseFetch = async () => {
       throw new TypeError("fetch failed");
