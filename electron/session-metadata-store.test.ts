@@ -125,3 +125,32 @@ describe("SessionMetadataStore work links", () => {
     }
   });
 });
+
+describe("SessionMetadataStore worktrees", () => {
+  const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "gajae/a", managed: true as const };
+
+  it("keeps whether this app made the branch, and reads a record from before as not having", () => {
+    const { directory, open } = store({
+      worktrees: {
+        made: { ...worktree, createdBranch: true },
+        checkedOut: { ...worktree, branch: "mine", createdBranch: false },
+        before: worktree,
+        odd: { ...worktree, createdBranch: "yes" },
+        broken: { ...worktree, path: "relative" },
+      },
+    });
+    try {
+      const metadata = open();
+      expect(metadata.getWorktree("made")).toEqual({ ...worktree, createdBranch: true });
+      expect(metadata.getWorktree("checkedOut")?.createdBranch).toBe(false);
+      expect(metadata.getWorktree("before")).toEqual(worktree);
+      expect(metadata.getWorktree("before")?.createdBranch).toBeUndefined();
+      expect(metadata.getWorktree("odd")).toEqual(worktree);
+      expect(metadata.getWorktree("broken")).toBeUndefined();
+      metadata.setWorktree("new", { ...worktree, createdBranch: true });
+      expect(open().getWorktree("new")).toEqual({ ...worktree, createdBranch: true });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

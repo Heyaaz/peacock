@@ -24,8 +24,11 @@ import {
   discardSessionWorktree,
   discardUnusedWorktree,
   inspectWorktree,
+  isPeacockWorktree,
   listWorktreePaths,
+  planWorktreeRemoval,
   prepareWorktree,
+  removeSessionWorktree,
   removeWorktreeLeftovers,
   repositoryRoot,
   runGit,
@@ -101,6 +104,7 @@ describe("createWorktree", () => {
       path: path.join(parent, "repo.gajae-worktrees", "abc-1"),
       branch: "gajae/abc-1",
       managed: true,
+      createdBranch: true,
     });
     expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("gajae/abc-1");
     expect(existsSync(path.join(worktree.path, "tracked.txt"))).toBe(true);
@@ -259,6 +263,227 @@ describe("a worktree for a terminal or chat session", () => {
     expect(gjc.worktree.branch).toBe("gajae/s-1");
     const other = await createWorktree({ workspace: repo, suffix: () => "s-2", branchPrefix: "team" });
     expect(other.worktree.branch).toBe("team/s-2");
+  });
+});
+
+describe("what a new worktree records about its branch", () => {
+  it("says this app made a branch it started from HEAD, and one it fetched or made to track a remote", async () => {
+    const { parent, repo } = repository();
+    expect((await createWorktree({ workspace: repo, suffix })).worktree.createdBranch).toBe(true);
+    expect((await createWorktree({ workspace: repo, branch: "feat/new", suffix })).worktree.createdBranch).toBe(true);
+
+    const remote = path.join(parent, "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", remote]);
+    git(repo, "remote", "add", "origin", remote);
+    git(repo, "branch", "pushed");
+    git(repo, "push", "-q", "origin", "pushed");
+    git(repo, "branch", "-D", "pushed");
+    git(repo, "fetch", "-q", "origin");
+    expect((await createWorktree({ workspace: repo, branch: "pushed", suffix })).worktree.createdBranch).toBe(true);
+  });
+
+  it("says this app did not make a branch that was there", async () => {
+    const { repo } = repository();
+    git(repo, "branch", "mine");
+    git(repo, "branch", "theirs");
+    expect((await createWorktree({ workspace: repo, branch: "mine", suffix })).worktree.createdBranch).toBe(false);
+    expect((await createSessionWorktree({ workspace: repo, branch: "theirs" })).worktree.createdBranch).toBe(false);
+    expect((await createSessionWorktree({ workspace: repo })).worktree.createdBranch).toBe(true);
+  });
+});
+
+describe("isPeacockWorktree", () => {
+  it("is a single folder directly under the repository's .gajae-worktrees", () => {
+    expect(isPeacockWorktree({ sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a-1" })).toBe(true);
+    expect(isPeacockWorktree({ sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a-1/" })).toBe(true);
+  });
+
+  it.each([
+    ["the repository's own working tree", "/work/repo"],
+    ["a worktree of the user's somewhere else", "/work/other-checkout"],
+    ["a folder beside the repository", "/work/repo-2"],
+    ["the folder that holds them", "/work/repo.gajae-worktrees"],
+    ["a folder inside one", "/work/repo.gajae-worktrees/a-1/sub"],
+    ["another repository's worktree", "/work/other.gajae-worktrees/a-1"],
+    ["a folder that only looks like one", "/work/repo.gajae-worktrees/../repo"],
+    ["the user's home", "/Users/me"],
+  ])("is not %s", (_label, folder) => {
+    expect(isPeacockWorktree({ sourceWorkspace: "/work/repo", path: folder })).toBe(false);
+  });
+});
+
+describe("removing a session's worktree", () => {
+  async function session(options: { branch?: string; existing?: boolean } = {}) {
+    const { parent, repo } = repository();
+    if (options.existing) git(repo, "branch", options.branch!);
+    const made = await createSessionWorktree({ workspace: repo, ...(options.branch ? { branch: options.branch } : {}) });
+    return { parent, repo, worktree: made.worktree };
+  }
+  const exists = (repo: string, branch: string) => git(repo, "branch", "--list", branch).trim() !== "";
+
+  it("plans the removal of a clean worktree and the branch this app made for it", async () => {
+    const { repo, worktree } = await session();
+    expect(await planWorktreeRemoval(runGit, worktree)).toEqual({
+      worktreePath: worktree.path,
+      sourceWorkspace: repo,
+      uncommittedFiles: 0,
+      detachedCommits: 0,
+      branch: { name: worktree.branch, unpushedCommits: 0 },
+    });
+  });
+
+  it("counts the uncommitted files and the commits only the branch has", async () => {
+    const { worktree } = await session();
+    writeFileSync(path.join(worktree.path, "a.txt"), "a");
+    writeFileSync(path.join(worktree.path, "b.txt"), "b");
+    writeFileSync(path.join(worktree.path, "c.txt"), "c");
+    git(worktree.path, "add", "c.txt");
+    git(worktree.path, "commit", "-q", "-m", "c");
+    git(worktree.path, "commit", "-q", "--allow-empty", "-m", "d");
+    expect(await planWorktreeRemoval(runGit, worktree)).toMatchObject({
+      uncommittedFiles: 2,
+      branch: { name: worktree.branch, unpushedCommits: 2 },
+    });
+  });
+
+  it("never plans the deletion of a branch this app did not make", async () => {
+    const { repo, worktree } = await session({ branch: "mine", existing: true });
+    expect(worktree.createdBranch).toBe(false);
+    const plan = await planWorktreeRemoval(runGit, worktree);
+    expect(plan).toMatchObject({ worktreePath: worktree.path, keptBranch: "mine" });
+    expect(plan).not.toHaveProperty("branch");
+    // and a record from before this was kept says nothing, which is read as the same
+    const { createdBranch: _omitted, ...before } = (await session()).worktree;
+    const old = await planWorktreeRemoval(runGit, before);
+    expect(old).toMatchObject({ keptBranch: before.branch });
+    expect(old).not.toHaveProperty("branch");
+    expect(exists(repo, "mine")).toBe(true);
+  });
+
+  it("keeps a branch that is checked out somewhere else", async () => {
+    const { repo, worktree } = await session();
+    // the worktree moves off the branch, and the repository's own tree takes it
+    git(worktree.path, "switch", "-q", "--detach");
+    git(repo, "switch", "-q", worktree.branch);
+    expect(await planWorktreeRemoval(runGit, worktree)).toMatchObject({ keptBranch: worktree.branch });
+    expect(await planWorktreeRemoval(runGit, worktree)).not.toHaveProperty("branch");
+  });
+
+  it("counts commits that only a detached HEAD holds", async () => {
+    const { worktree } = await session();
+    git(worktree.path, "switch", "-q", "--detach");
+    expect(await planWorktreeRemoval(runGit, worktree)).toMatchObject({ detachedCommits: 0 });
+    git(worktree.path, "commit", "-q", "--allow-empty", "-m", "stranded");
+    git(worktree.path, "commit", "-q", "--allow-empty", "-m", "stranded too");
+    expect(await planWorktreeRemoval(runGit, worktree)).toMatchObject({ detachedCommits: 2 });
+  });
+
+  it("plans only Git's record when the folder is already gone", async () => {
+    const { worktree } = await session();
+    rmSync(worktree.path, { recursive: true });
+    expect(await planWorktreeRemoval(runGit, worktree)).toMatchObject({ worktreeMissing: true, uncommittedFiles: 0 });
+  });
+
+  it("plans nothing for the repository's own working tree, however the record names it", async () => {
+    const { repo } = await session();
+    expect(await planWorktreeRemoval(runGit, { sourceWorkspace: repo, path: repo, branch: "main", managed: true, createdBranch: true })).toBeUndefined();
+    expect(
+      await planWorktreeRemoval(runGit, { sourceWorkspace: repo, path: path.join(repo, "."), branch: "main", managed: true, createdBranch: true }),
+    ).toBeUndefined();
+  });
+
+  it("plans nothing for a worktree the user made, even one recorded as managed", async () => {
+    const { parent, repo } = await session();
+    const theirs = path.join(parent, "my-own-checkout");
+    git(repo, "worktree", "add", "-q", "-b", "mine", theirs);
+    const record = { sourceWorkspace: repo, path: theirs, branch: "mine", managed: true as const, createdBranch: true };
+    expect(await planWorktreeRemoval(runGit, record)).toBeUndefined();
+  });
+
+  it("plans nothing for a folder in .gajae-worktrees that Git does not list, a locked worktree or an unreadable repository", async () => {
+    const { parent, repo, worktree } = await session();
+    const stray = path.join(parent, "repo.gajae-worktrees", "stray");
+    mkdirSync(stray);
+    writeFileSync(path.join(stray, "precious.txt"), "keep");
+    expect(await planWorktreeRemoval(runGit, { sourceWorkspace: repo, path: stray, branch: "x", managed: true, createdBranch: true })).toBeUndefined();
+    git(repo, "worktree", "lock", worktree.path);
+    expect(await planWorktreeRemoval(runGit, worktree)).toBeUndefined();
+    git(repo, "worktree", "unlock", worktree.path);
+    expect(await planWorktreeRemoval(runGit, worktree)).toBeDefined();
+    expect(await planWorktreeRemoval(runGit, { ...worktree, sourceWorkspace: path.join(parent, "gone") })).toBeUndefined();
+    expect(readFileSync(path.join(stray, "precious.txt"), "utf8")).toBe("keep");
+  });
+
+  it("removes the worktree, then Git's record of it, then the branch, in that order", async () => {
+    const { repo, worktree } = await session();
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    const calls: string[] = [];
+    const recording: typeof runGit = async (cwd, args) => {
+      calls.push(args.slice(0, 2).join(" "));
+      return runGit(cwd, args);
+    };
+    expect(await removeSessionWorktree(recording, plan)).toEqual({});
+    expect(calls).toEqual(["worktree remove", "worktree prune", "branch -D"]);
+    expect(existsSync(worktree.path)).toBe(false);
+    expect(exists(repo, worktree.branch)).toBe(false);
+    expect(git(repo, "worktree", "list", "--porcelain")).not.toContain("gajae-worktrees");
+  });
+
+  it("forces the removal only when the plan counted uncommitted files", async () => {
+    const { repo, worktree } = await session();
+    writeFileSync(path.join(worktree.path, "work.txt"), "w");
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    const flags: string[][] = [];
+    await removeSessionWorktree(async (cwd, args) => (flags.push([...args]), runGit(cwd, args)), plan);
+    expect(flags[0]).toContain("--force");
+    expect(existsSync(worktree.path)).toBe(false);
+
+    const clean = await session();
+    const cleanPlan = (await planWorktreeRemoval(runGit, clean.worktree))!;
+    const cleanFlags: string[][] = [];
+    await removeSessionWorktree(async (cwd, args) => (cleanFlags.push([...args]), runGit(cwd, args)), cleanPlan);
+    expect(cleanFlags[0]).not.toContain("--force");
+    expect(exists(repo, worktree.branch)).toBe(false);
+  });
+
+  it("leaves a worktree that gained an edit after it was planned, and its branch, to Git's own refusal", async () => {
+    const { repo, worktree } = await session();
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    writeFileSync(path.join(worktree.path, "late.txt"), "late");
+    await expect(removeSessionWorktree(runGit, plan)).rejects.toThrow();
+    expect(readFileSync(path.join(worktree.path, "late.txt"), "utf8")).toBe("late");
+    expect(exists(repo, worktree.branch)).toBe(true);
+  });
+
+  it("deletes no branch when the plan names none, and never the repository's own", async () => {
+    const { repo, worktree } = await session({ branch: "mine", existing: true });
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    expect(await removeSessionWorktree(runGit, plan)).toEqual({});
+    expect(existsSync(worktree.path)).toBe(false);
+    expect(exists(repo, "mine")).toBe(true);
+    expect(exists(repo, "main")).toBe(true);
+    expect(readFileSync(path.join(repo, "tracked.txt"), "utf8")).toBe("tracked\n");
+  });
+
+  it("only prunes Git's record when the folder is gone, and still deletes the branch it made", async () => {
+    const { repo, worktree } = await session();
+    rmSync(worktree.path, { recursive: true });
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    const calls: string[] = [];
+    await removeSessionWorktree(async (cwd, args) => (calls.push(args.slice(0, 2).join(" ")), runGit(cwd, args)), plan);
+    expect(calls).toEqual(["worktree prune", "branch -D"]);
+    expect(exists(repo, worktree.branch)).toBe(false);
+  });
+
+  it("says which branch it could not delete once the worktree is gone", async () => {
+    const { worktree } = await session();
+    const plan = (await planWorktreeRemoval(runGit, worktree))!;
+    const result = await removeSessionWorktree(async (cwd, args) => {
+      if (args[0] === "branch") throw new Error("branch is checked out");
+      return runGit(cwd, args);
+    }, plan);
+    expect(result).toEqual({ branchKept: worktree.branch, branchError: "branch is checked out" });
+    expect(existsSync(worktree.path)).toBe(false);
   });
 });
 

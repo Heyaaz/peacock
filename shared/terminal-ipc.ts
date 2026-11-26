@@ -5,7 +5,7 @@
  * and this channel set only carries bytes, size, and flow control.
  */
 
-import type { AgentKindId, AgentSession, ManagedWorktree } from "./agent-contract.js";
+import type { AgentKindId, AgentSession, ManagedWorktree, SessionRemovalResult } from "./agent-contract.js";
 import type { AgentLaunchOptions } from "./agent-launch.js";
 
 export const TERMINAL_IPC = {
@@ -146,7 +146,8 @@ export interface TerminalDesktopBridge {
   renameSession(sessionId: string, title: string): Promise<void>;
   /** Asks the user, in the host's own dialog, before the session and its shell go away. */
   confirmSessionRemoval(sessionId: string): Promise<boolean>;
-  deleteSession(sessionId: string): Promise<void>;
+  /** Resolves what became of the session's worktree when the user asked for it to go too. */
+  deleteSession(sessionId: string): Promise<SessionRemovalResult | void>;
   /** Ends every terminal session's shell that keeps running in herdr-core; resolves how many. */
   killBackground(): Promise<number>;
   /** The terminal agents and whether each can be started here. */

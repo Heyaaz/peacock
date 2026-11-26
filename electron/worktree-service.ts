@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { ManagedWorktree, WorktreePull, WorktreeSetupReport } from "../shared/agent-contract.js";
 import { normalizeCopyPath, type ProjectSettings } from "../shared/project-settings.js";
+import { parseWorktreeList } from "./repo-service.js";
 import { runtimeEnvironment } from "./runtime-path.js";
 
 /**
@@ -91,6 +92,11 @@ export async function unpushedCommits(git: GitRunner, root: string, branch: stri
 
 // ---- making a worktree
 
+/** Where this app puts the worktrees of the repository whose working tree is `sourceWorkspace`. */
+export function worktreeHome(sourceWorkspace: string): string {
+  return path.join(path.dirname(sourceWorkspace), `${path.basename(sourceWorkspace)}.gajae-worktrees`);
+}
+
 /** `git worktree add`: a new branch from HEAD, or the existing branch checked out. */
 export async function addWorktree(
   git: GitRunner,
@@ -144,7 +150,7 @@ export async function createWorktree(
   if (!root) throw new Error("Workspace is not a git repository");
   const suffix = request.suffix();
   const branch = request.branch?.trim() || `${request.branchPrefix ?? "gajae"}/${suffix}`;
-  const worktreePath = path.join(path.dirname(root), `${path.basename(root)}.gajae-worktrees`, suffix);
+  const worktreePath = path.join(worktreeHome(root), suffix);
   const branchExisted = await localBranchExists(git, root, branch);
   const onOneRemote =
     !branchExisted &&
@@ -173,7 +179,10 @@ export async function createWorktree(
       );
     throw error;
   }
-  return { worktree: { sourceWorkspace: root, path: worktreePath, branch, managed: true }, branchExisted };
+  return {
+    worktree: { sourceWorkspace: root, path: worktreePath, branch, managed: true, createdBranch: !branchExisted },
+    branchExisted,
+  };
 }
 
 /**
@@ -549,6 +558,111 @@ export function worktreeSetupReport(preparation: WorktreePreparation): WorktreeS
         }
       : {}),
   };
+}
+
+// ---- taking back a session's worktree
+
+/**
+ * Whether a worktree record names a folder this app could have made: a single folder directly
+ * under the repository's `.gajae-worktrees`, and not the repository's own working tree. A
+ * record that says otherwise is not a worktree this app removes, whatever else it claims.
+ */
+export function isPeacockWorktree(worktree: Pick<ManagedWorktree, "sourceWorkspace" | "path">): boolean {
+  const target = path.resolve(worktree.path);
+  const source = path.resolve(worktree.sourceWorkspace);
+  return target !== source && path.dirname(target) === worktreeHome(source) && path.basename(target) !== "";
+}
+
+/**
+ * What removing one session's worktree would take, read from Git now. Every field is a loss
+ * or an action the user is told about before anything is removed, and the same read is made
+ * again right before the removal: it is only carried out when nothing in it has changed.
+ */
+export interface WorktreeRemovalPlan {
+  worktreePath: string;
+  sourceWorkspace: string;
+  /** Git still lists the worktree but its folder is gone: only Git's record is pruned. */
+  worktreeMissing?: boolean;
+  /** Modified and untracked paths the removal discards. */
+  uncommittedFiles: number;
+  /** Commits only a detached HEAD in the worktree holds: on no branch and on no remote. */
+  detachedCommits: number;
+  /** The branch this app made for the worktree, to be deleted with it. */
+  branch?: { name: string; unpushedCommits: number };
+  /** The session's branch that stays: not made by this app, or checked out somewhere else. */
+  keptBranch?: string;
+}
+
+async function commitsOnlyHere(git: GitRunner, worktreePath: string): Promise<number> {
+  const count = await git(worktreePath, ["rev-list", "--count", "HEAD", "--not", "--branches", "--remotes"]);
+  return Number.parseInt(count.trim(), 10) || 0;
+}
+
+/**
+ * The removal of a session's worktree, if there is one this app may remove: undefined for
+ * a record that does not name a worktree of this app's making, for the repository's own
+ * working tree, for a worktree Git does not list as a linked one, for a locked one and
+ * for one Git cannot be read about. The branch is part of the plan only when this app made
+ * it for the worktree (`createdBranch`) and nothing else has it checked out.
+ */
+export async function planWorktreeRemoval(
+  git: GitRunner,
+  worktree: ManagedWorktree,
+): Promise<WorktreeRemovalPlan | undefined> {
+  if (!isPeacockWorktree(worktree)) return undefined;
+  try {
+    const listed = parseWorktreeList(await git(worktree.sourceWorkspace, ["worktree", "list", "--porcelain"]));
+    const target = path.resolve(worktree.path);
+    const entry = listed.find((candidate) => path.resolve(candidate.path) === target);
+    if (!entry || entry.main || entry.locked) return undefined;
+    const missing = entry.prunable || !existsSync(entry.path);
+    const uncommitted = missing ? 0 : await uncommittedFiles(git, entry.path);
+    const detached = !missing && !entry.branch ? await commitsOnlyHere(git, entry.path) : 0;
+    const exists = await localBranchExists(git, worktree.sourceWorkspace, worktree.branch);
+    const checkedOutElsewhere = listed.some((candidate) => candidate !== entry && candidate.branch === worktree.branch);
+    const owned = exists && worktree.createdBranch === true && !checkedOutElsewhere;
+    return {
+      worktreePath: entry.path,
+      sourceWorkspace: worktree.sourceWorkspace,
+      ...(missing ? { worktreeMissing: true } : {}),
+      uncommittedFiles: uncommitted,
+      detachedCommits: detached,
+      ...(owned
+        ? { branch: { name: worktree.branch, unpushedCommits: await unpushedCommits(git, worktree.sourceWorkspace, worktree.branch) } }
+        : exists
+          ? { keptBranch: worktree.branch }
+          : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Removes what `planWorktreeRemoval` read, in this order: the worktree (forced only when
+ * the plan counted uncommitted files, so one that changed since is refused by Git), Git's
+ * record of it, and then the branch this app made. A worktree that could not be removed
+ * rejects and leaves the branch alone; a branch that could not be deleted is reported.
+ */
+export async function removeSessionWorktree(
+  git: GitRunner,
+  plan: WorktreeRemovalPlan,
+): Promise<{ branchKept?: string; branchError?: string }> {
+  if (!plan.worktreeMissing)
+    await git(plan.sourceWorkspace, [
+      "worktree",
+      "remove",
+      ...(plan.uncommittedFiles > 0 ? ["--force"] : []),
+      plan.worktreePath,
+    ]);
+  await git(plan.sourceWorkspace, ["worktree", "prune"]).catch(() => undefined);
+  if (!plan.branch) return {};
+  try {
+    await git(plan.sourceWorkspace, ["branch", "-D", plan.branch.name]);
+    return {};
+  } catch (error) {
+    return { branchKept: plan.branch.name, branchError: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 // ---- a worktree for a terminal or chat session

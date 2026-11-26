@@ -2785,6 +2785,53 @@ describe("GjcSdkController CLI seam", () => {
     }
   });
 
+  describe("recording whether the branch of a new worktree is this app's", () => {
+    async function repo(): Promise<{ parent: string; dir: string }> {
+      const parent = await mkdtemp(path.join(tmpdir(), "gajae-created-branch-"));
+      const dir = path.join(parent, "repo");
+      await execFile("git", ["init", "-q", "-b", "main", dir]);
+      await writeFile(path.join(dir, "README"), "seed");
+      await execFile("git", ["-C", dir, "add", "README"]);
+      await execFile("git", ["-C", dir, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-qm", "seed"]);
+      return { parent, dir };
+    }
+
+    it("says a branch it started was made by this app, and keeps that on disk", async () => {
+      const { parent, dir } = await repo();
+      const metadata = new SessionMetadataStore(path.join(parent, "user-data"));
+      const { controller, cli } = harness({ sessionMetadata: metadata });
+      cli.rawGlobal.mockResolvedValueOnce({ sessionId: "made" } as never);
+      try {
+        const created = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "gajae/made" });
+        expect(created.worktree?.createdBranch).toBe(true);
+        expect(metadata.getWorktree("made")?.createdBranch).toBe(true);
+        expect(new SessionMetadataStore(path.join(parent, "user-data")).getWorktree("made")?.createdBranch).toBe(true);
+        cli.rawGlobal.mockResolvedValueOnce({ sessionId: "unnamed" } as never);
+        const unnamed = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree" });
+        expect(unnamed.worktree).toMatchObject({ createdBranch: true, branch: expect.stringMatching(/^gajae\//u) });
+      } finally {
+        controller.dispose();
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
+
+    it("says a branch that was there is not", async () => {
+      const { parent, dir } = await repo();
+      await execFile("git", ["-C", dir, "branch", "theirs"]);
+      const metadata = new SessionMetadataStore(path.join(parent, "user-data"));
+      const { controller, cli } = harness({ sessionMetadata: metadata });
+      cli.rawGlobal.mockResolvedValueOnce({ sessionId: "existing" } as never);
+      try {
+        const created = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "theirs" });
+        expect(created.worktree).toMatchObject({ branch: "theirs", createdBranch: false });
+        expect(metadata.getWorktree("existing")?.createdBranch).toBe(false);
+      } finally {
+        controller.dispose();
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("preparing a new worktree from its project's settings", () => {
     async function repoWithCommit(): Promise<{ parent: string; dir: string }> {
       const parent = await mkdtemp(path.join(tmpdir(), "gajae-prepare-worktree-"));
@@ -2818,6 +2865,7 @@ describe("GjcSdkController CLI seam", () => {
           path: created.workspace,
           branch: "gajae/prepared",
           managed: true,
+          createdBranch: true,
         });
         expect(created.worktreeSetup).toEqual({ copyProblems: [{ path: ".env", reason: "symlink" }] });
         const announced = emit.mock.calls.map(([event]) => event).find((event) => event.type === "session.created");

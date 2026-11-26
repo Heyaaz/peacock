@@ -198,6 +198,18 @@ describe("HerdrAgentController sessions in a worktree", () => {
     expect(events[0]).toEqual({ type: "session.created", session });
   });
 
+  it("records that it made the branch it started, and that it did not make one that was there", async () => {
+    const repo = repository();
+    gitIn(repo, "branch", "theirs");
+    const { controller, store } = setup();
+    const own = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" });
+    expect(own.worktree?.createdBranch).toBe(true);
+    expect(store.get(own.id)?.worktree?.createdBranch).toBe(true);
+    const theirs = await controller.createTerminalSession({ title: "b", workspace: repo, agentKind: "claude", isolation: "worktree", worktreeBranch: "theirs" });
+    expect(theirs.worktree).toMatchObject({ branch: "theirs", createdBranch: false });
+    expect(store.get(theirs.id)?.worktree?.createdBranch).toBe(false);
+  });
+
   it("keeps the worktree across a restart, and offers it on the listed row", async () => {
     const repo = repository();
     const { controller, directory } = setup();

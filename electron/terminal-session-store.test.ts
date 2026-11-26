@@ -38,7 +38,7 @@ describe("TerminalSessionStore", () => {
   it("keeps the worktree a session was made in, and drops one that is not whole", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "gajae-terminal-store-"));
     const store = new TerminalSessionStore(directory);
-    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const };
+    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const, createdBranch: true };
     const created = store.create({ title: "a", workspace: worktree.path, agentKind: "claude", worktree });
     expect(created.worktree).toEqual(worktree);
     expect(new TerminalSessionStore(directory).get(created.id)?.worktree).toEqual(worktree);

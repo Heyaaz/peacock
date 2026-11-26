@@ -145,9 +145,15 @@ export class IpcSecurity {
     event: IpcMainInvokeEvent,
     grant: string,
     content: ConfirmContent,
+    followUp?: () => Promise<void>,
   ): Promise<boolean> {
     const confirmed = await this.confirm(event, content);
-    if (confirmed) this.grants.set(`${event.sender.id}:${grant}`, Date.now() + GRANT_TTL_MS);
+    if (confirmed) {
+      // A question that comes with this one is answered before the grant starts its clock,
+      // so reading it carefully cannot use the grant up.
+      await followUp?.();
+      this.grants.set(`${event.sender.id}:${grant}`, Date.now() + GRANT_TTL_MS);
+    }
     return confirmed;
   }
 

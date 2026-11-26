@@ -185,6 +185,37 @@ describe("IpcSecurity", () => {
     expect(confirm).toHaveBeenCalledTimes(4);
   });
 
+  it("lets a question that comes with the confirmation be answered before the grant starts its clock", async () => {
+    vi.useFakeTimers();
+    try {
+      const confirm = vi.fn<DestructiveConfirmation>().mockResolvedValue(true);
+      const security = new IpcSecurity(confirm);
+      const { window, webContents } = fakeWindow();
+      security.register(window, webContents.mainFrame.url);
+      const event = eventFor(webContents);
+      const followUp = vi.fn(async () => {
+        // the user takes their time over the second question
+        vi.advanceTimersByTime(60_000);
+      });
+      await expect(security.preauthorize(event, "delete:s1", { message: "delete" }, followUp)).resolves.toBe(true);
+      expect(followUp).toHaveBeenCalledTimes(1);
+      await security.authorizeDestructive(event, { message: "delete" }, "delete:s1");
+      expect(confirm).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks no follow-up of a user who declines", async () => {
+    const confirm = vi.fn<DestructiveConfirmation>().mockResolvedValue(false);
+    const security = new IpcSecurity(confirm);
+    const { window, webContents } = fakeWindow();
+    security.register(window, webContents.mainFrame.url);
+    const followUp = vi.fn(async () => undefined);
+    await expect(security.preauthorize(eventFor(webContents), "delete:s1", { message: "delete" }, followUp)).resolves.toBe(false);
+    expect(followUp).not.toHaveBeenCalled();
+  });
+
   it("grants nothing when the user declines, or to another window, or after it expires", async () => {
     vi.useFakeTimers();
     try {

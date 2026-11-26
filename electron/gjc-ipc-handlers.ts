@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   FileAttachment,
   MessageDelivery,
+  SessionRemovalResult,
   TranscriptPageRequest,
 } from "../shared/agent-contract.js";
 import { GJC_IPC } from "../shared/gjc-ipc.js";
@@ -30,6 +31,7 @@ import { fileAttachment } from "./settings-ipc-handlers.js";
 import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
 import { END_WORKFLOW_DETAIL, endWorkflowMessage, hostText } from "./host-text.js";
 import type { IpcSecurity } from "./ipc-security.js";
+import type { SessionWorktreeRemoval } from "./session-worktree-removal.js";
 import { projectTranscriptItemForDelivery } from "./transcript-body-preview.js";
 
 type SessionRemoval = "delete" | "hide";
@@ -175,6 +177,8 @@ export function registerGjcIpcHandlers(
   controller: FullAgentHost & Partial<AgentExtrasFacet>,
   attachments: AttachmentStore,
   security: IpcSecurity,
+  /** Asks about a session's worktree when the session is deleted; without it a delete leaves worktrees alone. */
+  worktrees?: SessionWorktreeRemoval,
 ): () => void {
   const handle = (channel: string, handler: (...args: any[]) => any): void => {
     ipcMain.handle(channel, security.guarded(async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
@@ -319,14 +323,26 @@ export function registerGjcIpcHandlers(
   // delete or hide that follows uses that answer instead of asking twice.
   handle(GJC_IPC.confirmSessionRemoval, async (event, sessionId: unknown, action: unknown) => {
     const id = requiredId(sessionId, "Session ID");
-    const { grant, content } = await removalConfirmation(id, sessionRemoval(action), true);
-    return security.preauthorize(event, grant, content);
+    const removal = sessionRemoval(action);
+    const { grant, content } = await removalConfirmation(id, removal, true);
+    // Hiding leaves GJC's history, which resumes in the session's folder, so only a delete asks
+    // whether the session's worktree goes too.
+    return security.preauthorize(
+      event,
+      grant,
+      content,
+      removal === "delete" && worktrees ? () => worktrees.remember(event, id) : undefined,
+    );
   });
-  handle(GJC_IPC.deleteSession, async (event, sessionId: unknown) => {
+  handle(GJC_IPC.deleteSession, async (event, sessionId: unknown): Promise<SessionRemovalResult | void> => {
     const id = requiredId(sessionId, "Session ID");
     const { grant, content, holder } = await removalConfirmation(id, "delete");
     await security.authorizeDestructive(event, content, grant);
-    return controller.deleteSession(id, holder ? { stopHost: holder.pid } : undefined);
+    // asked before the session goes: its row is what says which worktree it has
+    const decision = await worktrees?.decide(event, id);
+    await controller.deleteSession(id, holder ? { stopHost: holder.pid } : undefined);
+    // the agent has stopped, and nothing is removed unless the delete itself went through
+    if (decision) return { worktree: await worktrees!.run(decision) };
   });
   // Deleting GJC's own saved history is not available through the public SDK on
   // gjc/0.18.12: `session.delete` answers operation_failed with an unknown outcome

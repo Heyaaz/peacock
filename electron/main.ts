@@ -35,6 +35,7 @@ import { GJC_IPC } from "../shared/gjc-ipc.js";
 import { GjcSdkController } from "./gjc-sdk-controller.js";
 import { AgentRouter } from "./agent-router.js";
 import { registerGjcIpcHandlers } from "./gjc-ipc-handlers.js";
+import { SessionWorktreeRemoval } from "./session-worktree-removal.js";
 import { DesktopEventStream } from "./desktop-event-stream.js";
 import { DESKTOP_IPC, type SessionShortcut } from "../shared/settings-ipc.js";
 import { registerSettingsIpcHandlers } from "./settings-ipc-handlers.js";
@@ -572,7 +573,12 @@ const agentRouter = new AgentRouter(gjcController);
 export const ipcSecurity = new IpcSecurity(
   !app.isPackaged && (smokeMode || terminalSmokeMode) ? async () => true : overlayDestructiveConfirmation,
 );
-const unregisterGjcIpc = registerGjcIpcHandlers(agentRouter, attachmentStore, ipcSecurity);
+// What becomes of a session's own worktree when the user deletes the session, whichever runtime ran it.
+const sessionWorktrees = new SessionWorktreeRemoval({
+  listSessions: () => agentRouter.listSessions(),
+  confirm: (event, content) => ipcSecurity.confirm(event, content),
+});
+const unregisterGjcIpc = registerGjcIpcHandlers(agentRouter, attachmentStore, ipcSecurity, sessionWorktrees);
 // One authorized invoke hands a window this process launched the event stream endpoint.
 // It goes through the same sender verification every gjc channel uses, so a frame or
 // window this process did not open cannot read the token.
@@ -935,6 +941,7 @@ const unregisterOmpAccountsIpc = registerOmpAccountsIpc(ompAccounts, ipcSecurity
 const terminalIpc = registerTerminalIpcHandlers(ipcSecurity, {
   store: terminalSessions,
   provider: hcTerminals,
+  worktrees: sessionWorktrees,
   ...(herdrAgents
     ? {
         agents: {

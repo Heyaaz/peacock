@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { randomUUID } from "node:crypto";
-import type { AgentSession } from "../shared/agent-contract.js";
+import type { AgentSession, SessionRemovalResult } from "../shared/agent-contract.js";
+import type { SessionWorktreeRemoval } from "./session-worktree-removal.js";
 import type { IpcSecurity } from "./ipc-security.js";
 import { validDirectory } from "./settings-store.js";
 import { resolveShellCwd } from "./terminal-shell.js";
@@ -488,6 +489,8 @@ export function registerTerminalIpcHandlers(
     provider?: SessionTerminalProvider;
     /** Agent sessions' owner; without it only shells can be made. */
     agents?: TerminalAgents;
+    /** Asks about a session's worktree when the session is deleted; without it a delete leaves worktrees alone. */
+    worktrees?: SessionWorktreeRemoval;
   },
 ): {
   unregister(): void;
@@ -495,6 +498,7 @@ export function registerTerminalIpcHandlers(
   disposeAll(): void;
 } {
   const store = options?.store;
+  const worktrees = options?.worktrees;
   const host = new TerminalHost(
     options?.open,
     (sessionId) => store?.get(sessionId),
@@ -550,19 +554,28 @@ export function registerTerminalIpcHandlers(
     TERMINAL_IPC.confirmSessionRemoval,
     security.guarded((event: IpcMainInvokeEvent, sessionId: unknown) => {
       const id = terminalSessionId(sessionId);
-      return security.preauthorize(event, `delete:${id}`, removalConfirmation(store?.get(id)));
+      return security.preauthorize(
+        event,
+        `delete:${id}`,
+        removalConfirmation(store?.get(id)),
+        worktrees ? () => worktrees.remember(event, id) : undefined,
+      );
     }),
   );
   ipcMain.handle(
     TERMINAL_IPC.deleteSession,
-    security.guarded(async (event: IpcMainInvokeEvent, sessionId: unknown) => {
+    security.guarded(async (event: IpcMainInvokeEvent, sessionId: unknown): Promise<SessionRemovalResult | void> => {
       const id = terminalSessionId(sessionId);
       const sessions = requireStore();
       const record = sessions.get(id);
       await security.authorizeDestructive(event, removalConfirmation(record), `delete:${id}`);
+      // asked before the session goes: its row is what says which worktree it has
+      const decision = await worktrees?.decide(event, id);
       await host.closeSession(id, record);
       sessions.delete(id);
       agents?.forget(id);
+      // the terminal has ended, so nothing writes in the worktree any more
+      if (decision) return { worktree: await worktrees!.run(decision) };
     }),
   );
   ipcMain.handle(

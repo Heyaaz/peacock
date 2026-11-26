@@ -22,6 +22,7 @@ import type {
   MessageDelivery,
   QueuedMessage,
   QuestionSubmission,
+  SessionRemovalResult,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
 import type {
@@ -53,7 +54,8 @@ export interface AgentBackend {
   renameSession(sessionId: string, title: string): Promise<void>;
   /** Whether the user agrees to delete or hide the session; asked before either starts. */
   confirmSessionRemoval(sessionId: string, action: "delete" | "hide"): Promise<boolean>;
-  deleteSession(sessionId: string): Promise<void>;
+  /** Resolves what became of the session's worktree when the user asked for it to go too. */
+  deleteSession(sessionId: string): Promise<SessionRemovalResult | void>;
   hideSession(sessionId: string): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptItem[]>;
   getTranscriptPage(sessionId: string, request?: TranscriptPageRequest): Promise<TranscriptPage>;

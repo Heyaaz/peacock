@@ -69,6 +69,17 @@ const ENGLISH: Readonly<Record<string, string>> = {
   "정리": "Clean up",
   "적용": "Apply",
   "저장": "Save",
+  "이 세션의 worktree도 지울까요?": "Remove this session's worktree too?",
+  "worktree도 지우기": "Remove the worktree too",
+  "남겨 두기": "Keep it",
+  "worktree 폴더가 이미 없어 Git의 기록만 정리합니다: {0}": "The worktree folder is already gone; only Git's record of it is cleaned up: {0}",
+  "worktree 삭제: {0} (커밋하지 않은 변경 {1}개가 사라집니다)": "Remove worktree: {0} ({1} uncommitted changes will be lost)",
+  "worktree 삭제: {0}": "Remove worktree: {0}",
+  "브랜치에 속하지 않은 커밋 {0}개가 사라집니다": "{0} commits that are on no branch will be lost",
+  "브랜치 삭제: {0} (push하지 않은 커밋 {1}개가 사라집니다)": "Delete branch: {0} ({1} unpushed commits will be lost)",
+  "브랜치 삭제: {0}": "Delete branch: {0}",
+  "브랜치 {0}은(는) 그대로 둡니다": "Branch {0} stays",
+  "세션은 지우기로 했습니다. 남겨 두기를 고르면 worktree와 브랜치는 그대로 둡니다.": "The session is being deleted. Keeping it leaves the worktree and branch as they are.",
   "setup 스크립트를 저장할까요? 이 프로젝트의 새 worktree를 만들 때마다 실행됩니다.":
     "Save this setup script? It runs every time a new worktree of this project is created.",
   "업데이트": "Update",
@@ -125,4 +136,13 @@ export function setHostLanguage(next: UiLanguage): void {
 
 export function hostText(value: string): string {
   return language === "en" ? ENGLISH[value] ?? value : value;
+}
+
+/**
+ * A host sentence with values in it: the template is translated whole, then `{0}`, `{1}`…
+ * are filled in, the way the window's `t` does it, so a path or a count never has to be
+ * part of a dictionary key.
+ */
+export function hostFormat(template: string, values: readonly (string | number)[]): string {
+  return hostText(template).replace(/\{(\d+)\}/gu, (match, index: string) => String(values[Number(index)] ?? match));
 }

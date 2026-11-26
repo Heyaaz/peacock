@@ -29,6 +29,18 @@ describe("confirmPage", () => {
     expect(page).not.toMatch(/<script/u);
   });
 
+  it("labels the cancel button for a question whose no is not a cancellation, still answering no", () => {
+    const page = confirmPage({ message: "이 세션의 worktree도 지울까요?", confirmLabel: "worktree도 지우기", cancelLabel: "남겨 두기", danger: true }, "dark");
+    const keep = page.match(/<button[^>]*>남겨 두기<\/button>/u)?.[0] ?? "";
+    expect(keep).toContain('formaction="https://gajae-confirm.invalid/cancel"');
+    expect(keep).toContain("autofocus");
+    expect(page).not.toMatch(/<button[^>]*>취소<\/button>/u);
+    setHostLanguage("en");
+    expect(confirmPage({ message: "이 세션의 worktree도 지울까요?", confirmLabel: "worktree도 지우기", cancelLabel: "남겨 두기" }, "dark")).toMatch(
+      /<button[^>]*>Keep it<\/button>/u,
+    );
+  });
+
   it("uses the host language for its copy and the default button", () => {
     setHostLanguage("en");
     const page = confirmPage({ message: "세션을 삭제할까요?" }, "dark");

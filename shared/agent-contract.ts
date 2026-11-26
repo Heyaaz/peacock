@@ -402,6 +402,12 @@ export interface ManagedWorktree {
   path: string;
   branch: string;
   managed: true;
+  /**
+   * This app made `branch` for the worktree, so removing the worktree may remove it too.
+   * Absent on a record from before this was kept, and read as false: a branch that may be
+   * the user's own is never deleted.
+   */
+  createdBranch?: boolean;
 }
 
 /**
@@ -411,7 +417,7 @@ export interface ManagedWorktree {
  */
 export function parseManagedWorktree(value: unknown): ManagedWorktree | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const { sourceWorkspace, path, branch, managed } = value as Record<string, unknown>;
+  const { sourceWorkspace, path, branch, managed, createdBranch } = value as Record<string, unknown>;
   const folder = (candidate: unknown): candidate is string =>
     typeof candidate === "string" && candidate.startsWith("/") && candidate.length <= 4096 && !candidate.includes("\0");
   if (
@@ -423,7 +429,13 @@ export function parseManagedWorktree(value: unknown): ManagedWorktree | undefine
     branch.length > 256
   )
     return undefined;
-  return { sourceWorkspace, path, branch, managed: true };
+  return {
+    sourceWorkspace,
+    path,
+    branch,
+    managed: true,
+    ...(typeof createdBranch === "boolean" ? { createdBranch } : {}),
+  };
 }
 
 /**
@@ -435,6 +447,26 @@ export interface WorktreeSetupReport {
   copyProblems?: { path: string; reason: string }[];
   /** The setup script ended without succeeding: `output` is the end of what it printed. */
   setup?: { status: "failed" | "timeout" | "error"; exitCode?: number; output: string };
+}
+
+/**
+ * What became of a session's worktree when the user asked for it to be removed with the
+ * session. The session itself is gone either way; this is only for the window to say so
+ * when the worktree is still there.
+ */
+export interface WorktreeRemovalOutcome {
+  status: "removed" | "kept";
+  /** Why a worktree the user asked to remove is still there. */
+  reason?: "changed" | "shared" | "failed";
+  /** What went wrong, when it did (git's own message). */
+  detail?: string;
+  /** The branch the removal could not delete, after it removed the worktree. */
+  branchKept?: string;
+}
+
+/** What deleting a session answers beyond the deletion itself. */
+export interface SessionRemovalResult {
+  worktree?: WorktreeRemovalOutcome;
 }
 
 export interface EffectiveRuntimeState {
@@ -1460,7 +1492,8 @@ export interface GjcDesktopBridge {
   renameSession(sessionId: string, title: string): Promise<void>;
   /** Asks the user, in the host's own dialog, before a delete or hide starts. */
   confirmSessionRemoval(sessionId: string, action: "delete" | "hide"): Promise<boolean>;
-  deleteSession(sessionId: string): Promise<void>;
+  /** Resolves what became of the session's worktree when the user asked for it to go too. */
+  deleteSession(sessionId: string): Promise<SessionRemovalResult | void>;
   hideSession(sessionId: string): Promise<void>;
   getTranscript(sessionId: string): Promise<TranscriptItem[]>;
   getTranscriptPage(

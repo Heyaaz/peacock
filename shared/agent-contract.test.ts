@@ -154,6 +154,13 @@ describe("parseManagedWorktree", () => {
     expect(parseManagedWorktree({ ...whole, extra: "x" })).toEqual(whole);
   });
 
+  it("keeps whether this app made the branch, only as a boolean", () => {
+    expect(parseManagedWorktree({ ...whole, createdBranch: true })).toEqual({ ...whole, createdBranch: true });
+    expect(parseManagedWorktree({ ...whole, createdBranch: false })).toEqual({ ...whole, createdBranch: false });
+    expect(parseManagedWorktree({ ...whole, createdBranch: "yes" })).toEqual(whole);
+    expect(parseManagedWorktree(whole)).not.toHaveProperty("createdBranch");
+  });
+
   it.each([
     ["nothing", undefined],
     ["a string", "worktree"],

@@ -1336,4 +1336,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "setup 스크립트가 종료 코드 {0}(으)로 끝났습니다.": "The setup script exited with code {0}.",
   "마지막 출력: {0}": "Last output: {0}",
   "worktree 준비 중…": "Preparing worktree…",
+  "worktree는 지웠지만 브랜치 {0}은(는) 지우지 못했습니다.{1}": "The worktree is removed, but branch {0} could not be deleted.{1}",
+  "다른 세션이 이 worktree를 쓰고 있어 지우지 않았습니다. 세션만 지웠습니다.": "Another session is using this worktree, so it was kept. Only the session was deleted.",
+  "확인한 뒤 worktree의 내용이 바뀌어 지우지 않았습니다. 세션만 지웠습니다. 저장소 화면에서 확인할 수 있습니다.": "The worktree changed after you confirmed, so it was kept. Only the session was deleted. You can check it on the repository screen.",
+  "worktree를 지우지 못했습니다. 세션만 지웠습니다.{0}": "The worktree could not be removed. Only the session was deleted.{0}",
 };

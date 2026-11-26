@@ -16,6 +16,8 @@ export interface ConfirmContent {
   detail?: string;
   /** The confirm button's label; "계속" when absent. */
   confirmLabel?: string;
+  /** The cancel button's label; "취소" when absent. For a question whose "no" is not a cancellation. */
+  cancelLabel?: string;
   /** Red confirm button, for an action that removes something. */
   danger?: boolean;
 }
@@ -38,7 +40,7 @@ export function confirmPage(content: ConfirmContent, theme: ConfirmTheme): strin
   const message = escapeHtml(hostText(content.message));
   const detail = content.detail ? escapeHtml(hostText(content.detail)) : "";
   const confirmLabel = escapeHtml(hostText(content.confirmLabel ?? "계속"));
-  const cancelLabel = escapeHtml(hostText("취소"));
+  const cancelLabel = escapeHtml(hostText(content.cancelLabel ?? "취소"));
   const dark = theme === "dark";
   return `<!doctype html>
 <html lang="ko" data-theme="${theme}">

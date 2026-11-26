@@ -1258,6 +1258,18 @@ describe("OmpRpcController chats in a worktree", () => {
     expect(context.processes[0]!.args).toEqual(expect.arrayContaining(["--cwd", worktree.path]));
   });
 
+  it("records that it made the branch it started, and that it did not make one that was there", async () => {
+    const repo = repository();
+    execFileSync("git", ["-C", repo, "branch", "theirs"]);
+    const context = setup();
+    const own = await worktreeChat(context, repo);
+    expect(own.worktree?.createdBranch).toBe(true);
+    expect(context.store.get(own.id)?.worktree?.createdBranch).toBe(true);
+    const theirs = await worktreeChat(context, repo, { worktreeBranch: "theirs" });
+    expect(theirs.worktree).toMatchObject({ branch: "theirs", createdBranch: false });
+    expect(context.store.get(theirs.id)?.worktree?.createdBranch).toBe(false);
+  });
+
   it("reports what the setup did not manage on the answer only", async () => {
     const repo = repository();
     const context = setup({

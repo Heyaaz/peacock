@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { parseSessionWorkLink, type SessionWorkLink } from '../shared/agent-contract.js'
+import { parseManagedWorktree, parseSessionWorkLink, type ManagedWorktree, type SessionWorkLink } from '../shared/agent-contract.js'
 import { parseParallelGroup, type ParallelGroup } from '../shared/parallel-run.js'
 
 export class SessionMetadataStore {
@@ -10,7 +10,7 @@ export class SessionMetadataStore {
   private hidden: Set<string>
   private ownership: Record<string, 'gajae' | 'external' | 'available'>
   private unread: Record<string, boolean>
-  private worktrees: Record<string, { sourceWorkspace: string; path: string; branch: string; managed: true }>
+  private worktrees: Record<string, ManagedWorktree>
   private workLinks: Record<string, SessionWorkLink>
   private parallelGroups: Record<string, ParallelGroup>
 
@@ -57,7 +57,7 @@ export class SessionMetadataStore {
   getUnread(sessionId: string): boolean { return this.unread[sessionId] === true }
   setUnread(sessionId: string, value: boolean): void { this.unread[sessionId] = value; this.write() }
   getWorktree(sessionId: string) { return this.worktrees[sessionId] }
-  setWorktree(sessionId: string, value: { sourceWorkspace: string; path: string; branch: string; managed: true }): void { this.worktrees[sessionId] = value; this.write() }
+  setWorktree(sessionId: string, value: ManagedWorktree): void { this.worktrees[sessionId] = value; this.write() }
   getWorkLink(sessionId: string): SessionWorkLink | undefined { return this.workLinks[sessionId] }
   setWorkLink(sessionId: string, value: SessionWorkLink): void { this.workLinks[sessionId] = value; this.write() }
   listParallelGroups(): ParallelGroup[] { return Object.values(this.parallelGroups) }
@@ -123,7 +123,7 @@ export class SessionMetadataStore {
     this.write()
   }
 
-  private read(): { aliases: Record<string, string>; workspaces: Record<string, string>; hidden: string[]; ownership: Record<string, 'gajae' | 'external' | 'available'>; unread: Record<string, boolean>; worktrees: Record<string, { sourceWorkspace: string; path: string; branch: string; managed: true }>; workLinks: Record<string, SessionWorkLink>; parallelGroups: Record<string, ParallelGroup> } {
+  private read(): { aliases: Record<string, string>; workspaces: Record<string, string>; hidden: string[]; ownership: Record<string, 'gajae' | 'external' | 'available'>; unread: Record<string, boolean>; worktrees: Record<string, ManagedWorktree>; workLinks: Record<string, SessionWorkLink>; parallelGroups: Record<string, ParallelGroup> } {
     try {
       const value = JSON.parse(readFileSync(this.filePath, 'utf8')) as unknown
       if (!value || typeof value !== 'object' || Array.isArray(value)) return { aliases: {}, workspaces: {}, hidden: [], ownership: {}, unread: {}, worktrees: {}, workLinks: {}, parallelGroups: {} }
@@ -150,17 +150,9 @@ export class SessionMetadataStore {
       const ownership = candidate.ownership && typeof candidate.ownership === 'object' ? Object.fromEntries(Object.entries(candidate.ownership).filter(([,v]) => v === 'gajae' || v === 'external' || v === 'available')) as typeof this.ownership : {}
       const unread = candidate.unread && typeof candidate.unread === 'object' ? Object.fromEntries(Object.entries(candidate.unread).filter(([,v]) => typeof v === 'boolean')) as Record<string, boolean> : {}
       const worktrees = candidate.worktrees && typeof candidate.worktrees === 'object' && !Array.isArray(candidate.worktrees)
-        ? Object.fromEntries(Object.entries(candidate.worktrees as Record<string, unknown>).filter((entry): entry is [string, { sourceWorkspace: string; path: string; branch: string; managed: true }] => {
-            const record = entry[1]
-            if (!record || typeof record !== 'object' || Array.isArray(record)) return false
-            const value = record as Record<string, unknown>
-            return value.managed === true
-              && typeof value.sourceWorkspace === 'string'
-              && path.isAbsolute(value.sourceWorkspace)
-              && typeof value.path === 'string'
-              && path.isAbsolute(value.path)
-              && typeof value.branch === 'string'
-              && Boolean(value.branch)
+        ? Object.fromEntries(Object.entries(candidate.worktrees as Record<string, unknown>).flatMap(([sessionId, raw]) => {
+            const worktree = parseManagedWorktree(raw)
+            return worktree ? [[sessionId, worktree]] : []
           }))
         : {}
       const workLinks = candidate.workLinks && typeof candidate.workLinks === 'object' && !Array.isArray(candidate.workLinks)

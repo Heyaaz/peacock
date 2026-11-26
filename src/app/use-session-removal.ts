@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { AgentBackend } from "../backend/agent-backend";
 import type { AgentSession } from "../backend/types";
+import { worktreeRemovalMessage } from "./worktree-removal";
 
 export function useSessionRemoval(
   backend: AgentBackend,
@@ -86,7 +87,10 @@ export function useSessionRemoval(
     removingSessionIds.current.add(sessionId);
     forgetSession(sessionId);
     try {
-      await backend.deleteSession(backendId);
+      const result = await backend.deleteSession(backendId);
+      // The session is gone either way; a worktree the user asked to remove with it may not be.
+      const worktreeNotice = result?.worktree ? worktreeRemovalMessage(result.worktree) : undefined;
+      if (worktreeNotice) setAppError(worktreeNotice);
     } catch (error) {
       // The row never really left. Put it back -- unless it reappeared on its own
       // while the backend worked -- and undo the selection move this delete made.

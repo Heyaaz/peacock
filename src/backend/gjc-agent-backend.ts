@@ -24,6 +24,7 @@ import type {
   MessageDelivery,
   QueuedMessage,
   QuestionSubmission,
+  SessionRemovalResult,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
 import type {
@@ -131,7 +132,7 @@ export class GjcAgentBackend implements AgentBackend {
     return this.bridge.confirmSessionRemoval(sessionId, action);
   }
 
-  deleteSession(sessionId: string): Promise<void> {
+  deleteSession(sessionId: string): Promise<SessionRemovalResult | void> {
     if (this.terminal && isTerminalSessionId(sessionId))
       return this.terminal.deleteSession(sessionId);
     return this.bridge.deleteSession(sessionId);
@@ -139,7 +140,7 @@ export class GjcAgentBackend implements AgentBackend {
 
   hideSession(sessionId: string): Promise<void> {
     if (this.terminal && isTerminalSessionId(sessionId))
-      return this.terminal.deleteSession(sessionId);
+      return this.terminal.deleteSession(sessionId).then(() => undefined);
     return this.bridge.hideSession(sessionId);
   }
 

@@ -21,7 +21,7 @@ describe("OmpRpcSessionStore", () => {
   it("keeps the worktree a chat was made in, and reads a damaged one as none", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "gajae-omp-store-"));
     const store = new OmpRpcSessionStore(directory);
-    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const };
+    const worktree = { sourceWorkspace: "/work/repo", path: "/work/repo.gajae-worktrees/a", branch: "peacock/a", managed: true as const, createdBranch: true };
     const made = store.create({ title: "in a worktree", workspace: worktree.path, worktree });
     const plain = store.create({ title: "plain", workspace: "/tmp/work" });
     expect(plain).not.toHaveProperty("worktree");

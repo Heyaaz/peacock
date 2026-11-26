@@ -305,7 +305,9 @@ Other agents: Delete on a terminal session (Claude Code, omp, Codex, a shell)
 asks first, ends its terminal and removes the session from Peacock; the agent's own
 transcript file stays where the agent keeps it. Delete on an omp chat removes it
 from the list and stops its omp process; omp's session file stays in omp's
-history, where a terminal can resume it.
+history, where a terminal can resume it. Delete on any session started in a worktree Peacock
+made also asks whether to remove that worktree and its branch (see
+[Sessions in their own worktree](#sessions-in-their-own-worktree)).
 
 ## Agent sessions
 
@@ -410,8 +412,32 @@ or let the project do it for you.
   typed into the session for you, so the question is waiting in its terminal; answer it there.
 - **Forks and git.** A fork of an omp chat stays in its worktree. An omp chat in a managed
   worktree can stage, commit and push from its changed-files panel, as GJC can.
-- **Not removed.** Hiding or deleting a session leaves its worktree and branch where they
-  are; they show on the repository screen, and `git worktree remove` takes them away.
+- **Deleting the session.** After you confirm Delete, a second question asks "Remove this
+  session's worktree too?" for a worktree Peacock made, and only then. Its text names every
+  loss: the uncommitted files, commits on no branch, and the unpushed commits of a branch
+  Peacock made, with the folder and branch it would delete. "Remove the worktree too" removes
+  them; "Keep it" deletes only the session and leaves the worktree and branch where they are.
+  Nothing is asked, and nothing removed, when
+  - the session was started in its folder as it is, or in a worktree of your own, or in the
+    repository's main working tree: only a single folder directly under
+    `<repo>.gajae-worktrees/` that Git lists as a linked worktree is ever removed, and never a
+    locked one;
+  - another session is still using the worktree, a fork of this one or a session of any agent
+    in its folder: the worktree goes with the last of them;
+  - the session is only being hidden (GJC's Hide from list), because its history resumes in
+    that folder.
+
+  What you agreed to is read again after the session and its agent have ended, and carried
+  out only if it is exactly what the question showed: an edit or commit made in between, or a
+  session that started using the worktree meanwhile, keeps it, and the window says so (the
+  session is deleted either way). The order is: the agent's terminal or process ends, the
+  worktree is removed, Git's record of it is pruned, and then the branch is deleted, and only
+  a branch Peacock made for this worktree (`createdBranch` in the session's record). A branch
+  that was already there when the worktree was made, a branch checked out in another worktree,
+  and a session recorded before this was kept (its branch is read as not Peacock's) are never
+  deleted; the question says which branch stays. A worktree whose folder is already gone only has
+  Git's record pruned. A branch you moved the worktree onto is not deleted either, so work
+  committed there survives.
 - Settings are in `project-settings.json` in the app's data folder. This is desktop only: a
   paired phone cannot start sessions, in a worktree or otherwise.
 
