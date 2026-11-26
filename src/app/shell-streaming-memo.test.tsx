@@ -526,7 +526,7 @@ describe("session shortcuts from the main process", () => {
     await act(async () => shortcut!({ type: "new" }));
     expect(probe.createSession).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        title: "gajae-bot",
+        title: "새 세션",
         workspace: "/tmp/gajae-bot",
         runtime: "herdr",
         agentKind: "claude",

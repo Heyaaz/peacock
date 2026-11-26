@@ -40,7 +40,6 @@ import {
 } from "./dialogs";
 import {
   EMPTY_TRANSCRIPT,
-  directoryName,
   humanErrorMessage,
   isDeclinedConfirmation,
   sessionTitleText,
@@ -857,7 +856,7 @@ export default function App() {
       if (choice.agentKind === "gjc") return { title: DEFAULT_SESSION_TITLE, workspace };
       const launch = preferencesRef.current.agents?.[choice.agentKind]?.launch;
       return {
-        title: directoryName(workspace),
+        title: DEFAULT_SESSION_TITLE,
         workspace,
         kind: "terminal",
         ...(choice.agentKind !== "shell" ? { agentKind: choice.agentKind } : {}),
