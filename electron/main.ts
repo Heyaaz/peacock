@@ -63,6 +63,7 @@ import {
 import { AttachmentStore } from "./attachment-store.js";
 import { RemoteAccessService } from "./remote/service.js";
 import { registerRemoteIpcHandlers } from "./remote-ipc-handlers.js";
+import { PullRequestService } from "./pull-request-service.js";
 import { RepoService } from "./repo-service.js";
 import { registerRepoIpcHandlers } from "./repo-ipc-handlers.js";
 import { ParallelRunService } from "./parallel-run-service.js";
@@ -578,7 +579,17 @@ const sessionWorktrees = new SessionWorktreeRemoval({
   listSessions: () => agentRouter.listSessions(),
   confirm: (event, content) => ipcSecurity.confirm(event, content),
 });
-const unregisterGjcIpc = registerGjcIpcHandlers(agentRouter, attachmentStore, ipcSecurity, sessionWorktrees);
+// The one component that writes to GitHub; RepoService stays reads only.
+const pullRequests = new PullRequestService({
+  ghExecutable: process.env.GAJA_GH_BIN || undefined,
+});
+const unregisterGjcIpc = registerGjcIpcHandlers(
+  agentRouter,
+  attachmentStore,
+  ipcSecurity,
+  sessionWorktrees,
+  pullRequests,
+);
 // One authorized invoke hands a window this process launched the event stream endpoint.
 // It goes through the same sender verification every gjc channel uses, so a frame or
 // window this process did not open cannot read the token.

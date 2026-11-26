@@ -12,6 +12,7 @@ import {
   createSessionInput,
   gitPaths,
   messageInput,
+  pullRequestInput,
   questionIdempotencyKey,
   questionSubmission,
   requiredId,
@@ -29,7 +30,9 @@ import { AgentUnsupportedError, type AgentExtrasFacet, type FullAgentHost } from
 import { AttachmentStore } from "./attachment-store.js";
 import { fileAttachment } from "./settings-ipc-handlers.js";
 import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
-import { END_WORKFLOW_DETAIL, endWorkflowMessage, hostText } from "./host-text.js";
+import { END_WORKFLOW_DETAIL, endWorkflowMessage, hostFormat, hostText } from "./host-text.js";
+import { pushDestination } from "./gjc-sdk-git.js";
+import type { PullRequestService } from "./pull-request-service.js";
 import type { IpcSecurity } from "./ipc-security.js";
 import type { SessionWorktreeRemoval } from "./session-worktree-removal.js";
 import { projectTranscriptItemForDelivery } from "./transcript-body-preview.js";
@@ -179,6 +182,8 @@ export function registerGjcIpcHandlers(
   security: IpcSecurity,
   /** Asks about a session's worktree when the session is deleted; without it a delete leaves worktrees alone. */
   worktrees?: SessionWorktreeRemoval,
+  /** Looks up and opens pull requests; without it those two calls are refused. */
+  pullRequests?: PullRequestService,
 ): () => void {
   const handle = (channel: string, handler: (...args: any[]) => any): void => {
     ipcMain.handle(channel, security.guarded(async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
@@ -685,13 +690,52 @@ export function registerGjcIpcHandlers(
   );
   handle(GJC_IPC.pushChanges, async (event, sessionId: unknown) => {
     const id = requiredId(sessionId, "Session ID");
-    const upstream = await controller.getGitStatus(id).then((git) => git.upstream, () => undefined);
+    const git = await controller.getGitStatus(id).then((status) => status, () => undefined);
+    // A branch with no upstream of its own gets its first push, which says where it goes.
+    const target = git?.branch ? pushDestination(git) : undefined;
     await security.authorizeDestructive(event, {
       message: "커밋을 push할까요?",
-      detail: upstream,
+      detail: target?.firstPush
+        ? hostFormat("{0}에 push하고 upstream으로 연결합니다", [target.destination])
+        : git?.upstream,
       confirmLabel: "Push",
     });
     return controller.pushChanges(id);
+  });
+  // A pull request is looked up and opened in the session's own worktree, found here from the session
+  // and never from a path the window sends.
+  const pullRequestWorktree = async (id: string): Promise<string> => {
+    if (!pullRequests) throw new Error("Pull requests are not available");
+    const worktree = await controller.sessionWorktreePath(id);
+    if (!worktree) throw new Error("Pull requests require a managed Peacock worktree");
+    return worktree;
+  };
+  handle(GJC_IPC.findPullRequest, async (_event, sessionId: unknown) => {
+    const worktree = await pullRequestWorktree(requiredId(sessionId, "Session ID"));
+    return pullRequests!.findPull(worktree);
+  });
+  handle(GJC_IPC.createPullRequest, async (event, sessionId: unknown, raw: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    const input = pullRequestInput(raw);
+    const worktree = await pullRequestWorktree(id);
+    const found = await pullRequests!.findPull(worktree);
+    if (found.state !== "ok") return found;
+    const { target, pull, pushed } = found.value;
+    // One that is open already is the answer; nothing is created, so nothing is asked.
+    if (pull) return { state: "ok", value: pull };
+    if (!pushed) return { state: "not-pushed", branch: target.branch };
+    await security.authorizeDestructive(event, {
+      message: "Pull request를 만들까요?",
+      detail: [
+        target.repo,
+        `${target.base} \u2190 ${target.head}`,
+        ...(target.fork ? [hostText("포크의 상위 저장소에 올립니다")] : []),
+        "",
+        input.title,
+      ].join("\n"),
+      confirmLabel: "PR 만들기",
+    });
+    return pullRequests!.createPull(worktree, input, target);
   });
 
   return () => {

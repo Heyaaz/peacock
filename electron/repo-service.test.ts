@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,8 +10,10 @@ import {
   classifyGithubFailure,
   countStatusEntries,
   defaultCommandRunner,
+  githubQuery,
   parseGithubRemote,
   parseWorktreeList,
+  readRemote,
   redactDetail,
   summarizeCheckRuns,
   summarizeRollup,
@@ -1083,6 +1085,61 @@ describe("the shipped runner", () => {
       state: "no-cli",
       detail: "GitHub CLI(gh)를 찾을 수 없습니다.",
     });
+  });
+
+  it("gives one command its own environment, folder and time limit when asked", async () => {
+    const runner = defaultCommandRunner("gajae-missing-gh-binary");
+    const folder = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-runner-")));
+    try {
+      const printed = await runner(
+        process.execPath,
+        ["-e", "process.stdout.write([process.env.GAJAE_RUNNER_TEST, process.cwd()].join('|'))"],
+        { env: { GAJAE_RUNNER_TEST: "set" }, cwd: folder },
+      );
+      expect(printed.stdout).toBe(`set|${folder}`);
+      // a limit of its own, shorter than the runner's, ends a command that would otherwise run on
+      await expect(
+        runner(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { timeoutMs: 200 }),
+      ).rejects.toBeDefined();
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the remote helpers other services reuse", () => {
+  const git = (remotes: Record<string, string>) => async (args: readonly string[]): Promise<CommandResult> => {
+    if (args[0] === "remote" && args.length === 1) return ok(Object.keys(remotes).join("\n"));
+    if (args[0] === "remote" && args[1] === "get-url") return ok(remotes[args[2]] ?? "");
+    throw new Error(`unexpected git call: ${args.join(" ")}`);
+  };
+
+  it("prefers origin unless a remote is named, and a named remote is never replaced by another", async () => {
+    const run = git({ upstream: "https://github.com/a/b.git", origin: "https://github.com/me/b.git" });
+    expect(await readRemote(run, "/repo")).toMatchObject({ name: "origin", slug: "github.com/me/b" });
+    expect(await readRemote(run, "/repo", "upstream")).toMatchObject({ name: "upstream", slug: "github.com/a/b" });
+    expect(await readRemote(run, "/repo", "gone")).toBeUndefined();
+  });
+
+  it("turns a failure to read the remote into a state that says so, and a GitHub failure into its own", async () => {
+    expect(await githubQuery(async () => undefined, async () => 1)).toEqual({ state: "no-remote" });
+    expect(
+      await githubQuery(async () => ({ name: "origin", url: "https://gitlab.com/a/b" }), async () => 1),
+    ).toEqual({ state: "not-github", remote: "https://gitlab.com/a/b" });
+    expect(
+      await githubQuery(
+        async () => {
+          throw new Error(`broken ${FAKE_TOKEN}`);
+        },
+        async () => 1,
+      ),
+    ).toMatchObject({ state: "error", detail: expect.not.stringContaining(FAKE_TOKEN) });
+    expect(
+      await githubQuery(
+        async () => ({ name: "origin", url: "https://github.com/a/b", slug: "github.com/a/b" }),
+        async (owner, name) => `${owner}/${name}`,
+      ),
+    ).toEqual({ state: "ok", value: "a/b" });
   });
 });
 

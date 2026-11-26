@@ -7,6 +7,8 @@ import type { EnvironmentReport } from "./environment-check.js";
 import type { GjcSetting, GjcSettingChange } from "./gjc-settings.js";
 import type { QuickInputShortcutStatus } from "./quick-input.js";
 import type { AgentLaunchOptions } from "./agent-launch.js";
+import type { PullRequestInput, PullRequestQuery, PullRequestStatus } from "./pull-request.js";
+import type { GithubPullSummary } from "./repo-ipc.js";
 
 /**
  * Where a session runs.
@@ -1617,6 +1619,13 @@ export interface GjcDesktopBridge {
   unstageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot>;
   commitChanges(sessionId: string, message: string): Promise<GitStatusSnapshot>;
   pushChanges(sessionId: string): Promise<GitStatusSnapshot>;
+  /** The session branch's open pull request and where a new one would go; reads only. */
+  findPullRequest(sessionId: string): Promise<PullRequestQuery<PullRequestStatus>>;
+  /** Opens the pull request after the host confirms it with the person. */
+  createPullRequest(
+    sessionId: string,
+    input: PullRequestInput,
+  ): Promise<PullRequestQuery<GithubPullSummary>>;
   onEvent(listener: (event: AgentEvent) => void): () => void;
 }
 

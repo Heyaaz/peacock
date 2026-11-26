@@ -467,6 +467,12 @@ const gjc: GjcDesktopBridge = Object.freeze({
     ipcRenderer.invoke(GJC_IPC.commitChanges, sessionId, message),
   pushChanges: (sessionId: string) =>
     ipcRenderer.invoke(GJC_IPC.pushChanges, sessionId),
+  findPullRequest: (sessionId: string) =>
+    ipcRenderer.invoke(GJC_IPC.findPullRequest, sessionId),
+  createPullRequest: (
+    sessionId: string,
+    input: import("../shared/pull-request.js").PullRequestInput,
+  ) => ipcRenderer.invoke(GJC_IPC.createPullRequest, sessionId, input),
   onEvent: (listener: (event: AgentEvent) => void) => {
     eventListeners.add(listener);
     startEventStream();

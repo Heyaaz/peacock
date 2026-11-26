@@ -73,6 +73,10 @@ export const GJC_IPC = {
   unstageFiles: "agent-control:gjc:unstage-files",
   commitChanges: "agent-control:gjc:commit-changes",
   pushChanges: "agent-control:gjc:push-changes",
+  /** Whether a session's branch has an open pull request, and where a new one would go. */
+  findPullRequest: "agent-control:gjc:find-pull-request",
+  /** Opens the pull request of a session's pushed branch, after the person confirms. */
+  createPullRequest: "agent-control:gjc:create-pull-request",
   /**
    * Hands a window this process launched the endpoint of the event stream. The events
    * themselves travel over that stream, never over IPC.

@@ -166,6 +166,8 @@ export interface AgentWorkspaceFacet {
   unstageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot>;
   commitChanges(sessionId: string, message: string): Promise<GitStatusSnapshot>;
   pushChanges(sessionId: string): Promise<GitStatusSnapshot>;
+  /** The folder of the worktree this app made for the session, when it works in one; what a pull request is opened from. */
+  sessionWorktreePath(sessionId: string): Promise<string | undefined>;
 }
 
 /** Every optional facet together. */

@@ -10,6 +10,7 @@ import type { AgentBackend } from "../backend/agent-backend";
 import type { AgentSession, ToolActivity, TranscriptItem } from "../backend/types";
 import { Bot, ChevronRight, Copy, RotateCcw, Target, X } from "lucide-react";
 import { todoStatusView } from "./todo-status";
+import { PullRequestSection } from "./pull-request-section";
 import type { ReactNode } from "react";
 import {
   Fragment,
@@ -689,6 +690,9 @@ export function DiffPanel({
     git?.files
       .filter((file) => file.workingTree !== " " && file.workingTree !== ".")
       .map((file) => file.path) ?? [];
+  // A branch with no upstream is pushed for the first time (the host sets the upstream); one that has
+  // its own is pushed only when it is ahead of it.
+  const pushable = Boolean(git?.branch) && (!git?.upstream || git.ahead > 0);
   return (
     <aside className="diff-panel">
       <header>
@@ -824,12 +828,19 @@ export function DiffPanel({
             <button
               className="button-primary"
               type="button"
-              disabled={gitBusy || !git?.upstream || git.ahead === 0}
+              disabled={gitBusy || !pushable}
               onClick={() => void mutate(() => backend.pushChanges(session.id))}
             >
               Push
             </button>
           </div>
+          <PullRequestSection
+            session={session}
+            backend={backend}
+            git={git}
+            busy={gitBusy}
+            refreshKey={refreshKey}
+          />
         </section>
       ) : (
         <p className="diff-empty">

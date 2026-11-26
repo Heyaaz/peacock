@@ -28,7 +28,10 @@ import type {
  *
  * Every command here answers a question; nothing stages, commits, pushes, resets
  * or deletes. `gh` is asked only to read, and its own keyring owns the
- * credential, so no value this module produces can carry one. A GitHub failure is
+ * credential, so no value this module produces can carry one. The helpers it
+ * exports (`readRemote`, `githubQuery`, `readGhJson`, the failure classifier) are
+ * reads too; `pull-request-service.ts` reuses them for the one thing that writes to
+ * GitHub, so that this class never has to. A GitHub failure is
  * a state (`GithubQuery`) rather than a thrown error because the screen has to
  * say *which* failure it was: "no remote", "not GitHub", "no gh", "not logged
  * in" and "offline" need different fixes from the person reading.
@@ -45,6 +48,12 @@ export interface CommandOptions {
    * streams, so it may be any size; without it a large output fails the command.
    */
   keepTail?: number;
+  /** Replaces the runner's own limit for this one command. */
+  timeoutMs?: number;
+  /** Added to the environment the command inherits. */
+  env?: Readonly<Record<string, string>>;
+  /** The directory the command runs in; the app's own when absent. */
+  cwd?: string;
 }
 
 export type CommandRunner = (
@@ -158,12 +167,14 @@ function isTransientGitFailure(error: unknown): boolean {
 export function defaultCommandRunner(ghExecutable: string): CommandRunner {
   return (file, args, options) =>
     new Promise<CommandResult>((resolve, reject) => {
-      const timeout = file === ghExecutable ? GH_TIMEOUT : GIT_TIMEOUT;
+      const timeout = options?.timeoutMs ?? (file === ghExecutable ? GH_TIMEOUT : GIT_TIMEOUT);
+      const env = options?.env ? { ...process.env, ...options.env } : undefined;
       if (options?.keepTail !== undefined) {
-        runKeepingTail(file, args, timeout, options.keepTail).then(resolve, reject);
+        runKeepingTail(file, args, timeout, options.keepTail, env, options.cwd).then(resolve, reject);
         return;
       }
-      execFile(file, args, { timeout, maxBuffer: MAX_BUFFER, windowsHide: true }, (error, stdout, stderr) => {
+      const cwd = options?.cwd;
+      execFile(file, args, { timeout, maxBuffer: MAX_BUFFER, windowsHide: true, ...(env ? { env } : {}), ...(cwd ? { cwd } : {}) }, (error, stdout, stderr) => {
         if (error) {
           reject(commandFailure(file, error, stderr));
           return;
@@ -178,9 +189,16 @@ function runKeepingTail(
   args: readonly string[],
   timeout: number,
   keepTail: number,
+  env?: NodeJS.ProcessEnv,
+  cwd?: string,
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(file, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      ...(env ? { env } : {}),
+      ...(cwd ? { cwd } : {}),
+    });
     let tail = Buffer.alloc(0);
     let stderr = "";
     let settled = false;
@@ -479,7 +497,7 @@ export function classifyGithubFailure(error: unknown): GithubFailureClassificati
 }
 
 /** Everything an error can say. The environment is never read here. */
-function errorText(error: unknown): string {
+export function errorText(error: unknown): string {
   if (typeof error === "string") return error;
   if (!error || typeof error !== "object") return "";
   const source = error as { message?: unknown; stderr?: unknown };
@@ -503,11 +521,11 @@ export function redactDetail(text: string): string {
     : collapsed;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-function asList(value: unknown): unknown[] {
+export function asList(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
@@ -612,7 +630,7 @@ function parseIssueDetail(value: unknown): GithubIssueDetail {
   };
 }
 
-function parsePull(value: unknown): GithubPullSummary {
+export function parsePull(value: unknown): GithubPullSummary {
   const source = asRecord(value);
   return {
     number: amount(source, "number"),
@@ -655,10 +673,85 @@ function parsePullDetail(value: unknown): GithubPullDetail {
 
 const ISSUE_FIELDS = "number,title,state,url,labels,comments,updatedAt,author";
 const ISSUE_DETAIL_FIELDS = `${ISSUE_FIELDS},body,createdAt,assignees`;
-const PULL_FIELDS =
+export const PULL_FIELDS =
   "number,title,state,isDraft,url,author,headRefName,baseRefName,reviewDecision,updatedAt,statusCheckRollup";
 const PULL_DETAIL_FIELDS =
   "number,title,state,isDraft,url,author,headRefName,baseRefName,reviewDecision,updatedAt,createdAt,body,mergeable,additions,deletions,changedFiles,statusCheckRollup,reviews,isCrossRepository";
+
+/** Runs one Git command in a directory. `RepoService` gates it; another caller may run it as it is. */
+export type GitRead = (args: readonly string[], cwd: string) => Promise<CommandResult>;
+
+/**
+ * The remote the screen reports and links.
+ *
+ * `origin` is the convention for the repository a person means, so it wins
+ * even when another remote is listed first. A remote with no URL is omitted.
+ * A caller that already knows which remote it means names it: that remote or
+ * none, never another one in its place.
+ */
+export async function readRemote(
+  git: GitRead,
+  root: string,
+  named?: string,
+): Promise<RepositoryRemote | undefined> {
+  const listed = await git(["remote"], root);
+  const names = listed.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((name) => name.length > 0);
+  if (names.length === 0) return undefined;
+  const name = named !== undefined ? named : names.includes("origin") ? "origin" : names[0];
+  if (!names.includes(name)) return undefined;
+  const fetched = await git(["remote", "get-url", name], root);
+  const url = fetched.stdout.trim();
+  if (!url) return undefined;
+  const github = parseGithubRemote(url);
+  const publicUrl = publicRemoteUrl(url);
+  return github
+    ? { name, url: publicUrl, slug: github.slug, webUrl: github.webUrl }
+    : { name, url: publicUrl };
+}
+
+/**
+ * Every GitHub read starts from the same two questions: which remote, and is
+ * it GitHub. Only then is `gh` asked.
+ */
+export async function githubQuery<T>(
+  remoteOf: () => Promise<RepositoryRemote | undefined>,
+  query: (owner: string, name: string) => Promise<T>,
+): Promise<GithubQuery<T>> {
+  let remote: RepositoryRemote | undefined;
+  try {
+    remote = await remoteOf();
+  } catch (error) {
+    // The remote itself could not be read, which says nothing about `gh`.
+    return { state: "error", detail: redactDetail(errorText(error)) || "원격 저장소를 읽지 못했습니다." };
+  }
+  if (!remote) return { state: "no-remote" };
+  const github = parseGithubRemote(remote.url);
+  if (!github) return { state: "not-github", remote: remote.url };
+  try {
+    return { state: "ok", value: await query(github.owner, github.name) };
+  } catch (error) {
+    return classifyGithubFailure(error);
+  }
+}
+
+/** One `gh` call whose answer is JSON; an answer that is not JSON is a failure that quotes its start. */
+export async function readGhJson(
+  run: CommandRunner,
+  ghExecutable: string,
+  args: readonly string[],
+  options?: CommandOptions,
+): Promise<unknown> {
+  const result = await run(ghExecutable, args, options);
+  try {
+    return JSON.parse(result.stdout) as unknown;
+  } catch {
+    const sample = result.stdout.trim().slice(0, DETAIL_LIMIT);
+    throw new Error(sample ? `gh 응답을 읽지 못했습니다: ${sample}` : "gh가 빈 응답을 반환했습니다.");
+  }
+}
 
 interface CachedResolution {
   at: number;
@@ -872,63 +965,20 @@ export class RepoService {
     return [...branches.values()].sort((left, right) => left.name.localeCompare(right.name));
   }
 
-  /**
-   * The remote the screen reports and links.
-   *
-   * `origin` is the convention for the repository a person means, so it wins
-   * even when another remote is listed first. A remote with no URL is omitted.
-   */
-  private async readRemote(root: string): Promise<RepositoryRemote | undefined> {
-    const listed = await this.git(["remote"], root);
-    const names = listed.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((name) => name.length > 0);
-    if (names.length === 0) return undefined;
-    const name = names.includes("origin") ? "origin" : names[0];
-    const fetched = await this.git(["remote", "get-url", name], root);
-    const url = fetched.stdout.trim();
-    if (!url) return undefined;
-    const github = parseGithubRemote(url);
-    const publicUrl = publicRemoteUrl(url);
-    return github
-      ? { name, url: publicUrl, slug: github.slug, webUrl: github.webUrl }
-      : { name, url: publicUrl };
+  /** The remote the screen reports and links; see `readRemote`. */
+  private readRemote(root: string): Promise<RepositoryRemote | undefined> {
+    return readRemote((args, cwd) => this.git(args, cwd), root);
   }
 
-  /**
-   * Every GitHub read starts from the same two questions: which remote, and is
-   * it GitHub. Only then is `gh` asked, and only to read.
-   */
-  private async githubQuery<T>(
+  private githubQuery<T>(
     root: string,
     query: (owner: string, name: string) => Promise<T>,
   ): Promise<GithubQuery<T>> {
-    let remote: RepositoryRemote | undefined;
-    try {
-      remote = await this.readRemote(root);
-    } catch (error) {
-      // The remote itself could not be read, which says nothing about `gh`.
-      return { state: "error", detail: redactDetail(errorText(error)) || "원격 저장소를 읽지 못했습니다." };
-    }
-    if (!remote) return { state: "no-remote" };
-    const github = parseGithubRemote(remote.url);
-    if (!github) return { state: "not-github", remote: remote.url };
-    try {
-      return { state: "ok", value: await query(github.owner, github.name) };
-    } catch (error) {
-      return classifyGithubFailure(error);
-    }
+    return githubQuery(() => this.readRemote(root), query);
   }
 
-  private async ghJson(args: readonly string[]): Promise<unknown> {
-    const result = await this.run(this.ghExecutable, args);
-    try {
-      return JSON.parse(result.stdout) as unknown;
-    } catch {
-      const sample = result.stdout.trim().slice(0, DETAIL_LIMIT);
-      throw new Error(sample ? `gh 응답을 읽지 못했습니다: ${sample}` : "gh가 빈 응답을 반환했습니다.");
-    }
+  private ghJson(args: readonly string[]): Promise<unknown> {
+    return readGhJson(this.run, this.ghExecutable, args);
   }
 
   async readGithub(root: string): Promise<GithubQuery<GithubRepositoryStatus>> {

@@ -24,15 +24,14 @@ import {
   RepoPullsPanel,
   RepoView,
   changesForProject,
-  ciLabel,
   detailForSelection,
   formatRepoCount,
-  githubFailureText,
   issueStateLabel,
   pullStateLabel,
   repoTabLabel,
   reviewLabel,
 } from "./repo-view";
+import { ciLabel, githubFailureText } from "./github-labels";
 import type {
   RepoBranchesPanelProps,
   RepoIssuesPanelProps,

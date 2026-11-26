@@ -16,6 +16,8 @@ import { agentSupportsSurface } from "../shared/agent-catalog.js";
 import { launchOptions, launchOptionsFault } from "../shared/agent-launch.js";
 import { normalizeRulePrefix } from "../shared/command-rules.js";
 import { safeBranchName, safeModelPreset } from "../shared/parallel-run.js";
+import { checkedPullRequestInput } from "../shared/pull-request.js";
+import type { PullRequestInput } from "../shared/pull-request.js";
 
 /**
  * Input validation shared by the Electron IPC surface and the remote access
@@ -433,6 +435,19 @@ export function toolDecision(value: unknown): ToolDecision {
     ...(trimmed ? { comment: trimmed } : {}),
     ...(prefix ? { rule: { prefix } } : {}),
   };
+}
+
+/** The title and body of a pull request, from a payload that is only as trustworthy as the window. */
+export function pullRequestInput(value: unknown): PullRequestInput {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Pull request must be an object");
+  const candidate = value as Record<string, unknown>;
+  for (const key of Object.keys(candidate))
+    if (key !== "title" && key !== "body")
+      throw new Error("Pull request contains an unknown field");
+  if (typeof candidate.title !== "string" || typeof candidate.body !== "string")
+    throw new Error("Pull request title and body must be strings");
+  return checkedPullRequestInput({ title: candidate.title, body: candidate.body });
 }
 
 export function gitPaths(value: unknown): string[] {

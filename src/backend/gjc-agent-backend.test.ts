@@ -286,6 +286,8 @@ class FakeGjcBridge implements GjcDesktopBridge {
   async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return this.getGitStatus(sessionId);
   }
+  findPullRequest = vi.fn().mockResolvedValue({ state: "no-remote" });
+  createPullRequest = vi.fn().mockResolvedValue({ state: "no-remote" });
 
   onEvent(listener: (event: AgentEvent) => void): () => void {
     this.listeners.add(listener);
@@ -546,6 +548,11 @@ describe("GjcAgentBackend", () => {
     await expect(backend.pushChanges("s")).resolves.toMatchObject({
       files: [],
     });
+    await expect(backend.findPullRequest("s")).resolves.toEqual({ state: "no-remote" });
+    await expect(
+      backend.createPullRequest("s", { title: "t", body: "b" }),
+    ).resolves.toEqual({ state: "no-remote" });
+    expect(bridge.createPullRequest).toHaveBeenCalledWith("s", { title: "t", body: "b" });
     backend.dispose();
   });
 });

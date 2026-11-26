@@ -34,6 +34,12 @@ import type {
   SubagentMessage,
 } from "../../shared/agent-contract";
 import type { RemoteAccessBridge } from "../../shared/remote-protocol";
+import type {
+  PullRequestInput,
+  PullRequestQuery,
+  PullRequestStatus,
+} from "../../shared/pull-request";
+import type { GithubPullSummary } from "../../shared/repo-ipc";
 
 export interface AgentBackend {
   /**
@@ -154,6 +160,16 @@ export interface AgentBackend {
   unstageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot>;
   commitChanges(sessionId: string, message: string): Promise<GitStatusSnapshot>;
   pushChanges(sessionId: string): Promise<GitStatusSnapshot>;
+  /**
+   * The session branch's open pull request and where a new one would go. Present only on a backend
+   * whose host can open pull requests (the desktop app); the panel shows no pull request step without it.
+   */
+  findPullRequest?(sessionId: string): Promise<PullRequestQuery<PullRequestStatus>>;
+  /** Opens the pull request after the host has asked the person; present with `findPullRequest`. */
+  createPullRequest?(
+    sessionId: string,
+    input: PullRequestInput,
+  ): Promise<PullRequestQuery<GithubPullSummary>>;
   subscribe(listener: (event: AgentEvent) => void): () => void;
   dispose(): void;
 }

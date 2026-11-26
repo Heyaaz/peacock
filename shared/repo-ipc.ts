@@ -3,8 +3,9 @@
  *
  * Everything here is read-only against the local repository and against GitHub.
  * Mutating Git work stays on the session-scoped bridge (`stageFiles`,
- * `commitChanges`, `pushChanges`), which owns the managed-worktree checks; this
- * channel set never stages, commits, pushes, deletes, or resets anything.
+ * `commitChanges`, `pushChanges`, `createPullRequest`), which owns the managed-worktree
+ * checks; this channel set never stages, commits, pushes, opens a pull request,
+ * deletes, or resets anything.
  *
  * No payload carries a credential. GitHub access runs through the `gh` CLI's own
  * keyring, so the queries below report *whether* access worked and never the

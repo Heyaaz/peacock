@@ -1032,6 +1032,64 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
 }
+.pull-request {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.pull-request > strong {
+  font-size: 11px;
+}
+.pull-request > div {
+  display: flex;
+  gap: 5px;
+}
+.pull-request__hint {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+.pull-request__existing {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+}
+.pull-request__existing a {
+  overflow-wrap: anywhere;
+  color: var(--accent-bright);
+}
+.pull-request__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pull-request__form {
+  display: grid;
+  gap: 6px;
+}
+.pull-request__form input,
+.pull-request__form textarea {
+  min-width: 0;
+  padding: 7px 9px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  outline: 0;
+}
+.pull-request__form textarea {
+  resize: vertical;
+}
+.pull-request__form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
 
 @media (max-width: 900px) {
   .usage-summary {

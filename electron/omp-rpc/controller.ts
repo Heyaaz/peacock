@@ -51,7 +51,7 @@ import { withoutInherited } from "../herdr-core/env.js";
 import { bounded, clockLabel, record, string, stripTerminalControls, toolRow, TranscriptRows } from "../herdr-core/transcript/transcript-records.js";
 import { TranscriptFollower } from "../herdr-core/transcript/transcripts.js";
 import { parseContextReport } from "./context-report.js";
-import { commitChanges, getGitStatus, pushChanges, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
+import { commitChanges, getGitStatus, pushChanges, sessionWorktreePath, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
 import { workspaceDiff } from "../herdr-core/workspace-diff.js";
 import { createSessionWorktree, discardSessionWorktree, type GitRunner, type PrepareWorktree } from "../worktree-service.js";
 import { isLiveRowId, OmpLiveRows } from "./live-rows.js";
@@ -707,6 +707,10 @@ export class OmpRpcController implements AgentRuntimeController {
 
   async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return pushChanges(this.gitScope(sessionId), sessionId);
+  }
+
+  async sessionWorktreePath(sessionId: string): Promise<string | undefined> {
+    return sessionWorktreePath(this.gitScope(sessionId), sessionId);
   }
 
   /** `export_html`: omp renders the session file as one HTML page at the path given. */

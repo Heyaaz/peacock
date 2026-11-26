@@ -1,7 +1,6 @@
 import type { DiffSnapshot } from "../../shared/agent-contract";
 import type {
   GithubFailure,
-  GithubFailureState,
   GithubIssueDetail,
   GithubIssueSummary,
   GithubPullDetail,
@@ -41,6 +40,7 @@ import {
   type CiTarget,
 } from "./repo-session-start";
 import { getLanguage, t } from "../i18n";
+import { ciLabel, githubFailureText } from "./github-labels";
 
 
 /**
@@ -48,9 +48,9 @@ import { getLanguage, t } from "../i18n";
  *
  * One project, three questions: what is on disk (branch, worktrees, changed file
  * counts), what is on GitHub (issues, pull requests, CI), and which session is
- * working in which worktree. Nothing on this screen writes: staging, committing and
- * pushing stay on the session-scoped `DiffPanel`, which owns the managed-worktree
- * rules and asks before it touches a branch.
+ * working in which worktree. Nothing on this screen writes: staging, committing,
+ * pushing and opening a pull request stay on the session-scoped `DiffPanel`, which
+ * owns the managed-worktree rules and asks before it touches a branch.
  *
  * The state-bearing shell is `RepoView`; the panels below it render straight from
  * their props, so every state a user can hit -- rejected IPC, the six GitHub
@@ -92,42 +92,6 @@ export type RepoLoad<T> =
   | { status: "loading" }
   | { status: "ready"; value: T }
   | { status: "failed"; error: string };
-
-/**
- * Why GitHub could not answer, in words the user can act on.
- *
- * The six causes are six different fixes -- add a remote, move to GitHub, install
- * `gh`, log in, get back online, retry -- so they never share a sentence.
- */
-export function githubFailureText(failure: GithubFailureState): string {
-  switch (failure) {
-    case "no-remote":
-      return t("원격 저장소가 없습니다. 이 프로젝트는 로컬에만 있습니다.");
-    case "not-github":
-      return t("GitHub 저장소가 아닙니다. 이슈와 풀 리퀘스트는 GitHub에서만 조회합니다.");
-    case "no-cli":
-      return t("GitHub CLI(gh)를 찾을 수 없습니다. 설치하면 이슈와 풀 리퀘스트를 볼 수 있습니다.");
-    case "unauthenticated":
-      return t("GitHub에 로그인되어 있지 않습니다. 터미널에서 gh auth login을 실행하세요.");
-    case "unreachable":
-      return t("GitHub에 연결하지 못했습니다. 네트워크 상태를 확인하세요.");
-    case "error":
-      return t("GitHub에서 응답을 받지 못했습니다. 잠시 후 다시 시도하세요.");
-  }
-}
-
-export function ciLabel(ci: RepoCiSummary): string {
-  switch (ci.state) {
-    case "passing":
-      return t("CI 통과");
-    case "failing":
-      return ci.total > 0 ? t`CI 실패 ${ci.failing}/${ci.total}` : t("CI 실패");
-    case "pending":
-      return ci.total > 0 ? t`CI 진행 중 ${ci.pending}/${ci.total}` : t("CI 진행 중");
-    case "none":
-      return t("CI 없음");
-  }
-}
 
 /**
  * A GitHub query that could not answer.

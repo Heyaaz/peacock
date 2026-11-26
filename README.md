@@ -143,7 +143,10 @@ Each clip is the real app on its built-in sample data.
   omp or Codex terminal, see the session's diff, comment on lines, and send the
   comments back as a review (typed into the terminal for Claude Code and omp;
   Codex shows the changes without taking a review). A folder holding several
-  repositories shows each one's changes.
+  repositories shows each one's changes. In a session's own worktree the same panel
+  stages, commits, pushes (the first push connects the branch to `origin`; the default
+  branch is never pushed) and opens a pull request with the `gh` CLI, asking first, then
+  shows the PR's link and CI.
 - **Goals.** An active goal stays pinned above the composer with its progress.
   Open it to see each task. omp's goal mode shows up the same way.
 - **Model picker.** Search, favorites and the thinking level for the agent's
@@ -162,7 +165,8 @@ Each clip is the real app on its built-in sample data.
   running while you look elsewhere and after the app quits. Settings > Agents
   shows what was found on this Mac and each agent's defaults.
 - **Repository screen.** Branches, worktrees, issues, pull requests and CI for
-  the project, through the `gh` CLI.
+  the project, through the `gh` CLI. It only reads; a pull request is opened from
+  a session's changed-files panel.
 - **Remote access.** Pair a phone over Tailscale and follow or drive the same
   sessions from it.
 - **Desktop integration.** Menu bar status, a Dock badge, notifications per event,

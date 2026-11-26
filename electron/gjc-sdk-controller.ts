@@ -260,6 +260,7 @@ import {
   commitChanges,
   getGitStatus,
   pushChanges,
+  sessionWorktreePath,
   stageFiles,
   unstageFiles,
   type GitScope,
@@ -1324,6 +1325,9 @@ export class GjcSdkController extends GjcSdkState {
   }
   async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return pushChanges(this.gitScope(), sessionId);
+  }
+  async sessionWorktreePath(sessionId: string): Promise<string | undefined> {
+    return sessionWorktreePath(this.gitScope(), sessionId);
   }
 
   private emitActivity(

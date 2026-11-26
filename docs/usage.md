@@ -360,7 +360,10 @@ a folder as broad as home, Documents or Desktop is warned about before the sessi
   GJC chat beside the terminal, read from the session's folder with `git diff HEAD`. A shell
   has none. Stage, Unstage, Commit and Push work only in a managed worktree, so only a session
   started in a [separate copy](#sessions-in-their-own-worktree) can use them; in a session
-  started in its folder as it is, the panel reads and says so. Comments on diff lines are
+  started in its folder as it is, the panel reads and says so. Push never goes to the
+  repository's default branch, and a branch with no upstream gets its first push to `origin`
+  (`git push -u origin HEAD`), which sets the upstream; after a push, the panel can
+  [open a pull request](#opening-a-pull-request-from-a-session). Comments on diff lines are
   sent back as one review typed into the terminal, for Claude Code and omp while they report
   their state (Codex cannot take one, so its panel has no Send review). If the agent is
   waiting on a dialog in its terminal (a folder trust question, an approval) it does not take
@@ -510,6 +513,7 @@ session (the dialog's Terminal choice) stays terminal-only.
   chat, read from the chat's folder with `git diff HEAD`; Stage, Unstage, Commit
   and Push work only in a managed worktree, as in GJC: a chat started in a
   [separate copy](#sessions-in-their-own-worktree) is in one, a chat in its folder as it is is not.
+  The panel then goes on to [a pull request](#opening-a-pull-request-from-a-session), as in GJC.
 - **Side chat.** `/btw` and `⌘⇧B` work as in GJC.
 - **Next-input suggestion.** After a completed turn the composer offers a likely
   next message as ghost text; Tab takes it, Esc dismisses it. It costs one side
@@ -658,8 +662,8 @@ rail has no single repository to open. The repository screen fills the center ar
 - Right-click on "View repo" carries the auxiliary actions only: "Open on GitHub"
   and "Open local folder".
 - "Changed files" reuses the session's existing panel, so Stage / Unstage / Commit /
-  Push are the same code, prompts and managed-worktree checks as the conversation's
-  "View changed files" button. Nothing on the repository screen writes on its own.
+  Push and the pull request step are the same code, prompts and managed-worktree checks as the
+  conversation's "View changed files" button. Nothing on the repository screen writes on its own.
 - "Start a session for this issue" on an issue and "Fix failing CI" on a pull request (or on the
   overview, for the default branch) open the new-session dialog filled in; the
   session is created only when the dialog is confirmed, and the first request is
@@ -677,7 +681,8 @@ rail has no single repository to open. The repository screen fills the center ar
 
 GitHub reads go through the [`gh` CLI](https://cli.github.com), which supplies its
 own credential from the keychain. The app never reads, stores or prints a token, and
-every read is a `gh` subprocess whose failure is reported as a state:
+every read is a `gh` subprocess whose failure is reported as a state. (The one write,
+[opening a pull request](#opening-a-pull-request-from-a-session), goes through `gh` the same way.)
 
 - "No remote repository. This project is local only." — the project has no remote configured
 - "This is not a GitHub repository. Issues and pull requests are only available on GitHub." — the remote is not github.com
@@ -688,6 +693,36 @@ every read is a `gh` subprocess whose failure is reported as a state:
 - "GitHub did not respond. Try again shortly." — anything else the API answered
 
 An empty issue or pull list is none of those: it is reported as an empty list.
+
+### Opening a pull request from a session
+
+The changed-files panel of a session in a managed worktree takes work from commit to pull
+request without leaving the app: Stage, Commit, Push, then a **Pull request** step below them.
+It works the same for a GJC chat, an omp chat and a Claude Code, omp or Codex terminal session,
+and only in a worktree Peacock made for the session.
+
+- **Push.** The Push button is on whenever the branch has something to send: a branch with no
+  upstream yet (every new worktree branch) or one that is ahead of its upstream. The first push is
+  `git push -u origin HEAD`, which creates the branch on `origin` and sets it as the upstream, so
+  later pushes are plain. The confirmation says where it goes. A branch that tracks another name
+  (one started from `origin/main`) gets its own first push instead of failing. The repository's
+  default branch is never pushed from here: the panel refuses, and the work goes in through a pull request.
+- **Pull request.** Once the branch has an upstream, the step looks up the branch's open pull
+  request with `gh`. If there is one, the panel shows its link and CI state (passing, failing,
+  pending or none) and nothing else; "Refresh PR status" reads CI again, and the step also reads
+  when a turn ends. If there is none and every commit is pushed, "Create PR" opens a form with the
+  latest commit's title and message as the title and description. Edit them and confirm: the host
+  asks first, naming the repository, `base ← head` and the title. The new pull request then shows
+  as a link with its CI state. A branch that has commits not pushed yet asks you to push first.
+- **Forks.** A branch pushed to a fork opens its pull request in the fork's parent repository, from
+  `you:branch` into the parent's default branch; the step and the confirmation say so.
+- **What `gh` is asked.** `gh repo view` and `gh pr list --head <branch>` to look up, and
+  `gh pr create --repo --head --base --title --body-file` to open. `gh` never prompts: login,
+  editor and browser questions are switched off, and the description goes in a temporary file that is
+  removed afterwards, so what you type cannot become a command-line option. Opening may wait up to
+  90 seconds, longer than the 25 seconds of a read. A missing or signed-out `gh`, no remote, a
+  non-GitHub remote and a network failure show the sentences listed above, with the reason `gh`
+  gave (any token in it removed).
 
 ## Parallel runs (Best-of-N)
 

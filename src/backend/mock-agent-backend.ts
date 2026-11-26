@@ -31,6 +31,12 @@ import type {
   SubagentMessage,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
+import type {
+  PullRequestInput,
+  PullRequestQuery,
+  PullRequestStatus,
+} from "../../shared/pull-request";
+import type { GithubPullSummary } from "../../shared/repo-ipc";
 import { readmeSample, readmeStartSample } from "./mock-sample-readme";
 import { transcriptDelivery } from "../../shared/transcript-item-equal";
 import {
@@ -513,6 +519,7 @@ export class MockAgentBackend implements AgentBackend {
   private nextId = 100;
   private capabilitiesEmitted = new Set<string>();
   private readonly gitStores = new Map<string, GitStatusSnapshot>();
+  private readonly pullRequests = new Map<string, GithubPullSummary>();
 
   /** `sample` picks what the mock serves: the default Korean one, or the README's English one. */
   constructor(sample?: string | null) {
@@ -1407,6 +1414,50 @@ export class MockAgentBackend implements AgentBackend {
     status.ahead = 0;
     this.gitStores.set(sessionId, status);
     return status;
+  }
+
+  async findPullRequest(sessionId: string): Promise<PullRequestQuery<PullRequestStatus>> {
+    const status = await this.getGitStatus(sessionId);
+    return {
+      state: "ok",
+      value: {
+        target: {
+          repo: "owner/app",
+          base: "main",
+          branch: status.branch,
+          head: status.branch,
+          fork: false,
+        },
+        pull: this.pullRequests.get(sessionId) ?? null,
+        pushed: status.ahead === 0,
+        draft: { title: "Sample change", body: "Sample description." },
+      },
+    };
+  }
+
+  async createPullRequest(
+    sessionId: string,
+    input: PullRequestInput,
+  ): Promise<PullRequestQuery<GithubPullSummary>> {
+    const status = await this.getGitStatus(sessionId);
+    const existing = this.pullRequests.get(sessionId);
+    if (existing) return { state: "ok", value: existing };
+    const number = this.pullRequests.size + 1;
+    const pull: GithubPullSummary = {
+      number,
+      title: input.title,
+      state: "open",
+      draft: false,
+      url: `https://github.com/owner/app/pull/${number}`,
+      author: "you",
+      headRefName: status.branch,
+      baseRefName: "main",
+      review: "none",
+      ci: { state: "pending", total: 1, failing: 0, pending: 1, failedRuns: [] },
+      updatedAt: new Date().toISOString(),
+    };
+    this.pullRequests.set(sessionId, pull);
+    return { state: "ok", value: pull };
   }
 
   subscribe(listener: (event: AgentEvent) => void): () => void {

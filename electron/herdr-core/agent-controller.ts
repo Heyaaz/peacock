@@ -29,7 +29,7 @@ import type {
 } from "../../shared/terminal-ipc.js";
 import { AgentUnsupportedError, type AgentRuntimeController } from "../agent-host.js";
 import type { ResolvedMessageInput } from "../gjc-sdk-model.js";
-import { commitChanges, getGitStatus, pushChanges, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
+import { commitChanges, getGitStatus, pushChanges, sessionWorktreePath, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
 import type { TerminalSessionStore } from "../terminal-session-store.js";
 import { terminalAgentSession } from "../terminal-session-row.js";
 import type { HookChannel, HookMessage } from "./agent-hooks.js";
@@ -413,6 +413,10 @@ export class HerdrAgentController implements AgentRuntimeController {
 
   async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return pushChanges(this.gitScope(sessionId), sessionId);
+  }
+
+  async sessionWorktreePath(sessionId: string): Promise<string | undefined> {
+    return sessionWorktreePath(this.gitScope(sessionId), sessionId);
   }
 
   // ---- approvals (design §5.6)

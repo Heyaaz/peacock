@@ -63,6 +63,7 @@ const CALLS: [keyof FullAgentHost, unknown[]][] = [
   ["unstageFiles", ["s1", ["a.ts"]]],
   ["commitChanges", ["s1", "message"]],
   ["pushChanges", ["s1"]],
+  ["sessionWorktreePath", ["s1"]],
   ["dispose", []],
 ];
 

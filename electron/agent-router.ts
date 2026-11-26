@@ -541,4 +541,8 @@ export class AgentRouter implements RoutingAgentHost {
   pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return this.facet(sessionId, "pushChanges")(sessionId);
   }
+
+  sessionWorktreePath(sessionId: string): Promise<string | undefined> {
+    return this.facet(sessionId, "sessionWorktreePath")(sessionId);
+  }
 }

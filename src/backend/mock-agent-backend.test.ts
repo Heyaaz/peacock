@@ -202,6 +202,19 @@ describe("MockAgentBackend", () => {
     expect((await backend.getGitStatus("agent-control")).ahead).toBe(1);
     expect((await backend.pushChanges("agent-control")).ahead).toBe(0);
   });
+
+  it("opens one pull request per session and shows it afterwards", async () => {
+    const before = await backend.findPullRequest("agent-control");
+    expect(before).toMatchObject({ state: "ok", value: { pull: null, target: { base: "main" } } });
+    const created = await backend.createPullRequest("agent-control", { title: "Save", body: "" });
+    expect(created).toMatchObject({ state: "ok", value: { number: 1, title: "Save", state: "open" } });
+    const again = await backend.createPullRequest("agent-control", { title: "Other", body: "" });
+    expect(again).toMatchObject({ state: "ok", value: { number: 1, title: "Save" } });
+    expect(await backend.findPullRequest("agent-control")).toMatchObject({
+      state: "ok",
+      value: { pull: { number: 1 } },
+    });
+  });
 });
 
 describe("MockAgentBackend README sample", () => {

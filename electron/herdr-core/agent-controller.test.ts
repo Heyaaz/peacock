@@ -224,6 +224,15 @@ describe("HerdrAgentController git panel", () => {
     expect(gitIn(repo, "log", "--format=%s")).toBe("seed\n");
   });
 
+  it("names the worktree a pull request is opened from only for a session started in one", async () => {
+    const repo = repository();
+    const { controller } = setup();
+    const plain = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude" });
+    expect(await controller.sessionWorktreePath(plain.id)).toBeUndefined();
+    const isolated = await controller.createTerminalSession({ title: "b", workspace: repo, agentKind: "claude", isolation: "worktree" });
+    expect(await controller.sessionWorktreePath(isolated.id)).toBe(isolated.worktree!.path);
+  });
+
   it("stages, unstages and commits in the worktree the session was started in", async () => {
     for (const key of ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]) vi.stubEnv(key, "t");
     for (const key of ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]) vi.stubEnv(key, "t@t");

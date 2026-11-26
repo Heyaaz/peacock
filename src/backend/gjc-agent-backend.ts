@@ -39,6 +39,12 @@ import {
   isTerminalSessionId,
   type TerminalDesktopBridge,
 } from "../../shared/terminal-ipc";
+import type {
+  PullRequestInput,
+  PullRequestQuery,
+  PullRequestStatus,
+} from "../../shared/pull-request";
+import type { GithubPullSummary } from "../../shared/repo-ipc";
 import { StreamDeltaCoalescer } from "./stream-delta-coalescer";
 
 export class GjcAgentBackend implements AgentBackend {
@@ -340,6 +346,15 @@ export class GjcAgentBackend implements AgentBackend {
   }
   pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
     return this.bridge.pushChanges(sessionId);
+  }
+  findPullRequest(sessionId: string): Promise<PullRequestQuery<PullRequestStatus>> {
+    return this.bridge.findPullRequest(sessionId);
+  }
+  createPullRequest(
+    sessionId: string,
+    input: PullRequestInput,
+  ): Promise<PullRequestQuery<GithubPullSummary>> {
+    return this.bridge.createPullRequest(sessionId, input);
   }
 
   subscribe(listener: (event: AgentEvent) => void): () => void {
