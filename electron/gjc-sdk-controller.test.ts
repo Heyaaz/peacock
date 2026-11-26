@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AgentConfigOption } from "../shared/agent-contract.js";
-import { mkdir, mkdtemp, stat, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, stat, writeFile, readFile, rm } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -30,6 +30,7 @@ import { GjcSdkCli, SdkCliError } from "./gjc-sdk-cli.js";
 import { CliDeleteError } from "./gjc-cli-session-delete.js";
 import { controlRetry } from "./gjc-sdk-control.js";
 import { SessionMetadataStore } from "./session-metadata-store.js";
+import { prepareWorktree } from "./worktree-service.js";
 import { projectTranscriptItemForDelivery } from "./transcript-body-preview.js";
 import {
   DEFAULT_MODEL_PRESET,
@@ -2782,6 +2783,108 @@ describe("GjcSdkController CLI seam", () => {
       if (worktreePath) await rm(path.dirname(worktreePath), { recursive: true, force: true });
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("preparing a new worktree from its project's settings", () => {
+    async function repoWithCommit(): Promise<{ parent: string; dir: string }> {
+      const parent = await mkdtemp(path.join(tmpdir(), "gajae-prepare-worktree-"));
+      const dir = path.join(parent, "repo");
+      await execFile("git", ["init", "-q", "-b", "main", dir]);
+      await writeFile(path.join(dir, "README"), "seed");
+      await execFile("git", ["-C", dir, "add", "README"]);
+      await execFile("git", ["-C", dir, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-qm", "seed"]);
+      return { parent, dir };
+    }
+
+    it("prepares the worktree before GJC starts in it, and keeps the report off the row the rail holds", async () => {
+      const { parent, dir } = await repoWithCommit();
+      const order: string[] = [];
+      const prepare = vi.fn(async (_worktree: { path: string; sourceWorkspace: string; branch: string }) => {
+        order.push("prepare");
+        return { problems: { copy: [{ path: ".env", reason: "symlink" as const }] } };
+      });
+      const emit = vi.fn();
+      const { controller, cli } = harness({ prepareWorktree: prepare, emit });
+      cli.rawGlobal.mockImplementation(async () => {
+        order.push("session.create");
+        return { sessionId: "wt" } as never;
+      });
+      try {
+        const created = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "gajae/prepared" });
+        expect(order).toEqual(["prepare", "session.create"]);
+        // Git reports the repository by its real path
+        expect(prepare.mock.calls[0]![0]).toEqual({
+          sourceWorkspace: await realpath(dir),
+          path: created.workspace,
+          branch: "gajae/prepared",
+          managed: true,
+        });
+        expect(created.worktreeSetup).toEqual({ copyProblems: [{ path: ".env", reason: "symlink" }] });
+        const announced = emit.mock.calls.map(([event]) => event).find((event) => event.type === "session.created");
+        expect(announced.session.worktreeSetup).toBeUndefined();
+        expect((await controller.listSessions()).find((row) => row.id === "wt")?.worktreeSetup).toBeUndefined();
+      } finally {
+        controller.dispose();
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
+
+    it("creates the session when preparing fails, and says nothing when it went as asked", async () => {
+      const { parent, dir } = await repoWithCommit();
+      try {
+        const failing = harness({ prepareWorktree: vi.fn(async () => { throw new Error("boom"); }) });
+        failing.cli.rawGlobal.mockResolvedValueOnce({ sessionId: "wt-1" } as never);
+        const first = await failing.controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "gajae/one" });
+        expect(first.id).toBe("wt-1");
+        expect(first.worktreeSetup).toBeUndefined();
+        failing.controller.dispose();
+
+        const quiet = harness({ prepareWorktree: vi.fn(async () => ({ problems: { copy: [] } })) });
+        quiet.cli.rawGlobal.mockResolvedValueOnce({ sessionId: "wt-2" } as never);
+        const second = await quiet.controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "gajae/two" });
+        expect("worktreeSetup" in second).toBe(false);
+        quiet.controller.dispose();
+      } finally {
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
+
+    it("does not prepare a session that works in the folder itself", async () => {
+      const { parent, dir } = await repoWithCommit();
+      const prepare = vi.fn(async () => ({ problems: { copy: [] } }));
+      const { controller, cli } = harness({ prepareWorktree: prepare });
+      cli.rawGlobal.mockResolvedValueOnce({ sessionId: "plain" } as never);
+      try {
+        await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "workspace" });
+        expect(prepare).not.toHaveBeenCalled();
+      } finally {
+        controller.dispose();
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
+
+    it("copies the project's files and runs its setup script in the new worktree", async () => {
+      const { parent, dir } = await repoWithCommit();
+      await writeFile(path.join(dir, ".env"), "TOKEN=abc");
+      const settings = { setupScript: "cat .env > from-setup.txt", copyFiles: [".env"] };
+      const { controller, cli } = harness({
+        prepareWorktree: (worktree: { path: string; sourceWorkspace: string; branch: string }) =>
+          prepareWorktree({ settings, sourceRoot: worktree.sourceWorkspace, worktreePath: worktree.path, branch: worktree.branch }),
+      });
+      cli.rawGlobal.mockImplementation(async (...args: unknown[]) => {
+        // GJC starts in a worktree that is already filled
+        expect(await readFile(path.join((args[1] as { cwd: string }).cwd, "from-setup.txt"), "utf8")).toBe("TOKEN=abc");
+        return { sessionId: "filled" } as never;
+      });
+      try {
+        const created = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree", worktreeBranch: "gajae/filled" });
+        expect(created.worktreeSetup).toBeUndefined();
+        expect(await readFile(path.join(created.workspace, ".env"), "utf8")).toBe("TOKEN=abc");
+      } finally {
+        controller.dispose();
+        await rm(parent, { recursive: true, force: true });
+      }
+    });
   });
 
   async function commit(dir: string, file: string): Promise<string> {

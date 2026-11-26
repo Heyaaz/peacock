@@ -8,12 +8,14 @@ import type {
   AgentSession,
   AgentControlPreferences,
   ImageAttachment,
+  ManagedWorktree,
   PermissionOption,
   ToolActivity,
 } from "../shared/agent-contract.js";
 import { DEFAULT_MODEL_PRESET } from "../shared/agent-contract.js";
 import type { CommandRuleDecision, CommandRuleMatch } from "../shared/command-rules.js";
 import type { SessionMetadataStore } from "./session-metadata-store.js";
+import type { WorktreePreparation } from "./worktree-service.js";
 import {
   GjcSdkCli,
   SdkCliError,
@@ -332,6 +334,11 @@ export interface GjcControllerOptions {
     decide(projectPath: string, toolName: string, command: string): Promise<CommandRuleMatch | undefined>;
     add(projectPath: string, prefix: string, decision: CommandRuleDecision): Promise<void>;
   };
+  /**
+   * Fills a new worktree from its project's settings (copied files, setup script) right after
+   * it is made. It never rejects: a worktree whose setup failed is still a usable session.
+   */
+  prepareWorktree?: (worktree: ManagedWorktree) => Promise<WorktreePreparation>;
   artifactDirectory?: string;
   emit: (event: AgentEvent) => void;
 }

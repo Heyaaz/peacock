@@ -41,6 +41,8 @@ import { registerSettingsIpcHandlers } from "./settings-ipc-handlers.js";
 import { SettingsStore, validDirectory } from "./settings-store.js";
 import { SessionMetadataStore } from "./session-metadata-store.js";
 import { CommandRuleStore } from "./command-rule-store.js";
+import { ProjectSettingsStore } from "./project-settings-store.js";
+import { prepareWorktree } from "./worktree-service.js";
 import { TerminalSessionStore } from "./terminal-session-store.js";
 import { hostText, setHostLanguage } from "./host-text.js";
 import { ManagementService } from "./desktop-services.js";
@@ -212,11 +214,11 @@ const repoService = new RepoService({
   ghExecutable: process.env.GAJA_GH_BIN || undefined,
 });
 // A rule belongs to the project's main working tree, so the sessions of a project
-// and of its worktrees share it.
-const commandRules = new CommandRuleStore(
-  userDataDirectory,
-  async (projectPath) => (await repoService.resolveProjects([projectPath]))[0]?.root ?? projectPath,
-);
+// and of its worktrees share it. So do the project's settings.
+const projectRootOf = async (projectPath: string): Promise<string> =>
+  (await repoService.resolveProjects([projectPath]))[0]?.root ?? projectPath;
+const commandRules = new CommandRuleStore(userDataDirectory, projectRootOf);
+const projectSettings = new ProjectSettingsStore(userDataDirectory, projectRootOf);
 const attachmentStore = new AttachmentStore();
 let productivityService: ProductivityService | undefined;
 // Declared before the controller so the event fan-out below can reach it; the
@@ -552,6 +554,14 @@ const gjcController = new GjcSdkController({
   permissionHandling: preferences.permissionHandling,
   sessionMetadata,
   commandRules,
+  // a new worktree is filled from its project's settings: copied files, then the setup script
+  prepareWorktree: async (worktree) =>
+    prepareWorktree({
+      settings: await projectSettings.get(worktree.sourceWorkspace),
+      sourceRoot: worktree.sourceWorkspace,
+      worktreePath: worktree.path,
+      branch: worktree.branch,
+    }),
   artifactDirectory: path.join(userDataDirectory, "artifacts"),
   emit: broadcastAgentEvent,
 });
@@ -714,6 +724,7 @@ const unregisterSettingsIpc = registerSettingsIpcHandlers(
   // A development run is not a bundle in Applications; swapping it would replace
   // Electron's own app, so only a packaged app offers the in-app update.
   app.isPackaged ? installAppUpdate : undefined,
+  projectSettings,
 );
 const unregisterDesktopServicesIpc =
   registerDesktopServicesIpcHandlers(desktopManagement, ipcSecurity);

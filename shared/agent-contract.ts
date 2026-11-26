@@ -2,6 +2,7 @@ import type { AppUpdateInstallResult, AppUpdateStatus } from "./app-update.js";
 import type { SystemInfo, WorkspaceInspection } from "./settings-ipc.js";
 import type { DesktopIntegrationPreferences } from "./desktop-integration.js";
 import type { CommandRuleMatch, ProjectCommandRules } from "./command-rules.js";
+import type { ProjectSettings, ProjectSettingsEntry } from "./project-settings.js";
 import type { EnvironmentReport } from "./environment-check.js";
 import type { GjcSetting, GjcSettingChange } from "./gjc-settings.js";
 import type { QuickInputShortcutStatus } from "./quick-input.js";
@@ -403,6 +404,17 @@ export interface ManagedWorktree {
   managed: true;
 }
 
+/**
+ * What filling a new worktree from its project's settings reported when something did
+ * not go as asked. The session is created either way; this is only for the window to say so.
+ */
+export interface WorktreeSetupReport {
+  /** Files that could not be copied (a file the project simply lacks, or Git already has, is not one). */
+  copyProblems?: { path: string; reason: string }[];
+  /** The setup script ended without succeeding: `output` is the end of what it printed. */
+  setup?: { status: "failed" | "timeout" | "error"; exitCode?: number; output: string };
+}
+
 export interface EffectiveRuntimeState {
   modelProfile?: string;
   model?: string;
@@ -498,6 +510,11 @@ export interface AgentSession {
   ownership: SessionOwnership;
   attachment: SessionAttachment;
   worktree?: ManagedWorktree;
+  /**
+   * Set only on the answer to a create call, never on a row the runtime lists: what the new
+   * worktree's setup (copied files, setup script) reported when it did not finish cleanly.
+   */
+  worktreeSetup?: WorktreeSetupReport;
   workLink?: SessionWorkLink;
   runtimeState?: EffectiveRuntimeState;
   /** The agent the session runs; absent on rows from before agents were named. */
@@ -1617,6 +1634,13 @@ export interface SettingsDesktopBridge {
   revealDataFolder(): Promise<void>;
   /** Forgets one rule and returns the rules that remain. */
   removeCommandRule(root: string, prefix: string): Promise<ProjectCommandRules[]>;
+  /** The settings saved per project: new-session worktree default, setup script, files to copy. Desktop only. */
+  listProjectSettings(): Promise<ProjectSettingsEntry[]>;
+  /**
+   * Saves one project's settings and returns every project's. A setup script that is new or
+   * changed is confirmed first: it runs commands whenever a worktree is made.
+   */
+  setProjectSettings(projectPath: string, settings: ProjectSettings): Promise<ProjectSettingsEntry[]>;
   /** Whether the environment check should open at launch. */
   environmentCheckDue(): Promise<boolean>;
   /** Whether the quick input shortcut is registered right now. */

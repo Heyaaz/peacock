@@ -298,6 +298,7 @@ export class GjcSdkController extends GjcSdkState {
   private permissionHandling: AgentControlPreferences["permissionHandling"];
   private readonly sessionMetadata?: SessionMetadataStore;
   private readonly commandRules?: GjcControllerOptions["commandRules"];
+  private readonly worktreePreparer?: GjcControllerOptions["prepareWorktree"];
   private readonly emitEvent: (event: AgentEvent) => void;
   private readonly artifactDirectory: string;
   private readonly permissionChannels = new PermissionChannels({
@@ -345,6 +346,7 @@ export class GjcSdkController extends GjcSdkState {
     get permissionChannels() { return controller.permissionChannels; },
     patchTool: (toolId, patch) => patchTool(controller.host, toolId, patch),
     get commandRules() { return controller.commandRules; },
+    get prepareWorktree() { return controller.worktreePreparer; },
     findTool: (sessionId, toolId) =>
       controller.transcripts.get(sessionId)?.find(
         (item): item is ToolActivity => item.kind === "tool" && item.id === toolId,
@@ -563,6 +565,7 @@ export class GjcSdkController extends GjcSdkState {
     this.permissionHandling = options.permissionHandling ?? "prompt";
     this.sessionMetadata = options.sessionMetadata;
     this.commandRules = options.commandRules;
+    this.worktreePreparer = options.prepareWorktree;
     this.emitEvent = (event) => {
       switch (event.type) {
         case "transcript.appended":

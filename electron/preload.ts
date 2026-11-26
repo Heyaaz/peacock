@@ -29,6 +29,7 @@ import type { ProductivityDesktopBridge } from "../shared/productivity-ipc.js";
 import { OMP_ACCOUNTS_IPC, type OmpAccountsDesktopBridge, type OmpLoginAnswer, type OmpLoginEvent } from "../shared/omp-accounts.js";
 import type { DesktopIntegrationPreferences } from "../shared/desktop-integration.js";
 import type { GjcSettingChange } from "../shared/gjc-settings.js";
+import type { ProjectSettings } from "../shared/project-settings.js";
 import type {
   RemoteDesktopBridge,
   RemotePermission,
@@ -531,6 +532,9 @@ const settings: SettingsDesktopBridge = Object.freeze({
   listCommandRules: () => ipcRenderer.invoke(SETTINGS_IPC.listCommandRules),
   removeCommandRule: (root: string, prefix: string) =>
     ipcRenderer.invoke(SETTINGS_IPC.removeCommandRule, root, prefix),
+  listProjectSettings: () => ipcRenderer.invoke(SETTINGS_IPC.listProjectSettings),
+  setProjectSettings: (projectPath: string, settings: ProjectSettings) =>
+    ipcRenderer.invoke(SETTINGS_IPC.setProjectSettings, projectPath, settings),
   environmentCheckDue: () => ipcRenderer.invoke(SETTINGS_IPC.environmentCheckDue),
   quickInputShortcutStatus: () =>
     ipcRenderer.invoke(SETTINGS_IPC.quickInputShortcutStatus),

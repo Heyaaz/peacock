@@ -9,6 +9,7 @@ import { cacheTranscript } from "../transcript-utils";
 import { prefillComposerDraft } from "./composer";
 import type { NewSessionInput } from "./dialogs";
 import { directoryName, humanErrorMessage } from "./format";
+import { worktreeSetupMessage } from "./worktree-setup";
 
 export function useCreateSession(
   backend: AgentBackend,
@@ -116,6 +117,8 @@ export function useCreateSession(
             delete next[draftId];
             return cacheTranscript(next, session.id, items);
           });
+          // The session is open either way; this only says its new worktree is not as asked.
+          if (session.worktreeSetup) setAppError(worktreeSetupMessage(session.worktreeSetup));
         })
         .catch((error) => {
           setSessions((current) =>

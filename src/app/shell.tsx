@@ -1917,6 +1917,7 @@ export default function App() {
           onInstallUpdate={() => void installUpdate()}
           initialTab={settingsTab}
           onLogin={onboardingBridge ? openLogin : undefined}
+          projects={projectGroups.filter((group) => group.repository)}
         />
       )}
       {(onboardingStep || loginOpen) && onboardingBridge && (

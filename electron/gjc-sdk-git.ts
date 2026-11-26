@@ -9,18 +9,6 @@ export interface GitScope {
   readonly sessionCwds: ReadonlyMap<string, string>;
 }
 
-export async function remotesWithBranch(root: string, branch: string): Promise<number> {
-  const [remotes, refs] = await Promise.all([
-    execFile("git", ["-C", root, "remote"]),
-    execFile("git", ["-C", root, "for-each-ref", "--format=%(refname)", "refs/remotes/"]),
-  ]);
-  const present = new Set(refs.stdout.split("\n").map((line) => line.trim()));
-  return remotes.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((remote) => remote && present.has(`refs/remotes/${remote}/${branch}`)).length;
-}
-
 export async function getGitStatus(
   scope: GitScope,
   sessionId: string,

@@ -25,6 +25,8 @@ export const SETTINGS_IPC = {
   applyGjcSettings: "agent-control:settings:apply-gjc-settings",
   listCommandRules: "agent-control:settings:list-command-rules",
   removeCommandRule: "agent-control:settings:remove-command-rule",
+  listProjectSettings: "agent-control:settings:list-project-settings",
+  setProjectSettings: "agent-control:settings:set-project-settings",
   confirm: "agent-control:settings:confirm",
   getAppUpdateStatus: "agent-control:settings:get-app-update-status",
   checkAppUpdate: "agent-control:settings:check-app-update",

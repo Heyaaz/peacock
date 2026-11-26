@@ -1,12 +1,11 @@
 import type { SdkControlOperation } from "./gjc-sdk-control.js";
 import { randomUUID } from "node:crypto";
 import type { FSWatcher } from "node:fs";
-import type { AgentCommand, AgentConfigOption, AgentConfigOptionValue, AgentControlPreferences, AgentEvent, AgentSession, CreateSessionInput, PlanActivity, QuestionActivity, TranscriptItem } from "../shared/agent-contract.js";
+import type { AgentCommand, AgentConfigOption, AgentConfigOptionValue, AgentControlPreferences, AgentEvent, AgentSession, CreateSessionInput, ManagedWorktree, PlanActivity, QuestionActivity, TranscriptItem } from "../shared/agent-contract.js";
 import type { SessionMetadataStore } from "./session-metadata-store.js";
 import { GjcSdkCli, isLifecycleUncertain, SdkCliError, type SdkSessionRow } from "./gjc-sdk-cli.js";
 import {
   canonicalWorkspace,
-  execFile,
   GJC_ACCENT,
   LIFECYCLE_RECOVERY_ATTEMPTS,
   LIFECYCLE_RECOVERY_CLOCK_SLACK_MS,
@@ -21,7 +20,7 @@ import {
   TodoSnapshotState,
   uncertainLifecycleOutcomeError,
 } from "./gjc-sdk-foundation.js";
-import { remotesWithBranch } from "./gjc-sdk-git.js";
+import { createWorktree, discardUnusedWorktree, runGit, worktreeSetupReport, type WorktreePreparation } from "./worktree-service.js";
 import { excludeGjcState } from "./git-exclude.js";
 import { CliDeleteError, type CliDeleteStage } from "./gjc-cli-session-delete.js";
 import type { GjcHostProcess } from "./gjc-host-process.js";
@@ -46,6 +45,8 @@ export interface LifecycleHost {
   invalidateBrokerIndexCache(): void;
   readonly windowHostedSessions: Set<string>;
   readonly sessionMetadata: SessionMetadataStore | undefined;
+  /** Fills a new worktree from its project's settings (copied files, setup script); never rejects. */
+  readonly prepareWorktree?: (worktree: ManagedWorktree) => Promise<WorktreePreparation>;
   applyPermissionMode(sessionId: string): Promise<void>;
   readonly emitEvent: (event: AgentEvent) => void;
   readonly attachedSessions: Set<string>;
@@ -151,91 +152,25 @@ export async function createSession(host: LifecycleHost, input: CreateSessionInp
     throw new Error("The GJC controller only creates GJC sessions");
   const cli = await host.requireCli();
   let sessionWorkspace = canonicalWorkspace(input.workspace);
-  let worktree:
-    | { sourceWorkspace: string; path: string; branch: string; managed: true }
-    | undefined;
+  let worktree: ManagedWorktree | undefined;
   let branchExisted = false;
+  let preparation: WorktreePreparation | undefined;
   if (input.isolation === "worktree") {
-    const root = (
-      await execFile("git", [
-        "-C",
-        sessionWorkspace,
-        "rev-parse",
-        "--show-toplevel",
-      ])
-    ).stdout.trim();
-    if (!root) throw new Error("Workspace is not a git repository");
-    const suffix = `${Date.now().toString(36)}-${host.nextLocalId++}`;
-    const branch = input.worktreeBranch?.trim() || `gajae/${suffix}`;
-    const worktreePath = path.join(
-      path.dirname(root),
-      `${path.basename(root)}.gajae-worktrees`,
-      suffix,
-    );
-    // An existing branch is checked out rather than recreated: `-b` refuses it,
-    // and the failure cleanup below must never delete a branch it did not make.
-    branchExisted = await execFile("git", [
-      "-C",
-      root,
-      "rev-parse",
-      "--verify",
-      "--quiet",
-      `refs/heads/${branch}`,
-    ]).then(
-      () => true,
-      () => false,
-    );
-    // A named branch someone pushed from another machine is on a remote only.
-    // Starting it with `-b` would make a second, unrelated branch of that name,
-    // so it is checked out, which makes git track the one remote that has it.
-    const onOneRemote =
-      !branchExisted &&
-      input.worktreeBranch !== undefined &&
-      !input.worktreePull &&
-      (await remotesWithBranch(root, branch)) === 1;
-    if (!branchExisted && input.worktreePull) {
-      const { remote, number } = input.worktreePull;
-      await execFile("git", [
-        "-C",
-        root,
-        "fetch",
-        "--no-tags",
-        remote,
-        `pull/${number}/head:refs/heads/${branch}`,
-      ]).catch((error: unknown) => {
-        throw new Error(
-          `PR #${number}의 head를 ${remote}에서 받아 오지 못했습니다.`,
-          { cause: error },
-        );
-      });
-    }
-    try {
-      await execFile("git", [
-        "-C",
-        root,
-        "worktree",
-        "add",
-        ...(branchExisted || onOneRemote || input.worktreeBranchExisting || input.worktreePull
-          ? [worktreePath, branch]
-          : ["-b", branch, worktreePath]),
-      ]);
-    } catch (error) {
-      // Without a local branch, git checks out the one remote branch of that
-      // name. A branch that exists nowhere must not become a new one from HEAD.
-      if (input.worktreeBranchExisting && !branchExisted)
-        throw new Error(
-          `브랜치 ${branch}을(를) 로컬이나 원격에서 찾지 못했습니다. git fetch로 받아 온 뒤 다시 시도하세요.`,
-          { cause: error },
-        );
-      throw error;
-    }
-    sessionWorkspace = worktreePath;
-    worktree = {
-      sourceWorkspace: root,
-      path: worktreePath,
-      branch,
-      managed: true,
-    };
+    const created = await createWorktree({
+      workspace: sessionWorkspace,
+      ...(input.worktreeBranch !== undefined ? { branch: input.worktreeBranch } : {}),
+      ...(input.worktreeBranchExisting ? { branchExisting: true } : {}),
+      ...(input.worktreePull ? { pull: input.worktreePull } : {}),
+      suffix: () => `${Date.now().toString(36)}-${host.nextLocalId++}`,
+    });
+    worktree = created.worktree;
+    branchExisted = created.branchExisted;
+    sessionWorkspace = worktree.path;
+    // The project's copied files and setup script. Neither can fail the session: what
+    // did not go as asked comes back on the session for the window to report.
+    preparation = await Promise.resolve()
+      .then(() => host.prepareWorktree?.(created.worktree))
+      .catch(() => undefined);
   }
   // Not awaited: hiding the folder must never delay or fail the session.
   void excludeGjcState(sessionWorkspace);
@@ -280,35 +215,7 @@ export async function createSession(host: LifecycleHost, input: CreateSessionInp
       }
     }
     if (!response && worktree && error instanceof SdkCliError && error.outcomeCertainty === "not-applied") {
-      try {
-        const status = (
-          await execFile("git", [
-            "-C",
-            worktree.path,
-            "status",
-            "--porcelain",
-          ])
-        ).stdout.trim();
-        if (!status) {
-          await execFile("git", [
-            "-C",
-            worktree.sourceWorkspace,
-            "worktree",
-            "remove",
-            worktree.path,
-          ]);
-          if (!branchExisted)
-            await execFile("git", [
-              "-C",
-              worktree.sourceWorkspace,
-              "branch",
-              "-D",
-              worktree.branch,
-            ]);
-        }
-      } catch {
-        /* Preserve a dirty or otherwise uncertain worktree for manual recovery. */
-      }
+      await discardUnusedWorktree(runGit, worktree, branchExisted);
     }
     if (!response && isLifecycleUncertain(error)) {
       throw new Error(
@@ -372,7 +279,10 @@ export async function createSession(host: LifecycleHost, input: CreateSessionInp
   const createdFile = await host.locateSharedTranscriptFile(session.id);
   if (createdFile) host.watchSharedTranscript(session.id, createdFile);
   host.emitEvent({ type: "session.created", session: { ...session } });
-  return { ...session };
+  // Only the answer to this call carries what the worktree's setup reported: the row the
+  // rail keeps is rebuilt from the runtime, and a warning is not part of what a session is.
+  const worktreeSetup = preparation ? worktreeSetupReport(preparation) : undefined;
+  return { ...session, ...(worktreeSetup ? { worktreeSetup } : {}) };
 }
 
 export async function forkSession(host: LifecycleHost, input: {

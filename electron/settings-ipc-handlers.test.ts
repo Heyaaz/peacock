@@ -8,6 +8,7 @@ import type { IpcSecurity } from "./ipc-security.js";
 import { AttachmentStore } from "./attachment-store.js";
 import { imageAttachments, registerSettingsIpcHandlers } from "./settings-ipc-handlers.js";
 import { SettingsStore } from "./settings-store.js";
+import { ProjectSettingsStore } from "./project-settings-store.js";
 
 const handled = vi.hoisted(
   () => new Map<string, (...args: unknown[]) => unknown>(),
@@ -180,6 +181,110 @@ describe("command rules channel", () => {
     try {
       expect(handled.has(SETTINGS_IPC.listCommandRules)).toBe(false);
       expect(handled.has(SETTINGS_IPC.removeCommandRule)).toBe(false);
+    } finally {
+      dispose();
+    }
+  });
+});
+
+describe("project settings channel", () => {
+  const SETTINGS = { newSessionWorktree: true, setupScript: "npm ci", copyFiles: [".env"] };
+
+  function registerProjects(authorize: () => Promise<void>, withStore = true) {
+    const directory = mkdtempSync(path.join(tmpdir(), "gajae-settings-ipc-"));
+    created.push(directory);
+    const store = new ProjectSettingsStore(directory, async (projectPath) => projectPath);
+    const authorizeDestructive = vi.fn(authorize);
+    const security = {
+      guarded: (handler: (...args: unknown[]) => unknown) => handler,
+      authorizeDestructive,
+    } as unknown as IpcSecurity;
+    const dispose = registerSettingsIpcHandlers(
+      new SettingsStore(directory, directory), {} as AttachmentStore, security,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined,
+      withStore ? store : undefined,
+    );
+    return { dispose, store, authorizeDestructive };
+  }
+
+  it("saves a project's settings after the host confirms its setup script, and lists them", async () => {
+    const { dispose, authorizeDestructive } = registerProjects(async () => undefined);
+    try {
+      expect(await handled.get(SETTINGS_IPC.listProjectSettings)?.({})).toEqual([]);
+      const listed = await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", SETTINGS);
+      expect(listed).toEqual([{ root: "/repo", settings: SETTINGS }]);
+      expect(authorizeDestructive).toHaveBeenCalledTimes(1);
+      expect(authorizeDestructive.mock.calls[0]).toEqual([
+        {},
+        expect.objectContaining({ confirmLabel: "저장", detail: expect.stringContaining("npm ci") }),
+      ]);
+      expect(await handled.get(SETTINGS_IPC.listProjectSettings)?.({})).toEqual(listed);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("saves nothing when the user declines the script", async () => {
+    const { dispose, store } = registerProjects(async () => {
+      throw new Error("Operation cancelled");
+    });
+    try {
+      await expect(handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", SETTINGS)).rejects.toThrow("cancelled");
+      expect(store.list()).toEqual([]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("does not ask again for a script that is already saved, nor when there is none", async () => {
+    const { dispose, authorizeDestructive } = registerProjects(async () => undefined);
+    try {
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", SETTINGS);
+      authorizeDestructive.mockClear();
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", { ...SETTINGS, copyFiles: [".env", "a.json"], newSessionWorktree: false });
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", { ...SETTINGS, setupScript: "" });
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/other", { newSessionWorktree: true, setupScript: "", copyFiles: [] });
+      expect(authorizeDestructive).not.toHaveBeenCalled();
+    } finally {
+      dispose();
+    }
+  });
+
+  it("asks again when the script changes", async () => {
+    const { dispose, authorizeDestructive } = registerProjects(async () => undefined);
+    try {
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", SETTINGS);
+      await handled.get(SETTINGS_IPC.setProjectSettings)?.({}, "/repo", { ...SETTINGS, setupScript: "rm -rf node_modules && npm ci" });
+      expect(authorizeDestructive).toHaveBeenCalledTimes(2);
+    } finally {
+      dispose();
+    }
+  });
+
+  it.each([
+    [["relative/path", SETTINGS]],
+    [["/repo\nother", SETTINGS]],
+    [[7, SETTINGS]],
+    [["/repo", { ...SETTINGS, copyFiles: ["../../etc/passwd"] }]],
+    [["/repo", { ...SETTINGS, setupScript: 5 }]],
+    [["/repo", null]],
+  ])("refuses to save %j before asking anything", async (args) => {
+    const { dispose, store, authorizeDestructive } = registerProjects(async () => undefined);
+    try {
+      await expect(handled.get(SETTINGS_IPC.setProjectSettings)?.({}, ...args)).rejects.toThrow();
+      expect(authorizeDestructive).not.toHaveBeenCalled();
+      expect(store.list()).toEqual([]);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("offers no channel when the host keeps no project settings", () => {
+    const { dispose } = registerProjects(async () => undefined, false);
+    try {
+      expect(handled.has(SETTINGS_IPC.listProjectSettings)).toBe(false);
+      expect(handled.has(SETTINGS_IPC.setProjectSettings)).toBe(false);
     } finally {
       dispose();
     }

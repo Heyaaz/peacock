@@ -68,6 +68,9 @@ const ENGLISH: Readonly<Record<string, string>> = {
   "실행": "Run",
   "정리": "Clean up",
   "적용": "Apply",
+  "저장": "Save",
+  "setup 스크립트를 저장할까요? 이 프로젝트의 새 worktree를 만들 때마다 실행됩니다.":
+    "Save this setup script? It runs every time a new worktree of this project is created.",
   "업데이트": "Update",
   "이 도구 실행을 허용할까요?": "Allow this tool action?",
   "이번만 허용": "Allow once",

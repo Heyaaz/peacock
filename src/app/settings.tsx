@@ -14,7 +14,7 @@ import type {
   NotificationPreferences,
 } from "../../shared/agent-contract";
 import type { AgentControlPreferences, BackendConnection } from "../backend/types";
-import { ArrowLeft, Bot, ChevronRight, FolderOpen, ShieldCheck, SlidersHorizontal, Smartphone, Wrench, X } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, FolderGit2, FolderOpen, ShieldCheck, SlidersHorizontal, Smartphone, Wrench, X } from "lucide-react";
 import {
   DEFAULT_DESKTOP_INTEGRATION,
   type DesktopIntegrationPreferences,
@@ -32,6 +32,7 @@ import { QuickInputShortcutRow } from "./quick-input-shortcut-row";
 import { GjcSettingsPanel } from "./gjc-settings-panel";
 import { AgentsSettingsPanel } from "./agents-settings-panel";
 import { ApprovalSettingsPanel } from "./approval-settings-panel";
+import { ProjectSettingsPanel, type ProjectChoice } from "./project-settings-panel";
 import { gjcApprovalLabel } from "./settings-model";
 import { AdvancedSettingsPanel } from "./advanced-settings-panel";
 import { SettingsSection } from "./settings-layout";
@@ -62,6 +63,8 @@ export interface SettingsDialogProps {
   initialTab?: SettingsTab;
   /** Opens the AI sign-in flow; absent where the host cannot run GJC's login. */
   onLogin?: () => void;
+  /** The repositories the window knows, for the project page. */
+  projects?: readonly ProjectChoice[];
 }
 
 /** The five pages, and GJC's own pages under 에이전트. */
@@ -69,6 +72,7 @@ export type SettingsTab =
   | "general"
   | "agents"
   | "approvals"
+  | "projects"
   | "remote"
   | "advanced"
   | "gjcSettings"
@@ -212,6 +216,7 @@ export function SettingsDialog({
   onInstallUpdate,
   initialTab = "general",
   onLogin,
+  projects = [],
 }: SettingsDialogProps) {
   const detectedPreset = connection.modelPreset ?? DEFAULT_MODEL_PRESET;
   const fallbackPreferences: AgentControlPreferences = {
@@ -287,6 +292,7 @@ export function SettingsDialog({
     general: t("일반"),
     agents: t("에이전트"),
     approvals: t("승인 규칙"),
+    projects: t("프로젝트"),
     remote: t("원격·폰"),
     advanced: t("고급"),
     gjcSettings: t("GJC 세부 설정"),
@@ -299,6 +305,7 @@ export function SettingsDialog({
     general: t("모양, 새 세션, 알림, 데스크톱 동작"),
     agents: t("이 Mac의 에이전트와, 새 세션이 시작할 때 쓰는 설정"),
     approvals: t("묻지 않고 넘어가는 것과 승인할 수 있는 곳"),
+    projects: t("프로젝트별 worktree 기본값, setup 스크립트, 복사할 파일"),
     remote: t("휴대폰에서 이 Mac의 세션을 보고 조작합니다"),
     advanced: t("herdr-core, 데이터 폴더, 진단"),
     gjcSettings: t("터미널의 GJC와 함께 쓰는 설정입니다"),
@@ -311,6 +318,7 @@ export function SettingsDialog({
     { id: "general", label: pageTitle.general, icon: <SlidersHorizontal size={16} aria-hidden="true" /> },
     { id: "agents", label: pageTitle.agents, icon: <Bot size={16} aria-hidden="true" /> },
     { id: "approvals", label: pageTitle.approvals, icon: <ShieldCheck size={16} aria-hidden="true" /> },
+    { id: "projects", label: pageTitle.projects, icon: <FolderGit2 size={16} aria-hidden="true" /> },
     { id: "remote", label: pageTitle.remote, icon: <Smartphone size={16} aria-hidden="true" /> },
     { id: "advanced", label: pageTitle.advanced, icon: <Wrench size={16} aria-hidden="true" /> },
   ];
@@ -1051,6 +1059,8 @@ export function SettingsDialog({
               onOpenRemote={() => setTab("remote")}
             />
           )}
+
+          {tab === "projects" && <ProjectSettingsPanel bridge={settingsBridge} projects={projects} />}
 
           {tab === "remote" && (
             <LazyViewBoundary>

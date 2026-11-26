@@ -1,8 +1,5 @@
-import { execFile as execFileCallback } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { AGENT_CATALOG } from "../shared/agent-catalog.js";
 import type {
   AgentEvent,
@@ -30,13 +27,19 @@ import {
 } from "../shared/parallel-run.js";
 import type { ParallelStartInput } from "../shared/parallel-ipc.js";
 import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
+import {
+  addWorktree,
+  discardNewWorktree,
+  inspectWorktree,
+  listWorktreePaths,
+  localBranchExists,
+  removeWorktreeLeftovers,
+  repositoryRoot,
+  runGit,
+  type GitRunner,
+} from "./worktree-service.js";
 
-const execFile = promisify(execFileCallback);
-
-export type GitRunner = (cwd: string, args: readonly string[]) => Promise<string>;
-
-const runGit: GitRunner = async (cwd, args) =>
-  (await execFile("git", ["-C", cwd, ...args])).stdout;
+export type { GitRunner };
 
 /** The slice of the session controller a parallel run drives. */
 export interface ParallelRunHost {
@@ -65,18 +68,6 @@ export const INTERRUPTED_REASON =
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function worktreesByBranch(porcelain: string): Map<string, string> {
-  const byBranch = new Map<string, string>();
-  let path: string | undefined;
-  for (const line of porcelain.split("\n")) {
-    if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
-    else if (line.startsWith("branch refs/heads/") && path)
-      byBranch.set(line.slice("branch refs/heads/".length), path);
-    else if (!line) path = undefined;
-  }
-  return byBranch;
 }
 
 /**
@@ -236,9 +227,7 @@ export class ParallelRunService {
     if (group.state.kind !== "adopted" && group.state.kind !== "discarded")
       throw new Error("채택하거나 모두 버린 뒤에만 시도를 정리할 수 있습니다.");
     const root = await this.repositoryRoot(group.workspace);
-    const worktrees = worktreesByBranch(
-      await this.git(root, ["worktree", "list", "--porcelain"]),
-    );
+    const worktrees = await listWorktreePaths(this.git, root);
     const adoptedId = group.state.kind === "adopted" ? group.state.attemptId : undefined;
     const kept = group.attempts.find((attempt) => attempt.id === adoptedId);
     const items: ParallelCleanupItem[] = [];
@@ -251,18 +240,9 @@ export class ParallelRunService {
         throw new Error(
           `시도 #${attempt.id}이(가) 아직 실행 중입니다. 멈춘 뒤에 정리하세요.`,
         );
-      const worktreePath = worktrees.get(attempt.branch);
-      const worktreeMissing = worktreePath !== undefined && !existsSync(worktreePath);
-      const branchExists = await this.branchExists(root, attempt.branch);
       items.push({
         attemptId: attempt.id,
-        branch: attempt.branch,
-        ...(worktreePath ? { worktreePath } : {}),
-        ...(worktreeMissing ? { worktreeMissing: true } : {}),
-        uncommittedFiles:
-          worktreePath && !worktreeMissing ? await this.uncommittedFiles(worktreePath) : 0,
-        branchExists,
-        unpushedCommits: branchExists ? await this.unpushedCommits(root, attempt.branch) : 0,
+        ...(await inspectWorktree(this.git, root, attempt.branch, worktrees)),
         ...(sessionId ? { sessionId } : {}),
       });
     }
@@ -293,16 +273,7 @@ export class ParallelRunService {
       const root = await this.repositoryRoot(this.require(groupId).workspace);
       for (const item of plan.items) {
         this.assertRemovable(groupId, item);
-        if (item.worktreePath && item.worktreeMissing)
-          await this.git(root, ["worktree", "prune"]);
-        else if (item.worktreePath)
-          await this.git(root, [
-            "worktree",
-            "remove",
-            ...(item.uncommittedFiles > 0 ? ["--force"] : []),
-            item.worktreePath,
-          ]);
-        if (item.branchExists) await this.git(root, ["branch", "-D", item.branch]);
+        await removeWorktreeLeftovers(this.git, root, item);
         if (item.sessionId) this.options.host.hideSession(item.sessionId);
         this.apply(groupId, { type: "attempt.removed", attemptId: item.attemptId });
       }
@@ -412,7 +383,7 @@ export class ParallelRunService {
         `best-of-${group.id.slice(0, 8)}-${attempt.id}`,
       );
       try {
-        await this.git(root, ["worktree", "add", "-b", attempt.branch, worktreePath]);
+        await addWorktree(this.git, root, worktreePath, attempt.branch, { existingBranch: false });
       } catch (error) {
         this.failAttempt(group.id, attempt.id, messageOf(error));
         continue;
@@ -431,8 +402,7 @@ export class ParallelRunService {
         });
       } catch (error) {
         // nothing ran in the worktree this run just made: it and its branch go with the attempt
-        await this.git(root, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
-        await this.git(root, ["branch", "-D", attempt.branch]).catch(() => undefined);
+        await discardNewWorktree(this.git, root, worktreePath, attempt.branch);
         this.failAttempt(group.id, attempt.id, messageOf(error));
         continue;
       }
@@ -562,45 +532,12 @@ export class ParallelRunService {
   }
 
   private async repositoryRoot(workspace: string): Promise<string> {
-    const root = (
-      await this.git(workspace, ["rev-parse", "--show-toplevel"]).catch(() => "")
-    ).trim();
+    const root = await repositoryRoot(this.git, workspace).catch(() => "");
     if (!root) throw new Error("병렬 실행은 Git 저장소에서만 쓸 수 있습니다.");
     return root;
   }
 
   private branchExists(root: string, branch: string): Promise<boolean> {
-    return this.git(root, [
-      "rev-parse",
-      "--verify",
-      "--quiet",
-      `refs/heads/${branch}`,
-    ]).then(
-      () => true,
-      () => false,
-    );
-  }
-
-  private async uncommittedFiles(worktreePath: string): Promise<number> {
-    const status = await this.git(worktreePath, [
-      "status",
-      "--porcelain",
-      "--untracked-files=all",
-    ]);
-    return status.split("\n").filter(Boolean).length;
-  }
-
-  /** Commits reachable only from this branch: on no remote and no other local branch. */
-  private async unpushedCommits(root: string, branch: string): Promise<number> {
-    const count = await this.git(root, [
-      "rev-list",
-      "--count",
-      `refs/heads/${branch}`,
-      "--not",
-      `--exclude=${branch}`,
-      "--branches",
-      "--remotes",
-    ]);
-    return Number.parseInt(count.trim(), 10) || 0;
+    return localBranchExists(this.git, root, branch);
   }
 }

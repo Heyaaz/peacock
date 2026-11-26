@@ -15,6 +15,8 @@ import { checkGjcUpdate, installGjcUpdate } from './gjc-updater.js'
 import { applyGjcSettings, listGjcSettings } from './gjc-config.js'
 import type { GjcSettingChange } from '../shared/gjc-settings.js'
 import type { CommandRuleStore } from './command-rule-store.js'
+import type { ProjectSettingsStore } from './project-settings-store.js'
+import { parseProjectSettings, projectSettingsFault } from '../shared/project-settings.js'
 import type { AppUpdateMonitor } from './app-update.js'
 import type { AppUpdateInstallResult } from '../shared/app-update.js'
 import type { EnvironmentReport } from '../shared/environment-check.js'
@@ -145,6 +147,7 @@ export function registerSettingsIpcHandlers(
   commandRules?: Pick<CommandRuleStore, 'list' | 'remove'>,
   system?: { info(): Promise<SystemInfo>; revealDataFolder(): Promise<void> },
   installAppUpdate?: () => Promise<AppUpdateInstallResult>,
+  projectSettings?: Pick<ProjectSettingsStore, 'list' | 'get' | 'set'>,
 ): () => void {
   ipcMain.handle(SETTINGS_IPC.getPreferences, security.guarded(() => store.get()))
   ipcMain.handle(SETTINGS_IPC.chooseWorkspace, security.guarded(async (event, currentPath: unknown) => {
@@ -291,6 +294,27 @@ export function registerSettingsIpcHandlers(
       if (typeof prefix !== 'string' || !prefix || prefix.length > 200) throw new Error('Command rule prefix is invalid')
       commandRules.remove(root, prefix)
       return commandRules.list()
+    }))
+  }
+  if (projectSettings) {
+    ipcMain.handle(SETTINGS_IPC.listProjectSettings, security.guarded(() => projectSettings.list()))
+    ipcMain.handle(SETTINGS_IPC.setProjectSettings, security.guarded(async (event, projectPath: unknown, value: unknown) => {
+      if (typeof projectPath !== 'string' || !path.isAbsolute(projectPath) || projectPath.length > 4096 || /[\0\r\n]/u.test(projectPath))
+        throw new Error('Project path is invalid')
+      const fault = projectSettingsFault(value)
+      if (fault) throw new Error(fault)
+      const next = parseProjectSettings(value)
+      // The script runs commands whenever a worktree of this project is made, so a new or
+      // changed one is shown to the user before it is saved, as the host's own prompt.
+      if (next.setupScript && next.setupScript !== (await projectSettings.get(projectPath)).setupScript) {
+        await security.authorizeDestructive(event, {
+          message: 'setup 스크립트를 저장할까요? 이 프로젝트의 새 worktree를 만들 때마다 실행됩니다.',
+          detail: `${projectPath}\n\n${next.setupScript.length > 1500 ? `${next.setupScript.slice(0, 1500)}…` : next.setupScript}`,
+          confirmLabel: '저장',
+        })
+      }
+      await projectSettings.set(projectPath, next)
+      return projectSettings.list()
     }))
   }
   ipcMain.handle(SETTINGS_IPC.installGjcUpdate, security.guarded(async (event) => {
