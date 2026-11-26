@@ -38,7 +38,8 @@ settings, MCP servers, skills and plugins, usage, automations) are linked from i
 
 ## Conversations
 
-Type a request and press Enter. A message takes up to 5 files and 6 images (10 MiB each). Files are sent as local paths. In a GJC chat, images are uploaded to GJC (`turn.image.*`) and reach the model as images with the prompt, on one `gjc sdk serve --stdio` relay per message, because GJC keeps a staged image only on the connection that uploaded it. PNG, JPEG, WebP and still GIF up to 20 MiB qualify. A message with any other image, a GJC without image uploads, or an upload GJC refuses sends its images as local paths instead, which the model opens with GJC `read`. Images sent into a running turn (steer) also go as paths. An omp chat sends images in its prompt and other files as paths in the text.
+Type a request and press Enter. A message takes up to 5 files and 6 images (10 MiB each). Files are sent as local paths. In a GJC chat, images are uploaded to GJC (`turn.image.*`) and reach the model as images with the prompt, on one `gjc sdk serve --stdio` relay per message, because GJC keeps a staged image only on the connection that uploaded it. PNG, JPEG, WebP and still GIF up to 20 MiB qualify. A message with any other image, a GJC without image uploads, or an upload GJC refuses sends its images as local paths instead, which the model opens with GJC `read`. Images sent into a running turn (steer) also go as paths. An omp chat sends images in its prompt along with their local paths, and other files as
+paths in the text.
 
 A finished turn keeps its request and final answer on screen and folds everything
 between them into one line, such as `Worked for 4m`, with a failure count (`1 failed`)

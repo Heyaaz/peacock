@@ -455,6 +455,20 @@ describe("OmpRpcController", () => {
     expect(context.processes[0]!.child.sent("prompt")[0]).toMatchObject({ images: [{ data: "AAAA" }] });
   });
 
+  it("names each image's local path so the agent can open it when the model cannot see it", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    await context.controller.sendMessage(session.id, {
+      text: "look",
+      images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "AAAA", nativePath: "/tmp/shot.png" }],
+      files: [],
+    });
+    expect(context.processes[0]!.child.sent("prompt")[0]).toMatchObject({
+      message: 'look\n\n<local-images>\n- "/tmp/shot.png"\n</local-images>',
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+    });
+  });
+
   it("renames and deletes, ending the chat's omp", async () => {
     const context = setup();
     const session = await newChat(context);

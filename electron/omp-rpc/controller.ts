@@ -1888,7 +1888,7 @@ export class OmpRpcController implements AgentRuntimeController {
     this.addNotice(
       sessionId,
       "이미지 미지원",
-      "현재 모델은 이미지를 읽지 못합니다. 첨부는 대화 기록에 남지만 모델에는 전달되지 않습니다. 비전 모델로 바꾼 뒤 다시 보내세요.",
+      "현재 모델은 이미지를 직접 보지 못합니다. 첨부 파일 경로를 메시지에 함께 보냈으니, 필요하면 도구로 열어 확인하세요. 픽셀을 보려면 비전 모델로 바꾸세요.",
       "warning",
     );
   }
@@ -1904,10 +1904,18 @@ export class OmpRpcController implements AgentRuntimeController {
     );
   }
 
-  /** The message as omp takes it: the text, and the path of each attached file for its tools to read. */
+  /**
+   * The message as omp takes it: the text, the local path of every attached image
+   * (omp's own blob copy is not something its tools can open), and the path of
+   * each attached file for its tools to read.
+   */
   private promptText(text: string, input: ResolvedMessageInput): string {
-    if (input.files.length === 0) return text;
-    return [text, ...input.files.map((attached) => `Attached file: ${attached.nativePath}`)].filter(Boolean).join("\n\n");
+    const imagePaths = input.images.flatMap((image) => image.nativePath ? [image.nativePath] : []);
+    const images = imagePaths.length > 0
+      ? `<local-images>\n${imagePaths.map((file) => `- ${JSON.stringify(file)}`).join("\n")}\n</local-images>`
+      : "";
+    const files = input.files.map((attached) => `Attached file: ${attached.nativePath}`);
+    return [text, images, ...files].filter(Boolean).join("\n\n");
   }
 
   // ---- rows
