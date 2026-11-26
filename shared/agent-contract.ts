@@ -8,6 +8,7 @@ import type { GjcSetting, GjcSettingChange } from "./gjc-settings.js";
 import type { QuickInputShortcutStatus } from "./quick-input.js";
 import type { AgentLaunchOptions } from "./agent-launch.js";
 import type { PullRequestInput, PullRequestQuery, PullRequestStatus } from "./pull-request.js";
+import type { DiffScope, TurnDiffState } from "./turn-diff.js";
 import type { GithubPullSummary } from "./repo-ipc.js";
 
 /**
@@ -913,6 +914,13 @@ export interface DiffSnapshot {
   files: ChangedFile[];
   refreshedAt: string;
   error?: string;
+  /** What `files` is: everything, or only the latest turn's. Absent means everything. */
+  scope?: DiffScope;
+  /**
+   * Whether the latest turn can be read alone. Absent where the host cannot (a remote device), which
+   * is also where the panel offers no choice.
+   */
+  turn?: TurnDiffState;
 }
 
 export interface GitFileStatus {
@@ -1589,7 +1597,8 @@ export interface GjcDesktopBridge {
   /** Pending/rejected cards from workflow gates and supported session-owned CLI asks. */
   listPendingQuestions(sessionId: string): Promise<QuestionActivity[]>;
   markSessionRead(sessionId: string): Promise<void>;
-  getDiff(sessionId: string): Promise<DiffSnapshot>;
+  /** The changes in the session's folder; `{ scope: "turn" }` is only what the latest turn changed. */
+  getDiff(sessionId: string, options?: { scope: DiffScope }): Promise<DiffSnapshot>;
   readArtifact(sessionId: string, artifactId: string): Promise<ArtifactContent>;
   previewFile(
     sessionId: string,

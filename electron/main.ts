@@ -64,6 +64,7 @@ import { AttachmentStore } from "./attachment-store.js";
 import { RemoteAccessService } from "./remote/service.js";
 import { registerRemoteIpcHandlers } from "./remote-ipc-handlers.js";
 import { PullRequestService } from "./pull-request-service.js";
+import { TurnBaselines } from "./turn-baselines.js";
 import { RepoService } from "./repo-service.js";
 import { registerRepoIpcHandlers } from "./repo-ipc-handlers.js";
 import { ParallelRunService } from "./parallel-run-service.js";
@@ -215,6 +216,11 @@ const sessionMetadata = new SessionMetadataStore(userDataDirectory);
 const repoService = new RepoService({
   ghExecutable: process.env.GAJA_GH_BIN || undefined,
 });
+// Where each session's latest turn began, noticed from the status changes every runtime broadcasts.
+// It is declared before the runtimes that emit those events; a throwaway index a dead process left
+// behind is removed once at start.
+const turnBaselines = new TurnBaselines();
+void turnBaselines.sweepStale().catch(() => undefined);
 // A rule belongs to the project's main working tree, so the sessions of a project
 // and of its worktrees share it. So do the project's settings.
 const projectRootOf = async (projectPath: string): Promise<string> =>
@@ -351,6 +357,7 @@ function broadcastAgentEvent(event: AgentEvent): void {
   // desktop windows do rather than a separately polled view.
   remoteAccess?.publish(event);
   parallelRuns?.observe(event);
+  turnBaselines.observe(event);
   if (event.type !== "session.activity") return;
   const focused = windows.some((window) => window.isFocused());
   const viewingSession = windows.some(
@@ -589,6 +596,7 @@ const unregisterGjcIpc = registerGjcIpcHandlers(
   ipcSecurity,
   sessionWorktrees,
   pullRequests,
+  turnBaselines,
 );
 // One authorized invoke hands a window this process launched the event stream endpoint.
 // It goes through the same sender verification every gjc channel uses, so a frame or
@@ -782,7 +790,10 @@ parallelRuns = new ParallelRunService({
 });
 void agentRouter
   .listSessions()
-  .then((sessions) => parallelRuns?.restore(sessions))
+  .then((sessions) => {
+    turnBaselines.seed(sessions);
+    return parallelRuns?.restore(sessions);
+  })
   .catch(() => undefined);
 const unregisterParallelIpc = registerParallelIpcHandlers(parallelRuns, ipcSecurity);
 const unregisterOnboardingIpc = registerOnboardingIpcHandlers(

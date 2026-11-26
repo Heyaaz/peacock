@@ -11,6 +11,8 @@ import type { AgentSession, ToolActivity, TranscriptItem } from "../backend/type
 import { Bot, ChevronRight, Copy, RotateCcw, Target, X } from "lucide-react";
 import { todoStatusView } from "./todo-status";
 import { PullRequestSection } from "./pull-request-section";
+import { turnDiffReasonText, turnStartLabel } from "./turn-diff-text";
+import type { DiffScope } from "../../shared/turn-diff";
 import type { ReactNode } from "react";
 import {
   Fragment,
@@ -437,6 +439,8 @@ export function DiffPanel({
   onClose,
   onSubmitReview,
   refreshKey,
+  scope = "all",
+  onScopeChange,
 }: {
   session: AgentSession;
   backend: AgentBackend;
@@ -444,6 +448,9 @@ export function DiffPanel({
   loading: boolean;
   onRefresh: () => void;
   onClose: () => void;
+  /** What the diff is of; the choice is offered only where `onScopeChange` is given and the host says a turn can be read alone. */
+  scope?: DiffScope;
+  onScopeChange?: (scope: DiffScope) => void;
   /**
    * Hands the formatted review on; omitted where sending is not allowed. A conversation takes it
    * through its composer's rules and answers at once. A terminal answers when the agent has taken
@@ -713,6 +720,29 @@ export function DiffPanel({
         >
           {loading ? t("불러오는 중…") : t("새로 고침")}
         </button>
+        {onScopeChange && diff?.turn && (
+          <div className="diff-scope" role="group" aria-label={t("보기 범위")}>
+            <button
+              className="diff-scope__option"
+              type="button"
+              aria-pressed={scope !== "turn"}
+              onClick={() => onScopeChange("all")}
+            >
+              {t("전체")}
+            </button>
+            <button
+              className="diff-scope__option"
+              type="button"
+              aria-pressed={scope === "turn"}
+              // nothing to compare with: off, and the reason is shown, not guessed at
+              disabled={diff.turn.state !== "ready" && scope !== "turn"}
+              title={diff.turn.state === "unavailable" ? turnDiffReasonText(diff.turn) : undefined}
+              onClick={() => onScopeChange("turn")}
+            >
+              {t("이번 턴")}
+            </button>
+          </div>
+        )}
         {git && (
           <span>
             <strong>{git.branch || t("Git 저장소 아님")}</strong>
@@ -724,6 +754,12 @@ export function DiffPanel({
           </span>
         )}
       </div>
+      {onScopeChange && diff?.turn?.state === "unavailable" && scope !== "turn" && (
+        <p className="diff-scope__reason">{turnDiffReasonText(diff.turn)}</p>
+      )}
+      {onScopeChange && diff?.turn?.state === "ready" && diff.scope === "turn" && (
+        <p className="diff-scope__reason">{turnStartLabel(diff.turn.startedAt)}</p>
+      )}
       {gitError && <p className="diff-error">{gitError}</p>}
       {session.worktree?.managed ? (
         <section className="git-actions">
@@ -934,9 +970,17 @@ export function DiffPanel({
         </section>
       )}
       {diff?.error && <p className="diff-error">{diff.error}</p>}
-      {!loading && !diff?.error && (diff?.files.length ?? 0) === 0 && (
-        <p className="diff-empty">{t("변경된 파일이 없습니다.")}</p>
+      {diff?.scope === "turn" && diff.turn?.state === "unavailable" && (
+        <p className="diff-empty">{turnDiffReasonText(diff.turn)}</p>
       )}
+      {!loading &&
+        !diff?.error &&
+        !(diff?.scope === "turn" && diff.turn?.state === "unavailable") &&
+        (diff?.files.length ?? 0) === 0 && (
+          <p className="diff-empty">
+            {diff?.scope === "turn" ? t("이번 턴에 바뀐 파일이 없습니다.") : t("변경된 파일이 없습니다.")}
+          </p>
+        )}
       {parsedFiles.map((parsed) => (
         <details key={parsed.file.id} open>
           <summary>{parsed.file.path}</summary>

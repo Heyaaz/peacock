@@ -6,6 +6,7 @@ import type {
 } from "../../shared/agent-contract";
 import type { AgentBackend } from "../backend/agent-backend";
 import type { AgentSession } from "../backend/types";
+import type { DiffScope } from "../../shared/turn-diff";
 import { goalPollDelay } from "./goal-poll";
 
 type SessionIdRef = { current: string | null };
@@ -150,6 +151,10 @@ export function useGitStatus(
  * The selected session's changed files, read when the panel opens and when the session changes.
  * `followTurns` (a session's turn count, from `useTurnEnds`) keeps an open panel current: it is read
  * again when a turn ends and when the window gets focus back, and `followedReads` counts those reads.
+ *
+ * The panel can show everything or only the latest turn (`diffScope`, remembered per session; one that was
+ * never chosen for starts on everything). While it shows a turn it follows `turnEnds` as well, so the turn
+ * it reads is never an old one just because the session is not one that follows its turns.
  */
 export function useDiff(
   backend: AgentBackend,
@@ -158,7 +163,17 @@ export function useDiff(
   selectedIdRef: SessionIdRef,
   sessionWorkspace: string | undefined,
   followTurns?: number,
+  turnEnds?: number,
 ) {
+  // what each session was last shown as; a session never chosen for is shown everything
+  const [scopeChoices, setScopeChoices] = useState<Readonly<Record<string, DiffScope>>>({});
+  const diffScope: DiffScope = (selectedId ? scopeChoices[selectedId] : undefined) ?? "all";
+  const setDiffScope = useCallback(
+    (scope: DiffScope) => {
+      if (selectedId) setScopeChoices((choices) => ({ ...choices, [selectedId]: scope }));
+    },
+    [selectedId],
+  );
   const [diff, setDiff] = useState<DiffSnapshot | null>(null);
   const [followedReads, setFollowedReads] = useState(0);
   const diffOpenRef = useRef(diffOpen);
@@ -175,7 +190,9 @@ export function useDiff(
     const workspace = sessionWorkspace ?? "";
     setDiffLoading(true);
     try {
-      const snapshot = await backend.getDiff(sessionId);
+      const snapshot = await (diffScope === "turn"
+        ? backend.getDiff(sessionId, { scope: "turn" })
+        : backend.getDiff(sessionId));
       if (diffRequestRef.current !== request || selectedIdRef.current !== sessionId)
         return;
       setDiff(snapshot);
@@ -192,7 +209,7 @@ export function useDiff(
     } finally {
       if (diffRequestRef.current === request) setDiffLoading(false);
     }
-  }, [backend, selectedId, sessionWorkspace]);
+  }, [backend, selectedId, sessionWorkspace, diffScope]);
 
   // A session switch invalidates the diff already on screen and anything still in
   // flight, so those patches can never be read -- or acted on -- under the new
@@ -204,18 +221,20 @@ export function useDiff(
     if (selectedId && diffOpenRef.current) void refreshDiff();
   }, [selectedId, diffOpen, refreshDiff]);
 
-  const following = followTurns !== undefined;
-  const seenTurns = useRef({ selectedId, followTurns });
+  const followed = followTurns ?? (diffScope === "turn" ? turnEnds : undefined);
+  const following = followed !== undefined;
+  const seenTurns = useRef({ selectedId, followed, diffScope });
   useEffect(() => {
     const seen = seenTurns.current;
-    seenTurns.current = { selectedId, followTurns };
+    seenTurns.current = { selectedId, followed, diffScope };
     if (!following || !selectedId || !diffOpen) return;
-    // a turn ended on the session that was already shown: not a session switch, which reads on its own
-    if (seen.selectedId === selectedId && seen.followTurns !== followTurns) {
+    // a turn ended on the session that was already shown: not a session switch or a change of what is
+    // shown, which read on their own
+    if (seen.selectedId === selectedId && seen.diffScope === diffScope && seen.followed !== followed) {
       setFollowedReads((count) => count + 1);
       void refreshDiff();
     }
-  }, [following, followTurns, selectedId, diffOpen, refreshDiff]);
+  }, [following, followed, diffScope, selectedId, diffOpen, refreshDiff]);
 
   useEffect(() => {
     if (!following || !selectedId || !diffOpen) return;
@@ -227,5 +246,5 @@ export function useDiff(
     return () => window.removeEventListener("focus", onFocus);
   }, [following, selectedId, diffOpen, refreshDiff]);
 
-  return { diff, diffLoading, refreshDiff, followedReads };
+  return { diff, diffLoading, refreshDiff, followedReads, diffScope, setDiffScope };
 }

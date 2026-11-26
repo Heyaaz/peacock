@@ -691,13 +691,14 @@ export default function App() {
 
   // a terminal session's changed files open beside its terminal, and follow its turns
   const diffTargetId = terminalSession ? (selectedCapabilities?.git ? terminalSession.id : null) : chatId;
-  const { diff, diffLoading, refreshDiff, followedReads } = useDiff(
+  const { diff, diffLoading, refreshDiff, followedReads, diffScope, setDiffScope } = useDiff(
     backend,
     diffOpen,
     diffTargetId,
     selectedIdRef,
     selectedSession?.workspace,
     terminalSession ? turnEnds : undefined,
+    turnEnds,
   );
 
 
@@ -1475,6 +1476,8 @@ export default function App() {
               onRefresh={() => void refreshDiff()}
               onClose={() => setDiffOpen(false)}
               refreshKey={followedReads + turnEnds}
+              scope={diffScope}
+              onScopeChange={setDiffScope}
               // typed into the terminal, so only while the agent reports that it can take it
               onSubmitReview={remoteViewOnly || !selectedCapabilities?.send ? undefined : submitReview}
             />
@@ -1831,6 +1834,8 @@ export default function App() {
                 loading={diffLoading}
                 onRefresh={() => void refreshDiff()}
                 onClose={() => setDiffOpen(false)}
+                scope={diffScope}
+                onScopeChange={setDiffScope}
                 onSubmitReview={remoteViewOnly ? undefined : submitReview}
               />
             )}

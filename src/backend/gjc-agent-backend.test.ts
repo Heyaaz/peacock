@@ -232,7 +232,7 @@ class FakeGjcBridge implements GjcDesktopBridge {
     return [];
   }
   async markSessionRead(_sessionId: string): Promise<void> {}
-  async getDiff(sessionId: string) {
+  async getDiff(sessionId: string, _options?: { scope: "all" | "turn" }) {
     return {
       sessionId,
       workspace: "/tmp/project",
@@ -509,6 +509,12 @@ describe("GjcAgentBackend", () => {
     await expect(backend.getDiff("s")).resolves.toMatchObject({
       sessionId: "s",
     });
+    // the scope goes through when it is asked for, and a plain read stays a plain read
+    const getDiff = vi.spyOn(bridge, "getDiff");
+    await backend.getDiff("s");
+    expect(getDiff.mock.lastCall).toEqual(["s"]);
+    await backend.getDiff("s", { scope: "turn" });
+    expect(getDiff).toHaveBeenLastCalledWith("s", { scope: "turn" });
     await expect(backend.readArtifact("s", "a")).resolves.toMatchObject({
       artifactId: "a",
     });

@@ -263,4 +263,89 @@ describe("useDiff", () => {
       expect(getDiff).toHaveBeenCalledTimes(1);
     });
   });
+  describe("the scope of the diff", () => {
+    type ScopeProps = { open: boolean; id: string | null; follow?: number; turnEnds?: number };
+    const scoped = (backend: AgentBackend, selected: { current: string | null }) => ({ open, id, follow, turnEnds }: ScopeProps) =>
+      useDiff(backend, open, id, selected, "/w", follow, turnEnds);
+
+    it("starts on everything, reads a turn alone when asked, and asks for everything the plain way", async () => {
+      const { backend, getDiff, selected } = setup();
+      const harness = mount(scoped(backend, selected), { open: true, id: "s1", turnEnds: 0 } as ScopeProps);
+      await harness.start();
+      expect(harness.seen.result?.diffScope).toBe("all");
+      expect(getDiff).toHaveBeenLastCalledWith("s1");
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      expect(harness.seen.result?.diffScope).toBe("turn");
+      expect(getDiff).toHaveBeenLastCalledWith("s1", { scope: "turn" });
+      await act(async () => harness.seen.result!.setDiffScope("all"));
+      expect(getDiff.mock.lastCall).toEqual(["s1"]);
+      // each choice read once
+      expect(getDiff).toHaveBeenCalledTimes(3);
+    });
+
+    it("keeps each session's choice with that session, and starts one never chosen for on everything", async () => {
+      const { backend, getDiff, selected } = setup();
+      const harness = mount(scoped(backend, selected), { open: true, id: "s1", turnEnds: 0 } as ScopeProps);
+      await harness.start();
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      selected.current = "s2";
+      await harness.render({ open: true, id: "s2", turnEnds: 0 });
+      expect(harness.seen.result?.diffScope).toBe("all");
+      expect(getDiff.mock.lastCall).toEqual(["s2"]);
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      selected.current = "s1";
+      await harness.render({ open: true, id: "s1", turnEnds: 0 });
+      expect(harness.seen.result?.diffScope).toBe("turn");
+      expect(getDiff.mock.lastCall).toEqual(["s1", { scope: "turn" }]);
+      // choosing for no session chooses nothing
+      selected.current = null;
+      await harness.render({ open: true, id: null, turnEnds: 0 });
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      expect(harness.seen.result?.diffScope).toBe("all");
+    });
+
+    it("follows turns for a session that otherwise does not, only while it shows a turn", async () => {
+      const { backend, getDiff, selected } = setup();
+      const harness = mount(scoped(backend, selected), { open: true, id: "s1", turnEnds: 0 } as ScopeProps);
+      await harness.start();
+      await harness.render({ open: true, id: "s1", turnEnds: 1 });
+      expect(getDiff).toHaveBeenCalledTimes(1);
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      expect(getDiff).toHaveBeenCalledTimes(2);
+      await harness.render({ open: true, id: "s1", turnEnds: 2 });
+      expect(getDiff).toHaveBeenCalledTimes(3);
+      expect(getDiff).toHaveBeenLastCalledWith("s1", { scope: "turn" });
+      expect(harness.seen.result?.followedReads).toBe(1);
+      await act(async () => window.dispatchEvent(new Event("focus")));
+      expect(getDiff).toHaveBeenCalledTimes(4);
+    });
+
+    it("keeps following the turns of a session that always does, in either scope", async () => {
+      const { backend, getDiff, selected } = setup();
+      const harness = mount(scoped(backend, selected), { open: true, id: "s1", follow: 0, turnEnds: 0 } as ScopeProps);
+      await harness.start();
+      await harness.render({ open: true, id: "s1", follow: 1, turnEnds: 1 });
+      expect(getDiff).toHaveBeenCalledTimes(2);
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      expect(getDiff).toHaveBeenCalledTimes(3);
+      await harness.render({ open: true, id: "s1", follow: 2, turnEnds: 2 });
+      expect(getDiff).toHaveBeenCalledTimes(4);
+    });
+
+    it("drops the diff of the other scope while the new one is read", async () => {
+      const gate: { release?: () => void } = {};
+      const getDiff = vi.fn(async (id: string, options?: { scope: string }) => {
+        if (options) await new Promise<void>((resolve) => (gate.release = resolve));
+        return { sessionId: id, workspace: "/w", files: [], refreshedAt: "now", ...(options ? { scope: "turn" as const } : {}) } satisfies DiffSnapshot;
+      });
+      const selected = { current: "s1" as string | null };
+      const harness = mount(scoped({ getDiff } as unknown as AgentBackend, selected), { open: true, id: "s1", turnEnds: 0 } as ScopeProps);
+      await harness.start();
+      expect(harness.seen.result?.diff?.scope).toBeUndefined();
+      await act(async () => harness.seen.result!.setDiffScope("turn"));
+      expect(harness.seen.result?.diff).toBeNull();
+      await act(async () => gate.release?.());
+      expect(harness.seen.result?.diff?.scope).toBe("turn");
+    });
+  });
 });

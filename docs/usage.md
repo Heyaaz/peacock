@@ -363,7 +363,8 @@ a folder as broad as home, Documents or Desktop is warned about before the sessi
   started in its folder as it is, the panel reads and says so. Push never goes to the
   repository's default branch, and a branch with no upstream gets its first push to `origin`
   (`git push -u origin HEAD`), which sets the upstream; after a push, the panel can
-  [open a pull request](#opening-a-pull-request-from-a-session). Comments on diff lines are
+  [open a pull request](#opening-a-pull-request-from-a-session). For Claude Code and omp the panel
+  can also show [only the latest turn's changes](#only-this-turns-changes). Comments on diff lines are
   sent back as one review typed into the terminal, for Claude Code and omp while they report
   their state (Codex cannot take one, so its panel has no Send review). If the agent is
   waiting on a dialog in its terminal (a folder trust question, an approval) it does not take
@@ -513,7 +514,8 @@ session (the dialog's Terminal choice) stays terminal-only.
   chat, read from the chat's folder with `git diff HEAD`; Stage, Unstage, Commit
   and Push work only in a managed worktree, as in GJC: a chat started in a
   [separate copy](#sessions-in-their-own-worktree) is in one, a chat in its folder as it is is not.
-  The panel then goes on to [a pull request](#opening-a-pull-request-from-a-session), as in GJC.
+  The panel then goes on to [a pull request](#opening-a-pull-request-from-a-session), as in GJC, and
+  can show [only the latest turn's changes](#only-this-turns-changes).
 - **Side chat.** `/btw` and `⌘⇧B` work as in GJC.
 - **Next-input suggestion.** After a completed turn the composer offers a likely
   next message as ghost text; Tab takes it, Esc dismisses it. It costs one side
@@ -723,6 +725,40 @@ and only in a worktree Peacock made for the session.
   90 seconds, longer than the 25 seconds of a read. A missing or signed-out `gh`, no remote, a
   non-GitHub remote and a network failure show the sentences listed above, with the reason `gh`
   gave (any token in it removed).
+
+### Only this turn's changes
+
+The changed-files panel normally shows everything that differs from `HEAD`, which grows with every
+turn. In a GJC chat, an omp chat and a Claude Code or omp terminal session the panel's toolbar also
+has an **All / This turn** choice, so the work of the turn that just ran can be read on its own.
+
+- **How it works.** When a turn starts, the app writes the folder's files as they are into Git as a
+  tree (`git add -A` and `git write-tree` in a throwaway copy of the index, with `GIT_INDEX_FILE`)
+  and keeps only the tree id. Your files, the real index and the branch are not touched. Git does gain
+  objects for the changed files, as with any `git add`, and collects them later. "This turn" is that
+  tree against the folder as it is now, so untracked files and deletions show, a commit the agent made
+  during the turn still shows its change, and so does anything you edited by hand while the turn ran.
+  Ignored files stay out, as they do everywhere else.
+- **What counts as a turn start.** The session's status becoming running from idle, failed or starting:
+  a GJC chat's run state, an omp chat's start of its turn, and a Claude Code or omp terminal's
+  `UserPromptSubmit` hook or reported state. Waiting for an approval and running again is the same
+  turn. A turn that was already running when the app started has no recorded start, so the choice stays
+  off until the next one begins. Codex reports no turn start the app can rely on, and a shell has no
+  turns: for them the choice is off.
+- **When it is off, it says why** next to the choice and in its tooltip: no turn seen yet, an agent
+  that gives no turn signal, a folder that is not a Git repository, a repository over the limit, a
+  failed read, or a recorded state Git no longer has (it was pruned; the next turn records a new one).
+  The limit is a real index over 16 MB (about 150,000 tracked files) or more than 5,000 untracked
+  files: past it the feature is off for that repository instead of slowing every turn, and it is
+  checked again at each turn start.
+- **Restarting the app.** The baseline is kept in memory only. After a restart the choice is off until
+  the next turn starts. A terminal agent can run turns while the app is closed, so a stored baseline
+  would quietly mean "since some earlier turn", and the tree is an object Git may prune.
+- **Reading.** The panel shows which turn it is (the time it started). It reads when you switch the
+  choice, press Refresh, when a turn ends and when the window gets focus back. A turn that starts while
+  the panel is open is shown after its next read. Remote devices are not offered the choice.
+- **Cleanup.** The throwaway index is removed whenever the read ends, including on a failure, and one
+  a crashed process left behind is removed at the next start.
 
 ## Parallel runs (Best-of-N)
 

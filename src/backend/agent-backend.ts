@@ -40,6 +40,7 @@ import type {
   PullRequestStatus,
 } from "../../shared/pull-request";
 import type { GithubPullSummary } from "../../shared/repo-ipc";
+import type { DiffScope } from "../../shared/turn-diff";
 
 export interface AgentBackend {
   /**
@@ -140,7 +141,11 @@ export interface AgentBackend {
     idempotencyKey: string,
   ): Promise<void>;
   markSessionRead(sessionId: string): Promise<void>;
-  getDiff(sessionId: string): Promise<DiffSnapshot>;
+  /**
+   * The changes in the session's folder. `{ scope: "turn" }` is only what the latest turn changed, where the
+   * host can tell (`DiffSnapshot.turn` says whether it can); a host that cannot answers everything.
+   */
+  getDiff(sessionId: string, options?: { scope: DiffScope }): Promise<DiffSnapshot>;
   readArtifact(sessionId: string, artifactId: string): Promise<ArtifactContent>;
   previewFile(
     sessionId: string,

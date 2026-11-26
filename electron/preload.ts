@@ -427,8 +427,10 @@ const gjc: GjcDesktopBridge = Object.freeze({
     ipcRenderer.invoke(GJC_IPC.listPendingQuestions, sessionId),
   markSessionRead: (sessionId: string) =>
     ipcRenderer.invoke(GJC_IPC.markSessionRead, sessionId),
-  getDiff: (sessionId: string) =>
-    ipcRenderer.invoke(GJC_IPC.getDiff, sessionId) as Promise<DiffSnapshot>,
+  getDiff: (sessionId: string, options?: { scope: import("../shared/turn-diff.js").DiffScope }) =>
+    (options
+      ? ipcRenderer.invoke(GJC_IPC.getDiff, sessionId, options)
+      : ipcRenderer.invoke(GJC_IPC.getDiff, sessionId)) as Promise<DiffSnapshot>,
   readArtifact: (sessionId: string, artifactId: string) =>
     ipcRenderer.invoke(
       GJC_IPC.readArtifact,

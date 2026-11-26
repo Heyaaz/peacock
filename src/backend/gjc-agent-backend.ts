@@ -45,6 +45,7 @@ import type {
   PullRequestStatus,
 } from "../../shared/pull-request";
 import type { GithubPullSummary } from "../../shared/repo-ipc";
+import type { DiffScope } from "../../shared/turn-diff";
 import { StreamDeltaCoalescer } from "./stream-delta-coalescer";
 
 export class GjcAgentBackend implements AgentBackend {
@@ -293,8 +294,8 @@ export class GjcAgentBackend implements AgentBackend {
   markSessionRead(sessionId: string): Promise<void> {
     return this.bridge.markSessionRead(sessionId);
   }
-  getDiff(sessionId: string): Promise<DiffSnapshot> {
-    return this.bridge.getDiff(sessionId);
+  getDiff(sessionId: string, options?: { scope: DiffScope }): Promise<DiffSnapshot> {
+    return options ? this.bridge.getDiff(sessionId, options) : this.bridge.getDiff(sessionId);
   }
   readArtifact(
     sessionId: string,

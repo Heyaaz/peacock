@@ -146,7 +146,8 @@ Each clip is the real app on its built-in sample data.
   repositories shows each one's changes. In a session's own worktree the same panel
   stages, commits, pushes (the first push connects the branch to `origin`; the default
   branch is never pushed) and opens a pull request with the `gh` CLI, asking first, then
-  shows the PR's link and CI.
+  shows the PR's link and CI. An "All / This turn" choice shows only what the latest turn
+  changed (not for Codex).
 - **Goals.** An active goal stays pinned above the composer with its progress.
   Open it to see each task. omp's goal mode shows up the same way.
 - **Model picker.** Search, favorites and the thinking level for the agent's

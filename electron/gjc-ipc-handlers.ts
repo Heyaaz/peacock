@@ -33,6 +33,8 @@ import type { ResolvedMessageInput } from "./gjc-sdk-controller.js";
 import { END_WORKFLOW_DETAIL, endWorkflowMessage, hostFormat, hostText } from "./host-text.js";
 import { pushDestination } from "./gjc-sdk-git.js";
 import type { PullRequestService } from "./pull-request-service.js";
+import type { TurnBaselines } from "./turn-baselines.js";
+import { parseDiffScope, type DiffScope } from "../shared/turn-diff.js";
 import type { IpcSecurity } from "./ipc-security.js";
 import type { SessionWorktreeRemoval } from "./session-worktree-removal.js";
 import { projectTranscriptItemForDelivery } from "./transcript-body-preview.js";
@@ -42,6 +44,17 @@ type SessionRemoval = "delete" | "hide";
 function sessionRemoval(value: unknown): SessionRemoval {
   if (value === "delete" || value === "hide") return value;
   throw new Error("Session removal must be delete or hide");
+}
+
+/** What a diff read asks for: nothing, or exactly `{ scope }`. */
+function diffScopeOf(value: unknown): DiffScope {
+  if (value === undefined) return "all";
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Diff options must be an object");
+  const candidate = value as Record<string, unknown>;
+  for (const key of Object.keys(candidate))
+    if (key !== "scope") throw new Error("Diff options contain an unknown field");
+  return parseDiffScope(candidate.scope);
 }
 
 function transcriptPageRequest(
@@ -184,6 +197,8 @@ export function registerGjcIpcHandlers(
   worktrees?: SessionWorktreeRemoval,
   /** Looks up and opens pull requests; without it those two calls are refused. */
   pullRequests?: PullRequestService,
+  /** Where each session's latest turn began; without it a diff is always everything and a turn's cannot be asked for. */
+  turnBaselines?: TurnBaselines,
 ): () => void {
   const handle = (channel: string, handler: (...args: any[]) => any): void => {
     ipcMain.handle(channel, security.guarded(async (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => {
@@ -555,9 +570,17 @@ export function registerGjcIpcHandlers(
   handle(GJC_IPC.markSessionRead, (_event, sessionId: unknown) =>
     controller.markSessionRead(requiredId(sessionId, "Session ID")),
   );
-  handle(GJC_IPC.getDiff, (_event, sessionId: unknown) =>
-    controller.getDiff(requiredId(sessionId, "Session ID")),
-  );
+  handle(GJC_IPC.getDiff, async (_event, sessionId: unknown, options: unknown) => {
+    const id = requiredId(sessionId, "Session ID");
+    const scope = diffScopeOf(options);
+    if (scope === "turn") {
+      if (!turnBaselines) throw new Error("Turn diffs are not available");
+      return turnBaselines.diff(id);
+    }
+    const snapshot = await controller.getDiff(id);
+    // every read says whether the latest turn could be read alone, so the panel knows what to offer
+    return turnBaselines ? { ...snapshot, turn: turnBaselines.state(id) } : snapshot;
+  });
   handle(
     GJC_IPC.readArtifact,
     (_event, sessionId: unknown, artifactId: unknown) =>
