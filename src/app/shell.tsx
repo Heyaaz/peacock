@@ -410,11 +410,18 @@ export default function App() {
         () => undefined,
       );
     };
+    const onVisibility = (): void => {
+      if (!document.hidden) read();
+    };
     read();
-    const timer = window.setInterval(read, 10 * 60_000);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) read();
+    }, 10 * 60_000);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
