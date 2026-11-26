@@ -1,14 +1,14 @@
 #!/bin/sh
 # Installs or updates Peacock (formerly Gajae) from the latest GitHub release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Heyaaz/gajae-bot/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Heyaaz/peacock/main/install.sh | sh
 #
 # GAJAE_VERSION=0.1.0 pins a release. GAJAE_INSTALL_DIR overrides the target
 # folder, which is /Applications when writable and ~/Applications otherwise.
 # GAJAE_RELEASES_URL points at a mirror laid out like GitHub's releases.
 set -eu
 
-releases="${GAJAE_RELEASES_URL:-https://github.com/Heyaaz/gajae-bot/releases}"
+releases="${GAJAE_RELEASES_URL:-https://github.com/Heyaaz/peacock/releases}"
 
 fail() {
   printf 'peacock: %s\n' "$1" >&2

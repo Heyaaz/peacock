@@ -161,7 +161,7 @@ in with `gh auth login`, is optional and powers the repository screen.
 Run the installer in Terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Heyaaz/gajae-bot/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Heyaaz/peacock/main/install.sh | sh
 ```
 
 The installer downloads the latest release, checks its SHA-256, puts

@@ -10,7 +10,7 @@ import {
 } from "./app-update.js";
 import { DesktopStateStore } from "./desktop-state-store.js";
 
-const repository = { owner: "Heyaaz", repo: "gajae-bot" };
+const repository = { owner: "Heyaaz", repo: "peacock" };
 
 function answering(status: number, body: unknown = {}): ReleaseFetch {
   return vi.fn(async () => ({ status, json: async () => body }));
@@ -19,7 +19,7 @@ function answering(status: number, body: unknown = {}): ReleaseFetch {
 function release(tag: string) {
   return {
     tag_name: tag,
-    html_url: `https://github.com/Heyaaz/gajae-bot/releases/tag/${tag}`,
+    html_url: `https://github.com/Heyaaz/peacock/releases/tag/${tag}`,
   };
 }
 
@@ -33,11 +33,11 @@ describe("githubRepository", () => {
 
   it("accepts the URL forms npm writes and refuses anything else", () => {
     for (const url of [
-      "https://github.com/Heyaaz/gajae-bot.git",
-      "git+https://github.com/Heyaaz/gajae-bot.git",
-      "git@github.com:Heyaaz/gajae-bot.git",
-      "github:Heyaaz/gajae-bot",
-      "Heyaaz/gajae-bot",
+      "https://github.com/Heyaaz/peacock.git",
+      "git+https://github.com/Heyaaz/peacock.git",
+      "git@github.com:Heyaaz/peacock.git",
+      "github:Heyaaz/peacock",
+      "Heyaaz/peacock",
     ])
       expect(githubRepository({ url })).toEqual(repository);
     expect(githubRepository(undefined)).toBeUndefined();
@@ -53,7 +53,7 @@ describe("checkLatestRelease", () => {
     const fetch = answering(200, release("v0.1.0"));
     await check(fetch);
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.github.com/repos/Heyaaz/gajae-bot/releases/latest",
+      "https://api.github.com/repos/Heyaaz/peacock/releases/latest",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
@@ -63,7 +63,7 @@ describe("checkLatestRelease", () => {
       state: "available",
       currentVersion: "0.1.0",
       latestVersion: "0.2.0",
-      releaseUrl: "https://github.com/Heyaaz/gajae-bot/releases/tag/v0.2.0",
+      releaseUrl: "https://github.com/Heyaaz/peacock/releases/tag/v0.2.0",
       checkedAtMs: 5,
     });
     await expect(check(answering(200, release("0.1.0")))).resolves.toMatchObject({
@@ -80,13 +80,13 @@ describe("checkLatestRelease", () => {
       answering(200, { tag_name: "v0.2.0", html_url: "https://evil.example/x" }),
     );
     expect(status).toMatchObject({
-      releaseUrl: "https://github.com/Heyaaz/gajae-bot/releases/tag/v0.2.0",
+      releaseUrl: "https://github.com/Heyaaz/peacock/releases/tag/v0.2.0",
     });
   });
 
   it("offers the published macOS archive and checksum for an in-app update", async () => {
     const archive =
-      "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip";
+      "https://github.com/Heyaaz/peacock/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip";
     const status = await check(
       answering(200, {
         ...release("v0.2.0"),
@@ -121,7 +121,7 @@ describe("checkLatestRelease", () => {
           {
             name: "Peacock-0.2.0-darwin-arm64.zip",
             browser_download_url:
-              "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip",
+              "https://github.com/Heyaaz/peacock/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip",
           },
         ],
       }),

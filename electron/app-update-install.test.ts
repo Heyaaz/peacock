@@ -16,14 +16,14 @@ const status: AvailableAppUpdate = {
   state: "available",
   currentVersion: "0.1.0",
   latestVersion: "0.2.0",
-  releaseUrl: "https://github.com/Heyaaz/gajae-bot/releases/tag/v0.2.0",
+  releaseUrl: "https://github.com/Heyaaz/peacock/releases/tag/v0.2.0",
   checkedAtMs: 5,
   asset: {
     archiveName: "Peacock-0.2.0-darwin-arm64.zip",
     archiveUrl:
-      "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip",
+      "https://github.com/Heyaaz/peacock/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip",
     checksumUrl:
-      "https://github.com/Heyaaz/gajae-bot/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip.sha256",
+      "https://github.com/Heyaaz/peacock/releases/download/v0.2.0/Peacock-0.2.0-darwin-arm64.zip.sha256",
   },
 };
 
