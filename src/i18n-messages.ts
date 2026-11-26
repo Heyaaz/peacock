@@ -226,6 +226,8 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "새 활동": "New activity",
   "새로 고침": "Refresh",
   "생각 중…": "Thinking…",
+  "생각하는 중": "Thinking",
+  "답을 쓰는 중": "Writing a reply",
   "서버 이름": "Server name",
   "서브 에이전트": "Subagent",
   "선택 중…": "Selecting…",

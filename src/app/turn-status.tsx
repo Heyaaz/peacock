@@ -42,9 +42,12 @@ export function TurnStatusLine({
   }, [started]);
   const tasks = (status.todo ?? []).flatMap((phase) => phase.tasks);
   const done = tasks.filter((task) => DONE.has(task.status ?? "")).length;
+  // The runtime names its current step ("생각하는 중", "답을 쓰는 중"); the window
+  // shows it in the user's language. A tool name reaches this as-is.
+  const activity = status.activity ? t(status.activity) : undefined;
   const parts = [
     started !== undefined,
-    running && Boolean(status.activity),
+    running && Boolean(activity),
     tasks.length > 0,
     !hideContext && status.contextPercent !== undefined,
   ];
@@ -57,9 +60,9 @@ export function TurnStatusLine({
           {elapsedLabel(now - started)}
         </span>
       )}
-      {running && status.activity && (
-        <span className="turn-status-activity" title={status.activity}>
-          {status.activity}
+      {running && activity && (
+        <span className="turn-status-activity" title={activity}>
+          {activity}
         </span>
       )}
       {tasks.length > 0 && (
