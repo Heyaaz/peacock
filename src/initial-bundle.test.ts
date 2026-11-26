@@ -25,13 +25,11 @@ describe("initial renderer graph", () => {
     expect(source("app/shell.tsx")).toContain("DeferredProjectList");
   });
 
-  it("loads the English dictionary and the mock backend only on demand", () => {
-    expect(staticImports(source("i18n.ts"))).not.toContain("./i18n-messages");
+  it("loads the mock backend only on demand", () => {
     const main = source("main.tsx");
     expect(staticImports(main)).not.toContain("./backend/mock-agent-backend");
     expect(main).toContain("import('./backend/mock-agent-backend')");
     expect(main).toContain("__GAJAE_INCLUDE_MOCK__");
-    expect(main).toContain("ensureEnglishDictionary");
   });
 
   it("loads the QR panel from the remote settings tab", () => {

@@ -91,12 +91,12 @@ describe("i18n", () => {
     expect(t("세션이 없습니다")).toBe("세션이 없습니다");
   });
 
-  it("keeps the Korean source until the English dictionary arrives", async () => {
+  it("serves English from the dictionary bundled with the app", async () => {
     unloadEnglishDictionary();
-    expect(setLanguageMode("en")).toBe("en");
+    await ensureEnglishDictionary();
     expect(getLanguage()).toBe("ko");
     expect(t("세션이 없습니다")).toBe("세션이 없습니다");
-    await ensureEnglishDictionary();
+    setLanguageMode("en");
     expect(getLanguage()).toBe("en");
     expect(t("세션이 없습니다")).toBe("No sessions");
   });

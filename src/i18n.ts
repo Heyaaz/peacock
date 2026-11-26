@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { MESSAGES } from "./i18n-messages";
 
 export type LanguageMode = "ko" | "en" | "system";
 export type ResolvedLanguage = "ko" | "en";
@@ -71,47 +72,37 @@ export function storeLanguageMode(
 
 let currentMode: LanguageMode = readLanguageMode();
 let currentLanguage: ResolvedLanguage = resolveLanguage(currentMode);
-let englishMessages: Readonly<Record<string, string>> | null = null;
-let englishLoad: Promise<void> | null = null;
+let englishMessages: Readonly<Record<string, string>> | null = MESSAGES;
 
 /**
  * Installs an English dictionary that is already in memory.
  *
- * The production app loads that module only after the language resolves to
- * English. Tests install it up front so a language change and the translated
- * string can be asserted in the same turn.
+ * The bundled dictionary is installed at module load, so English is ready before
+ * the first render and a settings file that says `en` never flashes Korean copy.
+ * Tests install their own map (and drop it again) to observe the switch.
  */
 export function installEnglishDictionary(
   messages: Readonly<Record<string, string>>,
 ): void {
   englishMessages = messages;
-  englishLoad = Promise.resolve();
 }
 
 /** Drops the cached dictionary so a test can observe the load. */
 export function unloadEnglishDictionary(): void {
   englishMessages = null;
-  englishLoad = null;
 }
 
-/**
- * Loads the English dictionary if this session is going to use it.
- *
- * Korean stays on the source strings, so the dictionary is not part of the
- * initial chunk. When it arrives for a session that is still set to English,
- * listeners render again with the translated copy.
- */
+/** Puts the bundled dictionary back, and shows it when English is selected. */
 export function ensureEnglishDictionary(): Promise<void> {
-  if (englishMessages) return Promise.resolve();
-  englishLoad ??= import("./i18n-messages").then((mod) => {
-    englishMessages = mod.MESSAGES;
+  if (!englishMessages) {
+    englishMessages = MESSAGES;
     if (resolveLanguage(currentMode) === "en" && currentLanguage !== "en") {
       currentLanguage = "en";
       applyDocumentLanguage("en");
       for (const listener of listeners) listener();
     }
-  });
-  return englishLoad;
+  }
+  return Promise.resolve();
 }
 
 function applyDocumentLanguage(language: ResolvedLanguage): void {
@@ -129,16 +120,10 @@ export function getLanguage(): ResolvedLanguage {
 export function setLanguageMode(mode: LanguageMode): ResolvedLanguage {
   currentMode = mode;
   storeLanguageMode(mode);
-  const resolved = resolveLanguage(mode);
-  // The preference has to record English immediately. The visible copy stays on
-  // the Korean source until the dictionary arrives, then the language snapshot
-  // changes and subscribers render the translation.
-  if (resolved === "en" && englishMessages === null) {
-    void ensureEnglishDictionary();
-    for (const listener of listeners) listener();
-    return resolved;
-  }
-  currentLanguage = resolved;
+  // The dictionary ships with the bundle, so the visible copy can change in the
+  // same turn instead of waiting for a lazy chunk.
+  if (!englishMessages) englishMessages = MESSAGES;
+  currentLanguage = resolveLanguage(mode);
   applyDocumentLanguage(currentLanguage);
   for (const listener of listeners) listener();
   return currentLanguage;

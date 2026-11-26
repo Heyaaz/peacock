@@ -22,8 +22,8 @@ if (!quickInputBridge && settingsBridge && getLanguageMode() !== 'system') {
   const loaded = await settingsBridge.getPreferences().catch(() => undefined)
   if (loaded) setLanguageMode(loaded.language)
 }
-// English copy is a separate chunk. Wait for it before the first paint so a
-// session that is already set to English does not flash the Korean source.
+// The English dictionary is part of the bundle now, so the first paint already
+// carries it when the session is set to English.
 if (getLanguage() === 'en') await ensureEnglishDictionary()
 initializeTheme()
 
