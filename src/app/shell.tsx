@@ -46,6 +46,7 @@ import {
 } from "./format";
 import { initialChoice } from "./agent-choice";
 import { DiffPanel, GoalProgressRow, Inspector } from "./inspector";
+import { reviewSendResult, type ReviewSendResult } from "./review-model";
 import { SideQuestionPanel } from "./side-question-panel";
 import { sideQuestionText, type SideExchange } from "./side-questions";
 import { useSideChat } from "./use-side-chat";
@@ -75,7 +76,7 @@ import { useCreateSession } from "./use-create-session";
 import { useSessionRemoval } from "./use-session-removal";
 import { useProjectModel } from "./use-project-model";
 import { useSessionGrouping } from "./session-grouping";
-import { useDiff, useGitStatus, useGoal } from "./use-selected-session";
+import { useDiff, useGitStatus, useGoal, useTurnEnds } from "./use-selected-session";
 import { useTranscriptStore } from "./use-transcript-store";
 import { useMessageDelivery } from "./use-message-delivery";
 import { useSendMessage } from "./use-send-message";
@@ -560,7 +561,8 @@ export default function App() {
   const gjcOffline = runtimeUnavailable && (!selectedSession || selectedSession.runtime === "gjc");
   const selectedCapabilities = selectedSession ? capabilitiesOf(selectedSession) : null;
   const selectedSessionId = terminalRuntime || !selectedCapabilities?.goal ? undefined : selectedSession?.id;
-  const gitSessionId = terminalRuntime || !selectedCapabilities?.git ? undefined : selectedSession?.id;
+  // a terminal session offers the folder's git panel as its catalog entry says, like any other
+  const gitSessionId = !selectedCapabilities?.git ? undefined : selectedSession?.id;
   const agentEntry = agentChat ? agentCatalogEntry(agentChat.agentKind ?? "claude") : null;
   const agentSurface =
     agentChat && agentEntry
@@ -682,14 +684,20 @@ export default function App() {
     syncAppBadge(unreadCount);
   }, [unreadCount]);
 
-  const selectedGit = useGitStatus(backend, gitSessionId, selectedSessionStatus);
+  // The folder is read when a session is selected, when one of its turns ends and when the window
+  // gets focus back: a terminal agent's status changes far too often to read it on each change.
+  const turnEnds = useTurnEnds(selectedSession?.id, selectedSessionStatus);
+  const selectedGit = useGitStatus(backend, gitSessionId, turnEnds);
 
-  const { diff, diffLoading, refreshDiff } = useDiff(
+  // a terminal session's changed files open beside its terminal, and follow its turns
+  const diffTargetId = terminalSession ? (selectedCapabilities?.git ? terminalSession.id : null) : chatId;
+  const { diff, diffLoading, refreshDiff, followedReads } = useDiff(
     backend,
     diffOpen,
-    chatId,
+    diffTargetId,
     selectedIdRef,
     selectedSession?.workspace,
+    terminalSession ? turnEnds : undefined,
   );
 
 
@@ -1256,16 +1264,24 @@ export default function App() {
   }, []);
   // A diff review is submitted as if typed into that session's composer, so a
   // live turn holds or steers it exactly as Enter would.
-  const submitReview = useCallback((sessionId: string, text: string) => {
-    submitComposerInput(sessionId, { text, images: [], files: [] }, {
-      running: composerTurnLive(
-        sessionsRef.current.find((session) => session.id === sessionId) ?? null,
-        transcriptsRef.current[sessionId] ?? EMPTY_TRANSCRIPT,
-      ),
-      runningSubmission: preferencesRef.current.runningSubmission,
-      send: (input) => sendMessageRef.current!(sessionId, input),
-    });
-  }, []);
+  const submitReview = useCallback(
+    (sessionId: string, text: string): void | Promise<ReviewSendResult> => {
+      const target = sessionsRef.current.find((session) => session.id === sessionId) ?? null;
+      // A terminal has no composer to hold a request while a turn runs: the review is typed in as
+      // it would be by hand, and an agent waiting on a dialog does not take it, which the panel
+      // is told so it keeps the comments.
+      if (target && runsInTerminal(target))
+        return backend
+          .sendMessage(sessionId, { text, images: [], files: [] })
+          .then(reviewSendResult);
+      submitComposerInput(sessionId, { text, images: [], files: [] }, {
+        running: composerTurnLive(target, transcriptsRef.current[sessionId] ?? EMPTY_TRANSCRIPT),
+        runningSubmission: preferencesRef.current.runningSubmission,
+        send: (input) => sendMessageRef.current!(sessionId, input),
+      });
+    },
+    [backend],
+  );
   const {
     onComposerCancel,
     onComposerFlushQueued,
@@ -1444,7 +1460,26 @@ export default function App() {
           onSubmitReview={remoteViewOnly ? undefined : submitReview}
         />
       ) : terminalSession ? (
-        <TerminalSessionPane session={terminalSession} />
+        <TerminalSessionPane
+          session={terminalSession}
+          git={selectedGit}
+          changedFiles={Boolean(selectedCapabilities?.git)}
+          diffOpen={diffOpen}
+          onToggleDiff={() => setDiffOpen((open) => !open)}
+          panel={
+            <DiffPanel
+              session={terminalSession}
+              backend={backend}
+              diff={diff}
+              loading={diffLoading}
+              onRefresh={() => void refreshDiff()}
+              onClose={() => setDiffOpen(false)}
+              refreshKey={followedReads + turnEnds}
+              // typed into the terminal, so only while the agent reports that it can take it
+              onSubmitReview={remoteViewOnly || !selectedCapabilities?.send ? undefined : submitReview}
+            />
+          }
+        />
       ) : selectedSession ? (
         <main className="workspace" data-surface={viewSurface}>
           <ChatHeader

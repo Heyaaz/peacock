@@ -118,7 +118,7 @@ Main
   - 이벤트: 창이 페이지를 읽은 세션만, 바뀐 행 16개 이하면 `transcript.appended`(행 단위 upsert), 그보다 많으면 `transcript.synced`(창이 가진 행부터의 꼬리), 행이 사라지거나 순서가 바뀌면(다른 파일, `/clear`) `transcript.invalidated`.
   - `/clear`: SessionStart 훅이 새 `transcript_path`를 보고하면 추종 파일이 바뀌고 채팅은 새 기록만 보인다(스모크 2단계 실측). 앱 재시작 뒤에도 같은 파일에서 같은 id로 다시 읽는다(스모크 2단계).
   - 보내기: `terminal.send`(타임아웃 30초). blocked 거부는 `{kind:"not_executed", detail:<7501 msg>}`로 돌려주고 입력창에 이유를 보인다. 대기(waiting) 중엔 입력창에 "터미널 열기" 안내. 낙관적 표시 없음(기록에 나타날 때 행이 생김). `/compact` 등 기존 위험 명령 확인 대화는 GJC와 같은 경로를 탄다.
-  - capabilities: 카탈로그 상한에서 `send = reported && live`, `approvals=false`(P4), `git=false`(GJC git 패널 미연결), `attachments/streaming=false`. 렌더러는 Claude Code·omp 세션에 GJC Composer 대신 전용 입력창(텍스트·보내기·중단만)을 쓰고, 헤더의 사이드 채팅·변경 파일·세션 정보 버튼과 goal/subagent/git/명령 목록 조회를 끈다. 세션마다 채팅/터미널 선택을 기억하고 처음엔 카탈로그 `defaultSurface`(터미널)로 연다.
+  - capabilities: 카탈로그 상한에서 `send = reported && live`, `approvals=false`(P4), `attachments/streaming=false`, `git`은 카탈로그 값 그대로(Claude Code·omp·Codex true, 셸 false: 폴더를 읽을 뿐 에이전트의 도움이 필요 없다. 터미널 화면의 변경 파일 패널은 §5.9 끝의 B1 참고). 렌더러는 Claude Code·omp 세션에 GJC Composer 대신 전용 입력창(텍스트·보내기·중단만)을 쓰고, 이 채팅 화면(터미널에 닿지 않는 기기)에서는 헤더의 사이드 채팅·변경 파일·세션 정보 버튼과 goal/subagent/명령 목록 조회를 끈다. 세션마다 채팅/터미널 선택을 기억하고 처음엔 카탈로그 `defaultSurface`(터미널)로 연다.
   - omp: **omp 19.1.1은 hc 아래에서 7501을 보고한다**(`reported=true`, idle→running 실측) → `send` 허용. 기록 위치는 ① 터미널 breadcrumb(`~/.omp/agent/terminal-sessions/<tty>`, 터미널 pid의 tty를 `ps`로, 터미널 시작 이후에 쓰였고 cwd가 같을 때만) ② 레코드에 저장한 경로 ③ cwd 폴더(`-<home 상대>`/`-tmp-<상대>`/`--<경로>--`)의 터미널 시작 이후 최신 파일. 실측은 ①로 찾음. 찾은 경로와 omp 세션 id는 레코드에 저장하고, 새 터미널은 `omp --resume <파일>`로 이어 간다. Gajae가 띄우는 omp에는 profile 관련 env가 전달되지 않으므로(허용 목록) 기본 store만 본다.
 
 ### 5.6 승인 / 질문 (P4)
@@ -165,9 +165,10 @@ Main
 - **병렬 실행**: `ParallelStartInput`·`ParallelGroup`에 `agentKind`(없으면 GJC, P6 이전 기록 그대로). `parallelAgentSupport`가 에이전트별 가능 여부와 사유를 정한다: 셸("셸은 병렬 실행에 쓸 수 없습니다"), codex(채팅 입력을 받지 않음), 미설치(감지 사유). `parallel.agents()` 브리지로 그 목록을 준다. 시도의 preset은 터미널 에이전트에선 모델(`default` = 에이전트 기본값), `launch`는 권한 모드·effort.
   - worktree: GJC는 SDK가 만들지만 터미널 에이전트는 Gajae가 같은 규칙(`<repo>.gajae-worktrees/best-of-<id>-<n>`, `git worktree add -b`)으로 만들고 그 폴더를 cwd로 세션을 연다. 세션 생성이 실패하면 방금 만든 worktree·브랜치를 지운다. 정리(cleanup)는 기존 그대로 `git worktree list`에서 브랜치로 찾으므로 위치와 무관하다. 정리 시 herdr 세션은 `hideSession`이 터미널을 끝내고 세션을 지운다(확인 문구도 그렇게 바꿈).
   - 전송: `HerdrAgentController.sendWhenReady` — 창이 없어도 터미널을 띄우고(`startTerminal` = `HcSessionTerminals.open` 후 바로 detach), 에이전트가 프롬프트에 있을 때(상태 idle + hc가 입력 가능) `terminal.send` 한 번. 대화상자(새 worktree의 폴더 신뢰)는 사용자가 답할 일이라 자동으로 답하지 않고 최대 10분 기다린다. 거부(not_executed)는 아무것도 입력되지 않은 것이므로 다시 시도한다. 시간이 다 되면 무엇을 기다렸는지와 함께 시도를 실패로 둔다.
-  - 비교 화면: 터미널 에이전트에는 `diff.list_files` 같은 질의가 없어 `workspaceDiff`가 worktree에서 `git diff HEAD`와 추적 안 된 파일을 읽는다(인덱스를 건드리지 않음). capabilities.git은 그대로 false(다른 화면의 변경 파일 패널은 열지 않음).
+  - 비교 화면: 터미널 에이전트에는 `diff.list_files` 같은 질의가 없어 `workspaceDiff`가 worktree에서 `git diff HEAD`와 추적 안 된 파일을 읽는다(인덱스를 건드리지 않음). B1 이후 capabilities.git은 카탈로그 값이고, 터미널 화면의 변경 파일 패널이 같은 `workspaceDiff`를 읽는다.
   - **시작 UI는 없다**: 새 세션 창의 병렬 실행 시작 경로는 이 브랜치 이전 커밋 b9bd4e2에서 의도적으로 지워졌고(`docs/usage.md` "The new-session dialog no longer starts parallel runs"), P6에서 되살리지 않았다. 지원 불가 조합은 서비스가 사유와 함께 거부하고 `parallel.agents()`가 사유를 주므로, 시작 UI를 다시 만들면 그 값으로 비활성+사유를 표시하면 된다.
   - **실측**(`GAJAE_SMOKE_CLAUDE_ARGS="--setting-sources project,local" GAJAE_AGENT_SMOKE_PHASES=8 npm run desktop:hc-agent-smoke`): 임시 저장소에서 Claude Code(haiku) 시도 2개 → 각자 worktree·브랜치 생성, 창 없이 터미널 시작, 폴더 신뢰 대화상자를 터미널 키로 답한 뒤 요청이 한 번씩 입력되고 둘 다 "OK" 응답, 그룹은 comparing. 셸 지정은 "셸은 병렬 실행에 쓸 수 없습니다"로 거부. 같은 실행에서 전체 검색이 두 시도의 기록을 찾음(2/2). 모델 호출은 실행당 짧은 요청 2개(두 번 실행).
+  - **터미널 화면의 변경 파일 패널(B1)**: 터미널 세션의 `git` capability는 카탈로그 값(Codex는 `git: true`로 올렸다)이고, `HerdrAgentController`가 `getGitStatus`와 stage/unstage/commit/push를 omp 채팅처럼 `gjc-sdk-git.ts`의 `GitScope`(세션 폴더 하나)로 돌린다. 쓰기는 `mutateGit` 규칙 그대로 managed worktree에서만이고, A2로 새 worktree에서 시작한 세션은 행에 `worktree`가 있어 허용된다. 폴더 그대로 시작한 세션과 Git 저장소가 아닌 폴더는 읽기만 되고 패널이 그렇게 안내한다. 화면: `TerminalSessionPane` 헤더에 브랜치와 변경 파일 버튼이 생기고, 패널(`DiffPanel`)은 같은 `.workspace-body` 안 터미널 옆에 열린다. 터미널은 그대로 두고 폭만 줄며 `TerminalView`의 ResizeObserver가 다시 맞추고 pty 크기를 한 번 알린다(패널을 열고 닫을 때 에이전트 TUI가 한 번 다시 그려진다). git 상태는 세션을 고를 때·턴이 끝날 때(`useTurnEnds`: 상태가 running/starting/waiting에서 벗어날 때)·창에 포커스가 돌아올 때만 읽고, 상태 전이마다 읽지 않는다(터미널 에이전트는 상태가 자주 바뀐다). 열린 패널은 같은 때에 diff와 git 상태를 다시 읽는다. 리뷰 코멘트는 터미널 입력으로 가며(`terminal.send`, 입력창의 보류·steer 규칙은 터미널에 없다), 에이전트가 대화상자에서 답을 기다려 `not_executed`가 오면 보내지 않은 것으로 알리고 코멘트를 그대로 둬 답한 뒤 다시 보낼 수 있다. 보내려면 `send` capability(에이전트가 상태를 보고하는 동안, Claude Code·omp)가 있어야 하므로 Codex 패널에는 보내기 버튼이 없다. 검증은 단위 테스트(컨트롤러 git 읽기·쓰기·거절, 훅의 읽기 시점, 패널의 전송 결과, 창 구성)이고 앱 화면은 확인하지 않았다.
 - **P5 후속**: 사이드바 하단은 GJC가 연결되지 않았고 새 세션 기본값도 아니며 GJC 세션도 없으면 "GJC · 연결 중" 대신 "새 세션: <에이전트>"(자동이면 "설치된 첫 에이전트")를 보이고 연결 점을 숨긴다(`desktop:onboarding-smoke -- --agent=claude`가 GJC 없는 첫 실행 뒤 "새 세션: Claude Code"를 실측). 에이전트 버전 확인은 실행 파일의 폴더 → 로그인 셸 PATH → 앱 PATH 순 PATH로 실행한다(`versionSearchPath`; `#!/usr/bin/env node`인 codex가 Finder 실행 앱에서도 감지되게). `desktop:deep-link-smoke`는 대화상자에 요청이 보이지 않는 현재 UI에 맞춰, 만든 세션의 입력창에 요청이 남아 있는지로 확인한다.
 
 ## 6. 이식 원칙과 규모
@@ -214,7 +215,7 @@ P0~P6 완료. Gajae는 GJC 전용에서 Claude Code·omp·codex·GJC·셸을 고
 - 병렬 실행 시작 UI 없음(b9bd4e2에서 제거된 상태 유지, 브리지로만 시작). 터미널 에이전트 시도는 새 worktree의 폴더 신뢰 대화상자를 사용자가 답해야 요청이 들어간다(자동 응답 안 함).
 - codex: 기록 파서가 없어 채팅 화면·검색·병렬 실행·승인 없음. 터미널과 상태(hc가 보고하는 만큼)만.
 - 검색은 기록 파일의 따라가기 범위(끝부분 `initialBytes`)만 색인. Inbox·모델 설정·목표·사이드 채팅 등은 GJC 전용.
-- 터미널 에이전트 세션의 git 상태·변경 파일 패널(capabilities.git)은 꺼져 있다. 병렬 비교 화면만 worktree diff를 읽는다.
+- 터미널 에이전트 세션의 변경 파일 패널(B1, §5.9 끝)은 터미널 화면에만 있다. 터미널에 닿지 않는 기기(폰)의 채팅 화면에는 변경 파일 버튼이 없다.
 - node-pty는 유지(채팅 화면 임시 셸, hc 실패 시 셸 폴백, GJC CLI 세션 삭제).
 - omp RPC 채팅의 한계는 §10 끝에 따로 적었다(프로세스 수, 거절 사유 미전달, 승인 범위, 폼 판독 범위, 터미널 전환 없음).
 - macOS 외 플랫폼은 hc가 없어 셸만 앱 안 셸로 폴백하고 에이전트 세션은 오류.

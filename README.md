@@ -101,7 +101,7 @@ Each clip is the real app on its built-in sample data.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <strong>Review the changes</strong> <sub>GJC and omp chats</sub><br>
+      <strong>Review the changes</strong> <sub>GJC, omp and Claude Code (Codex: view only)</sub><br>
       <img src="docs/media/feature-review.gif?v=0.2.0" alt="Commenting on diff lines in the changed files panel">
       <sub>Select diff lines, comment, and send the comments back to the agent
       as one review.</sub>
@@ -139,9 +139,11 @@ Each clip is the real app on its built-in sample data.
 - **Next-input suggestion.** When a GJC or omp turn ends, the composer offers a
   likely next message. Tab takes it, Esc dismisses it. GJC follows its
   `promptSuggestions` setting; omp asks one side question per turn.
-- **Changed files and review.** In GJC and omp chats, see the session's diff,
-  comment on lines, and send the comments back as a review. A folder holding
-  several repositories shows each one's changes.
+- **Changed files and review.** In GJC and omp chats, and beside a Claude Code,
+  omp or Codex terminal, see the session's diff, comment on lines, and send the
+  comments back as a review (typed into the terminal for Claude Code and omp;
+  Codex shows the changes without taking a review). A folder holding several
+  repositories shows each one's changes.
 - **Goals.** An active goal stays pinned above the composer with its progress.
   Open it to see each task. omp's goal mode shows up the same way.
 - **Model picker.** Search, favorites and the thinking level for the agent's

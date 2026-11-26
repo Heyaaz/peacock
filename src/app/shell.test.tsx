@@ -711,6 +711,33 @@ describe("terminal sessions", () => {
     expect(markup).not.toContain("conversation--");
   });
 
+  it("offers the changed files of a terminal session that offers git, and not of one that does not", async () => {
+    const claude = session("terminal-claude", {
+      title: "리뷰",
+      runtime: "herdr",
+      agentKind: "claude",
+      capabilities: { git: true },
+    });
+    const shell = session("terminal-shell", { title: "셸", runtime: "herdr", agentKind: "shell", capabilities: { git: false } });
+    actionProbe.forkSession.mockResolvedValueOnce(claude).mockResolvedValueOnce(shell);
+    renderApp();
+    actionProbe.sidebar!.onFork(session("source-1"));
+    await settle();
+    renderApp();
+    actionProbe.sidebar!.onFork(session("source-2"));
+    await settle();
+    renderApp();
+    actionProbe.sidebar!.onSelect(claude.id);
+    const withGit = renderApp();
+    expect(withGit).toContain('data-surface="terminal"');
+    expect(withGit).toContain('title="변경 파일 보기"');
+    expect(withGit).toContain('aria-pressed="false"');
+    actionProbe.sidebar!.onSelect(shell.id);
+    const withoutGit = renderApp();
+    expect(withoutGit).toContain('data-surface="terminal"');
+    expect(withoutGit).not.toContain('title="변경 파일 보기"');
+  });
+
   it("shows a terminal agent's terminal with its chat beside it, and none of GJC's own controls", async () => {
     const row = session("terminal-2", {
       title: "Claude 작업",

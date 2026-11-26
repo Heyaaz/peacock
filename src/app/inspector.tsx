@@ -22,7 +22,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { isDeclinedConfirmation, sessionTitleText, statusLabel, storyStatusLabel, subagentLabel } from "./format";
+import { humanErrorMessage, isDeclinedConfirmation, sessionTitleText, statusLabel, storyStatusLabel, subagentLabel } from "./format";
 import { t, useLanguage } from "../i18n";
 import {
   anchorLineKeys,
@@ -39,6 +39,7 @@ import {
   type DiffLine,
   type ReviewAnchor,
   type ReviewComment,
+  type ReviewSendResult,
 } from "./review-model";
 
 
@@ -434,6 +435,7 @@ export function DiffPanel({
   onRefresh,
   onClose,
   onSubmitReview,
+  refreshKey,
 }: {
   session: AgentSession;
   backend: AgentBackend;
@@ -441,8 +443,14 @@ export function DiffPanel({
   loading: boolean;
   onRefresh: () => void;
   onClose: () => void;
-  /** Hands the formatted review to the session's composer rules; omitted where sending is not allowed. */
-  onSubmitReview?: (sessionId: string, text: string) => void;
+  /**
+   * Hands the formatted review on; omitted where sending is not allowed. A conversation takes it
+   * through its composer's rules and answers at once. A terminal answers when the agent has taken
+   * it or refused it: the comments are cleared only once it has.
+   */
+  onSubmitReview?: (sessionId: string, text: string) => void | Promise<ReviewSendResult | void>;
+  /** Changes when the folder is worth reading again (a turn ended); the git status is read again. */
+  refreshKey?: number;
 }) {
   const sessionIdRef = useRef(session.id);
   sessionIdRef.current = session.id;
@@ -463,6 +471,7 @@ export function DiffPanel({
   const [errorState, setErrorState] = useState<SessionScoped<string> | null>(
     null,
   );
+  const [reviewState, setReviewState] = useState<SessionScoped<{ sending: boolean; error: string }> | null>(null);
   const commitMessageRevision = useRef(0);
   // Git state, selection and the commit draft belong to the session that made
   // them: a late answer for the previous session is dropped and the old file list
@@ -472,6 +481,7 @@ export function DiffPanel({
   const commitMessage = scoped(draftState, session.id, "");
   const gitBusy = scoped(busyState, session.id, false);
   const gitError = scoped(errorState, session.id, "");
+  const review = scoped(reviewState, session.id, { sending: false, error: "" });
   const comments = useSyncExternalStore(
     useCallback(
       (listener: () => void) => subscribeReviewComments(session.id, listener),
@@ -544,11 +554,31 @@ export function DiffPanel({
   }
 
   function sendReview(): void {
-    const pending = reviewComments(session.id);
+    const sessionId = session.id;
+    const pending = reviewComments(sessionId);
     if (!onSubmitReview || pending.length === 0) return;
-    onSubmitReview(session.id, formatReview(pending));
-    saveReviewComments(session.id, []);
-    setEditState({ sessionId: session.id, value: null });
+    const sent = (): void => {
+      // only what was sent goes: a comment added while it was being sent is still to be sent
+      const handed = new Set(pending.map((comment) => comment.id));
+      saveReviewComments(sessionId, reviewComments(sessionId).filter((comment) => !handed.has(comment.id)));
+      setEditState({ sessionId, value: null });
+      setReviewState({ sessionId, value: { sending: false, error: "" } });
+    };
+    const failed = (error: string): void => setReviewState({ sessionId, value: { sending: false, error } });
+    const result = onSubmitReview(sessionId, formatReview(pending));
+    if (!result || typeof (result as Promise<unknown>).then !== "function") {
+      sent();
+      return;
+    }
+    setReviewState({ sessionId, value: { sending: true, error: "" } });
+    (result as Promise<ReviewSendResult | void>).then(
+      (outcome) => {
+        if (outcome && !outcome.sent)
+          failed(t("리뷰를 보내지 못했습니다. 에이전트가 터미널에서 답을 기다리고 있을 수 있습니다. 답한 뒤 다시 보내세요. ({0})", { 0: outcome.reason }));
+        else sent();
+      },
+      (error: unknown) => failed(humanErrorMessage(error)),
+    );
   }
 
   const commentForm = selectedAnchor && (
@@ -611,7 +641,7 @@ export function DiffPanel({
   }, [backend, session.id]);
   useEffect(() => {
     queueMicrotask(refreshGit);
-  }, [refreshGit]);
+  }, [refreshGit, refreshKey]);
 
   async function mutate(
     operation: () => Promise<GitStatusSnapshot>,
@@ -810,11 +840,16 @@ export function DiffPanel({
           <header>
             <strong>{t`리뷰 코멘트 ${comments.length}개`}</strong>
             {onSubmitReview && (
-              <button className="button-primary" type="button" onClick={sendReview}>
-                {t("리뷰 보내기")}
+              <button className="button-primary" type="button" disabled={review.sending} onClick={sendReview}>
+                {review.sending ? t("보내는 중…") : t("리뷰 보내기")}
               </button>
             )}
           </header>
+          {review.error && (
+            <p className="diff-error" role="alert">
+              {review.error}
+            </p>
+          )}
           {comments.map((comment) => (
             <article key={comment.id} className="diff-review-card">
               <code className="diff-review-location">{reviewLocation(comment)}</code>

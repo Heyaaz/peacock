@@ -56,11 +56,17 @@ describe("agent catalog", () => {
       );
   });
 
-  it("offers nothing on an agent Gajae has no chat for", () => {
+  it("offers nothing but the folder's git panel on an agent Gajae has no chat for", () => {
     for (const entry of AGENT_CATALOG) {
       if (entry.surfaces.includes("chat") || entry.transcript) continue;
-      expect(Object.values(entry.capabilities).every((value) => value === false)).toBe(true);
+      const offered = Object.entries(entry.capabilities).filter(([, value]) => value).map(([key]) => key);
+      expect(offered).toEqual(entry.id === "codex" ? ["git"] : []);
     }
+  });
+
+  it("offers the git panel to every agent whose session works in a folder it can read, and not to a shell", () => {
+    for (const id of ["claude", "omp", "codex", "gjc"] as const) expect(agentCatalogEntry(id).capabilities.git).toBe(true);
+    expect(agentCatalogEntry("shell").capabilities.git).toBe(false);
   });
 
   it("offers for gjc exactly what a GJC session offers today", () => {

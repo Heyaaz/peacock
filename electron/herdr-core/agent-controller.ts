@@ -8,6 +8,7 @@ import type {
   AgentSession,
   BackendConnection,
   CreateSessionInput,
+  GitStatusSnapshot,
   MessageDelivery,
   SessionCapabilities,
   SessionStatus,
@@ -28,6 +29,7 @@ import type {
 } from "../../shared/terminal-ipc.js";
 import { AgentUnsupportedError, type AgentRuntimeController } from "../agent-host.js";
 import type { ResolvedMessageInput } from "../gjc-sdk-model.js";
+import { commitChanges, getGitStatus, pushChanges, stageFiles, unstageFiles, type GitScope } from "../gjc-sdk-git.js";
 import type { TerminalSessionStore } from "../terminal-session-store.js";
 import { terminalAgentSession } from "../terminal-session-row.js";
 import type { HookChannel, HookMessage } from "./agent-hooks.js";
@@ -382,6 +384,37 @@ export class HerdrAgentController implements AgentRuntimeController {
     return workspaceDiff(sessionId, record.workspace);
   }
 
+  /**
+   * The session folder's git status through GJC's own reader. Staging, committing and pushing go
+   * through it too, which allows them only in a managed worktree (a session started in a new
+   * worktree has one); a session in its folder as it is is refused, as a GJC session outside one is.
+   */
+  private gitScope(sessionId: string): GitScope {
+    const record = this.options.store.get(sessionId);
+    if (!record) throw new AgentUnsupportedError("git", sessionId);
+    return { workspace: record.workspace, sessions: new Map([[sessionId, this.row(record)]]), sessionCwds: new Map([[sessionId, record.workspace]]) };
+  }
+
+  async getGitStatus(sessionId: string): Promise<GitStatusSnapshot> {
+    return getGitStatus(this.gitScope(sessionId), sessionId);
+  }
+
+  async stageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot> {
+    return stageFiles(this.gitScope(sessionId), sessionId, paths);
+  }
+
+  async unstageFiles(sessionId: string, paths: string[]): Promise<GitStatusSnapshot> {
+    return unstageFiles(this.gitScope(sessionId), sessionId, paths);
+  }
+
+  async commitChanges(sessionId: string, message: string): Promise<GitStatusSnapshot> {
+    return commitChanges(this.gitScope(sessionId), sessionId, message);
+  }
+
+  async pushChanges(sessionId: string): Promise<GitStatusSnapshot> {
+    return pushChanges(this.gitScope(sessionId), sessionId);
+  }
+
   // ---- approvals (design §5.6)
 
   /** The session a tool id belongs to: every row id here starts with its session's id. */
@@ -708,8 +741,8 @@ export class HerdrAgentController implements AgentRuntimeController {
   /**
    * The agent's ceiling (agent-catalog.ts) less what this stage leaves out: sending only while the
    * agent reports its state to herdr-core (design §5.5: herdr-core refuses typing into a dialog only
-   * for a program that reports one), and approvals (P4) and the git panel, which no terminal session
-   * has yet.
+   * for a program that reports one), and approvals (P4), which also need the hook. The git panel is
+   * offered as the catalog says: it reads the session's folder and needs nothing from the agent.
    */
   private capabilities(record: TerminalSessionRecord): SessionCapabilities {
     const ceiling = agentCatalogEntry(record.agentKind ?? "shell").capabilities;
@@ -718,7 +751,6 @@ export class HerdrAgentController implements AgentRuntimeController {
       send: ceiling.send && sendable(this.facts.get(record.id)),
       // a card can be answered only while the agent runs with the hook and the app listens for it
       approvals: ceiling.approvals && this.approvalHooked.has(record.id) && this.options.hooksListening?.() === true,
-      git: false,
     };
   }
 

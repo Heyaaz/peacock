@@ -32,6 +32,7 @@ import { humanErrorMessage, sessionTitleText } from "./format";
 import { elapsedLabel } from "./inbox-model";
 import { DiffPanel } from "./inspector";
 import { sessionsInPath } from "./project-model";
+import type { ReviewSendResult } from "./review-model";
 import {
   ciSessionPrefill,
   issueSessionPrefill,
@@ -963,8 +964,8 @@ export interface RepoViewProps {
   onStartSession?: (prefill: NewSessionPrefill) => void;
   onClose: () => void;
   onError: (message: string) => void;
-  /** Sends a diff review through the session's composer rules. */
-  onSubmitReview?: (sessionId: string, text: string) => void;
+  /** Sends a diff review to the session: through its composer's rules, or into its terminal. */
+  onSubmitReview?: (sessionId: string, text: string) => void | Promise<ReviewSendResult | void>;
 }
 
 /** Which session's changed files are open, and what has arrived for it. */

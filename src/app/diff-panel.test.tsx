@@ -14,7 +14,7 @@ import {
   submitComposerInput,
 } from "./composer";
 import { DiffPanel } from "./inspector";
-import { saveReviewComments } from "./review-model";
+import { reviewComments, saveReviewComments, type ReviewSendResult } from "./review-model";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -422,5 +422,182 @@ describe("diff review comments sent through the composer", () => {
     });
     expect(composerQueue(sessionId)).toEqual([]);
     expect(host.querySelector(".composer-queue-text")).toBeNull();
+  });
+});
+
+describe("diff review comments sent to a terminal agent", () => {
+  const reviewDiff: DiffSnapshot = {
+    sessionId: "terminal-review",
+    workspace: "/tmp/terminal-review",
+    refreshedAt: "now",
+    files: [
+      {
+        id: "a",
+        path: "src/a.ts",
+        patch: ["--- a/src/a.ts", "+++ b/src/a.ts", "@@ -1,2 +1,3 @@", " one();", "+two();", " three();"].join("\n"),
+      },
+    ],
+  };
+  const backend = {
+    getGitStatus: () => Promise.resolve(status("/tmp/terminal-review", [])),
+  } as unknown as AgentBackend;
+  let root: Root;
+  let host: HTMLDivElement;
+  let sessionId: string;
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    saveReviewComments(sessionId, []);
+  });
+
+  async function mount(onSubmitReview: (id: string, text: string) => Promise<ReviewSendResult | void>) {
+    sessionId = `terminal-review-${crypto.randomUUID()}`;
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () =>
+      root.render(
+        createElement(DiffPanel, {
+          session: { ...session(sessionId, "/tmp/terminal-review"), runtime: "herdr", agentKind: "claude" },
+          backend,
+          diff: reviewDiff,
+          loading: false,
+          onRefresh: () => undefined,
+          onClose: () => undefined,
+          onSubmitReview,
+        }),
+      ),
+    );
+  }
+
+  const button = (label: string): HTMLButtonElement =>
+    [...host.querySelectorAll("button")].find((candidate) => candidate.textContent?.trim() === label) as HTMLButtonElement;
+
+  async function comment(code: string, body: string): Promise<void> {
+    const row = [...host.querySelectorAll(".diff-line")].find((candidate) => candidate.querySelector("code")?.textContent === code);
+    await act(async () => (row!.querySelector("button") as HTMLButtonElement).click());
+    const form = host.querySelector(".diff-comment-form") as HTMLFormElement;
+    const field = form.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, body);
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => [...form.querySelectorAll("button")].find((entry) => entry.textContent?.trim() === "코멘트 추가")!.click());
+  }
+
+  it("clears the comments once the terminal has taken the review", async () => {
+    const submit = vi.fn(async () => ({ sent: true as const }));
+    await mount(submit);
+    await comment("+two();", "name it better");
+    await act(async () => button("리뷰 보내기").click());
+    expect(submit).toHaveBeenCalledExactlyOnceWith(sessionId, expect.stringContaining("name it better"));
+    expect(host.querySelector(".diff-review")).toBeNull();
+    expect(reviewComments(sessionId)).toEqual([]);
+  });
+
+  it("holds the button while the review is going, and keeps a comment added meanwhile", async () => {
+    const gate = deferred<ReviewSendResult>();
+    await mount(() => gate.promise);
+    await comment("+two();", "first");
+    await act(async () => button("리뷰 보내기").click());
+    expect(button("보내는 중…").disabled).toBe(true);
+    // the review sent has the first comment only
+    await comment(" three();", "second");
+    expect(host.querySelectorAll(".diff-review-card")).toHaveLength(2);
+    await act(async () => gate.resolve({ sent: true }));
+    expect(host.querySelectorAll(".diff-review-card")).toHaveLength(1);
+    expect(host.querySelector(".diff-review-card p")?.textContent).toBe("second");
+    expect(button("리뷰 보내기").disabled).toBe(false);
+  });
+
+  it("keeps the comments and says it was not sent when the agent waits on a dialog", async () => {
+    const submit = vi.fn(async () => ({ sent: false as const, reason: "Do you trust this folder?" }));
+    await mount(submit);
+    await comment("+two();", "name it better");
+    await act(async () => button("리뷰 보내기").click());
+    expect(reviewComments(sessionId)).toHaveLength(1);
+    expect(host.querySelectorAll(".diff-review-card")).toHaveLength(1);
+    const alert = host.querySelector(".diff-review .diff-error")!;
+    expect(alert.textContent).toContain("리뷰를 보내지 못했습니다");
+    expect(alert.textContent).toContain("Do you trust this folder?");
+    expect(button("리뷰 보내기").disabled).toBe(false);
+  });
+
+  it("sends the same review again after the user answered the dialog", async () => {
+    const submit = vi
+      .fn<(id: string, text: string) => Promise<ReviewSendResult>>()
+      .mockResolvedValueOnce({ sent: false, reason: "blocked" })
+      .mockResolvedValueOnce({ sent: true });
+    await mount(submit);
+    await comment("+two();", "name it better");
+    await act(async () => button("리뷰 보내기").click());
+    await act(async () => button("리뷰 보내기").click());
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[1]![1]).toBe(submit.mock.calls[0]![1]);
+    expect(host.querySelector(".diff-review")).toBeNull();
+  });
+
+  it("keeps the comments and shows the error when the terminal cannot take a review at all", async () => {
+    await mount(async () => {
+      throw new Error("The agent's terminal is not running: open its terminal first");
+    });
+    await comment("+two();", "name it better");
+    await act(async () => button("리뷰 보내기").click());
+    expect(host.querySelectorAll(".diff-review-card")).toHaveLength(1);
+    expect(host.querySelector(".diff-review .diff-error")?.textContent).toContain("terminal is not running");
+  });
+
+  it("offers no send button where sending is not allowed", async () => {
+    sessionId = `terminal-review-${crypto.randomUUID()}`;
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () =>
+      root.render(
+        createElement(DiffPanel, {
+          session: { ...session(sessionId, "/tmp/terminal-review"), runtime: "herdr", agentKind: "codex" },
+          backend,
+          diff: reviewDiff,
+          loading: false,
+          onRefresh: () => undefined,
+          onClose: () => undefined,
+        }),
+      ),
+    );
+    await comment("+two();", "kept as a note");
+    expect(button("리뷰 보내기")).toBeUndefined();
+    expect(host.querySelectorAll(".diff-review-card")).toHaveLength(1);
+  });
+});
+
+describe("diff panel refresh key", () => {
+  it("reads the git status again when the key changes, and only then", async () => {
+    const getGitStatus = vi.fn(() => Promise.resolve(status("/tmp/a", [])));
+    const backend = { getGitStatus } as unknown as AgentBackend;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const render = (refreshKey: number) =>
+      act(async () =>
+        root.render(
+          createElement(DiffPanel, {
+            session: session("a", "/tmp/a"),
+            backend,
+            diff: emptyDiff,
+            loading: false,
+            onRefresh: () => undefined,
+            onClose: () => undefined,
+            refreshKey,
+          }),
+        ),
+      );
+    await render(0);
+    await render(0);
+    expect(getGitStatus).toHaveBeenCalledTimes(1);
+    await render(1);
+    expect(getGitStatus).toHaveBeenCalledTimes(2);
+    act(() => root.unmount());
+    host.remove();
   });
 });

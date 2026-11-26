@@ -84,10 +84,35 @@ export function useGoal(
   return { goal, setGoal, goalRescheduleRef, goalBusySessionId, setGoalBusySessionId };
 }
 
+/** Whether a status is a turn in progress: the agent is not asking for the next request yet. */
+function turnOn(status: AgentSession["status"] | undefined): boolean {
+  return status === "running" || status === "starting" || status === "waiting";
+}
+
+/**
+ * How many turns of the selected session have ended since it was selected: the count goes up when its
+ * status leaves a turn in progress. What its folder holds is worth reading again then, not at every
+ * status change, which a terminal agent makes often.
+ */
+export function useTurnEnds(
+  sessionId: string | undefined,
+  status: AgentSession["status"] | undefined,
+): number {
+  const [track, setTrack] = useState({ sessionId, status, ended: 0 });
+  if (track.sessionId !== sessionId) setTrack({ sessionId, status, ended: 0 });
+  else if (track.status !== status)
+    setTrack({ sessionId, status, ended: track.ended + (turnOn(track.status) && !turnOn(status) ? 1 : 0) });
+  return track.sessionId === sessionId ? track.ended : 0;
+}
+
+/**
+ * The selected session's git status, read when it is selected, when one of its turns ends
+ * (`turnEnds`) and when the window gets focus back; never on a status change that is not a turn's end.
+ */
 export function useGitStatus(
   backend: AgentBackend,
   selectedSessionId: string | undefined,
-  selectedSessionStatus: AgentSession["status"] | undefined,
+  turnEnds: number,
 ) {
   const [selectedGit, setSelectedGit] = useState<GitStatusSnapshot | null>(
     null,
@@ -116,19 +141,26 @@ export function useGitStatus(
       active = false;
       window.removeEventListener("focus", refresh);
     };
-  }, [backend, selectedSessionId, selectedSessionStatus]);
+  }, [backend, selectedSessionId, turnEnds]);
 
   return selectedGit;
 }
 
+/**
+ * The selected session's changed files, read when the panel opens and when the session changes.
+ * `followTurns` (a session's turn count, from `useTurnEnds`) keeps an open panel current: it is read
+ * again when a turn ends and when the window gets focus back, and `followedReads` counts those reads.
+ */
 export function useDiff(
   backend: AgentBackend,
   diffOpen: boolean,
   selectedId: string | null,
   selectedIdRef: SessionIdRef,
   sessionWorkspace: string | undefined,
+  followTurns?: number,
 ) {
   const [diff, setDiff] = useState<DiffSnapshot | null>(null);
+  const [followedReads, setFollowedReads] = useState(0);
   const diffOpenRef = useRef(diffOpen);
   diffOpenRef.current = diffOpen;
   // Every diff belongs to the session it was requested for; bumping this drops
@@ -172,5 +204,28 @@ export function useDiff(
     if (selectedId && diffOpenRef.current) void refreshDiff();
   }, [selectedId, diffOpen, refreshDiff]);
 
-  return { diff, diffLoading, refreshDiff };
+  const following = followTurns !== undefined;
+  const seenTurns = useRef({ selectedId, followTurns });
+  useEffect(() => {
+    const seen = seenTurns.current;
+    seenTurns.current = { selectedId, followTurns };
+    if (!following || !selectedId || !diffOpen) return;
+    // a turn ended on the session that was already shown: not a session switch, which reads on its own
+    if (seen.selectedId === selectedId && seen.followTurns !== followTurns) {
+      setFollowedReads((count) => count + 1);
+      void refreshDiff();
+    }
+  }, [following, followTurns, selectedId, diffOpen, refreshDiff]);
+
+  useEffect(() => {
+    if (!following || !selectedId || !diffOpen) return;
+    const onFocus = (): void => {
+      setFollowedReads((count) => count + 1);
+      void refreshDiff();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [following, selectedId, diffOpen, refreshDiff]);
+
+  return { diff, diffLoading, refreshDiff, followedReads };
 }

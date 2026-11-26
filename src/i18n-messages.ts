@@ -1340,4 +1340,5 @@ export const MESSAGES: Readonly<Record<string, string>> = {
   "다른 세션이 이 worktree를 쓰고 있어 지우지 않았습니다. 세션만 지웠습니다.": "Another session is using this worktree, so it was kept. Only the session was deleted.",
   "확인한 뒤 worktree의 내용이 바뀌어 지우지 않았습니다. 세션만 지웠습니다. 저장소 화면에서 확인할 수 있습니다.": "The worktree changed after you confirmed, so it was kept. Only the session was deleted. You can check it on the repository screen.",
   "worktree를 지우지 못했습니다. 세션만 지웠습니다.{0}": "The worktree could not be removed. Only the session was deleted.{0}",
+  "리뷰를 보내지 못했습니다. 에이전트가 터미널에서 답을 기다리고 있을 수 있습니다. 답한 뒤 다시 보내세요. ({0})": "The review was not sent. The agent may be waiting for an answer in its terminal; answer it, then send again. ({0})",
 };

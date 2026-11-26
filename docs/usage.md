@@ -355,6 +355,19 @@ a folder as broad as home, Documents or Desktop is warned about before the sessi
 - **Approvals and status.** Claude Code and omp report their turns and tool
   approvals to Peacock: the sidebar shows running, waiting and idle, notifications
   follow, and an approval waits on a card in the window or on a paired phone.
+- **Changed files.** A Claude Code, omp or Codex terminal session has a changed-files
+  button in its header, next to the branch the folder is on; it opens the same panel as a
+  GJC chat beside the terminal, read from the session's folder with `git diff HEAD`. A shell
+  has none. Stage, Unstage, Commit and Push work only in a managed worktree, so only a session
+  started in a [separate copy](#sessions-in-their-own-worktree) can use them; in a session
+  started in its folder as it is, the panel reads and says so. Comments on diff lines are
+  sent back as one review typed into the terminal, for Claude Code and omp while they report
+  their state (Codex cannot take one, so its panel has no Send review). If the agent is
+  waiting on a dialog in its terminal (a folder trust question, an approval) it does not take
+  the typed review: the panel says it was not sent, keeps the comments, and Send review tries
+  again once you have answered. The panel and the branch follow the session: they are read when
+  you select it, when one of its turns ends and when the window gets focus back, not on every
+  status change, and an open panel is read again at the same moments.
 - **Remote access** lists Claude Code, omp and Codex sessions; a shell never
   leaves the desktop. A phone reaches no terminal, so there a Claude Code or omp
   terminal session opens as a chat built from the agent's transcript file.
@@ -411,7 +424,8 @@ or let the project do it for you.
 - **Claude Code** asks whether to trust a new folder, and so may another agent. Nothing is
   typed into the session for you, so the question is waiting in its terminal; answer it there.
 - **Forks and git.** A fork of an omp chat stays in its worktree. An omp chat in a managed
-  worktree can stage, commit and push from its changed-files panel, as GJC can.
+  worktree can stage, commit and push from its changed-files panel, as GJC and a terminal
+  session in a managed worktree can.
 - **Deleting the session.** After you confirm Delete, a second question asks "Remove this
   session's worktree too?" for a worktree Peacock made, and only then. Its text names every
   loss: the uncommitted files, commits on no branch, and the unpushed commits of a branch

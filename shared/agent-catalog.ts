@@ -158,11 +158,12 @@ export const AGENT_CATALOG: readonly AgentCatalogEntry[] = [
     binaries: ["codex"],
     installDirs: ["~/.local/bin"],
     versionArgs: ["--version"],
-    // No transcript reader is planned for codex, so it has no chat screen.
+    // No transcript reader is planned for codex, so it has no chat screen. The folder's changed
+    // files and git panel need nothing from the agent, so they are offered.
     surfaces: ["terminal"],
     transcript: false,
     defaultSurface: "terminal",
-    capabilities: none,
+    capabilities: { ...none, git: true },
   },
   {
     id: "gjc",

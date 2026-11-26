@@ -4,6 +4,7 @@ import {
   parseDiffPatch,
   reviewAnchor,
   reviewComments,
+  reviewSendResult,
   saveReviewComments,
   subscribeReviewComments,
   type ReviewComment,
@@ -147,5 +148,19 @@ describe("review drafts", () => {
     expect(reviewComments("review-a")).toEqual([]);
     stopA();
     stopB();
+  });
+});
+
+describe("reviewSendResult", () => {
+  it("counts a request the terminal took as sent, however it took it", () => {
+    expect(reviewSendResult("prompt")).toEqual({ sent: true });
+    expect(reviewSendResult("steer")).toEqual({ sent: true });
+  });
+
+  it("keeps the review when the agent did not take it, with what the agent is asking", () => {
+    expect(reviewSendResult({ kind: "not_executed", detail: "Do you trust the files in this folder?" })).toEqual({
+      sent: false,
+      reason: "Do you trust the files in this folder?",
+    });
   });
 });

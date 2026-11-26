@@ -157,9 +157,109 @@ describe("HerdrAgentController sessions", () => {
     expect(claude.surfaces).toEqual(["terminal"]);
     // omp's chat is its RPC session, so its terminal session shows only the terminal
     expect(omp.surfaces).toEqual(["terminal"]);
-    expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: false });
+    expect(claude.capabilities).toMatchObject({ send: false, cancel: true, approvals: false, attachments: false, streaming: false, goal: false, git: true });
     expect(shell.surfaces).toEqual(["terminal"]);
     expect(await controller.getTranscriptPage(shell.id)).toMatchObject({ items: [] });
+  });
+
+  it("offers the folder's git panel as the catalog says: to Claude Code, omp and Codex, not to a shell", async () => {
+    const { controller, directory } = setup();
+    const rows = await Promise.all(
+      (["claude", "omp", "codex", "shell"] as const).map((agentKind) => controller.createTerminalSession({ title: agentKind, workspace: directory, agentKind })),
+    );
+    expect(rows.map((row) => [row.agentKind, row.capabilities?.git])).toEqual([
+      ["claude", true],
+      ["omp", true],
+      ["codex", true],
+      ["shell", false],
+    ]);
+    // the listed rows say the same, and a status change does not take it back
+    const listed = new Map((await controller.listSessions()).map((row) => [row.agentKind, row.capabilities?.git]));
+    expect([...listed].sort()).toEqual([["claude", true], ["codex", true], ["omp", true], ["shell", false]]);
+  });
+});
+
+describe("HerdrAgentController git panel", () => {
+  function repository(): string {
+    const parent = realpathSync(mkdtempSync(path.join(tmpdir(), "gajae-agents-git-")));
+    const repo = path.join(parent, "repo");
+    mkdirSync(repo);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], { stdio: "pipe", encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    writeFileSync(path.join(repo, "README"), "seed");
+    git("add", "README");
+    git("commit", "-q", "-m", "seed");
+    return repo;
+  }
+  const gitIn = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { stdio: "pipe", encoding: "utf8" });
+
+  it("reads the session folder's branch and changed files, and its diff", async () => {
+    const repo = repository();
+    const { controller } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude" });
+    writeFileSync(path.join(repo, "note.txt"), "hi\n");
+    writeFileSync(path.join(repo, "README"), "seed edited");
+    const status = await controller.getGitStatus(session.id);
+    expect(status).toMatchObject({ workspace: repo, branch: "main", files: expect.arrayContaining([expect.objectContaining({ path: "note.txt" }), expect.objectContaining({ path: "README" })]) });
+    expect((await controller.getDiff(session.id)).files.map((file) => file.path).sort()).toEqual(["README", "note.txt"]);
+  });
+
+  it("reads a folder outside Git as having no branch rather than failing", async () => {
+    const { controller, directory } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: directory, agentKind: "codex" });
+    expect(await controller.getGitStatus(session.id)).toMatchObject({ branch: "", files: [] });
+  });
+
+  it("refuses to stage, commit or push in the folder a session was started in as it is", async () => {
+    const repo = repository();
+    const { controller } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude" });
+    writeFileSync(path.join(repo, "note.txt"), "hi\n");
+    await expect(controller.stageFiles(session.id, ["note.txt"])).rejects.toThrow("managed Peacock worktree");
+    await expect(controller.unstageFiles(session.id, ["note.txt"])).rejects.toThrow("managed Peacock worktree");
+    await expect(controller.commitChanges(session.id, "add note")).rejects.toThrow("managed Peacock worktree");
+    await expect(controller.pushChanges(session.id)).rejects.toThrow("managed Peacock worktree");
+    expect(gitIn(repo, "status", "--porcelain")).toContain("?? note.txt");
+    expect(gitIn(repo, "log", "--format=%s")).toBe("seed\n");
+  });
+
+  it("stages, unstages and commits in the worktree the session was started in", async () => {
+    for (const key of ["GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"]) vi.stubEnv(key, "t");
+    for (const key of ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"]) vi.stubEnv(key, "t@t");
+    try {
+      const repo = repository();
+      const { controller } = setup();
+      const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" });
+      const worktree = session.worktree!;
+      writeFileSync(path.join(worktree.path, "note.txt"), "hi\n");
+      const staged = await controller.stageFiles(session.id, ["note.txt"]);
+      expect(staged.files.find((file) => file.path === "note.txt")?.index).toBe("A");
+      const unstaged = await controller.unstageFiles(session.id, ["note.txt"]);
+      expect(unstaged.files.find((file) => file.path === "note.txt")?.index).toBe("?");
+      await controller.stageFiles(session.id, ["note.txt"]);
+      expect((await controller.commitChanges(session.id, "add note")).files).toEqual([]);
+      expect(gitIn(repo, "log", "-1", "--format=%s", worktree.branch).trim()).toBe("add note");
+      // the repository's own working tree is untouched
+      expect(gitIn(repo, "log", "-1", "--format=%s", "main").trim()).toBe("seed");
+      expect(existsSync(path.join(repo, "note.txt"))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("only takes a path git reports as a changed file", async () => {
+    const repo = repository();
+    const { controller } = setup();
+    const session = await controller.createTerminalSession({ title: "a", workspace: repo, agentKind: "claude", isolation: "worktree" });
+    await expect(controller.stageFiles(session.id, ["../outside"])).rejects.toThrow("eligible");
+    await expect(controller.stageFiles(session.id, ["README"])).rejects.toThrow("eligible");
+  });
+
+  it("refuses a session it does not have", async () => {
+    const { controller } = setup();
+    await expect(controller.getGitStatus("terminal-gone")).rejects.toThrow();
+    await expect(controller.commitChanges("terminal-gone", "x")).rejects.toThrow();
   });
 });
 

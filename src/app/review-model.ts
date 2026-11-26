@@ -1,3 +1,4 @@
+import type { MessageDelivery } from "../../shared/agent-contract";
 import { t } from "../i18n";
 
 /** Which version of the file a line number counts in: a removed line exists only in the old one. */
@@ -24,6 +25,17 @@ export interface ReviewComment {
 }
 
 export type ReviewAnchor = Omit<ReviewComment, "id" | "body">;
+
+/**
+ * What came of handing a review to a terminal agent. A terminal types the review in, which an
+ * agent waiting on a dialog does not take: that is `sent: false`, and the comments stay.
+ */
+export type ReviewSendResult = { sent: true } | { sent: false; reason: string };
+
+/** What a terminal's answer to a typed-in request means for the review: only a refusal keeps it. */
+export function reviewSendResult(delivery: MessageDelivery): ReviewSendResult {
+  return typeof delivery === "object" ? { sent: false, reason: delivery.detail } : { sent: true };
+}
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/u;
 
