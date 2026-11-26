@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockAgentBackend } from "./mock-agent-backend";
+import { DEMO_REQUEST } from "./mock-sample-readme";
 import type { AgentEvent } from "./types";
 
 describe("MockAgentBackend", () => {
@@ -200,5 +201,69 @@ describe("MockAgentBackend", () => {
     await backend.commitChanges("agent-control", "save");
     expect((await backend.getGitStatus("agent-control")).ahead).toBe(1);
     expect((await backend.pushChanges("agent-control")).ahead).toBe(0);
+  });
+});
+
+describe("MockAgentBackend README sample", () => {
+  let backend: MockAgentBackend;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    backend = new MockAgentBackend("readme");
+  });
+
+  afterEach(() => {
+    backend.dispose();
+    vi.useRealTimers();
+  });
+
+  it("serves English sessions and offers every agent, while the default stays as it was", async () => {
+    expect((await backend.listSessions()).map((session) => session.title)).toEqual([
+      "Add retry with backoff",
+      "Fix flaky checkout test",
+      "Refactor auth middleware",
+      "Write release notes for 2.4",
+      "Upgrade to React 20",
+    ]);
+    expect(backend.terminalSessions).toBe(true);
+    expect(new MockAgentBackend().terminalSessions).toBe(false);
+    expect((await new MockAgentBackend("readme-start").listSessions())).toEqual([]);
+  });
+
+  it("runs the scripted request: it asks a question, then finishes with its goal at 3/3", async () => {
+    const events: AgentEvent[] = [];
+    backend.subscribe((event) => events.push(event));
+    expect(await backend.getGoal("retry-backoff")).toMatchObject({ completed: 0, total: 3 });
+
+    await backend.sendMessage("retry-backoff", { text: DEMO_REQUEST, images: [], files: [] });
+    await vi.advanceTimersByTimeAsync(6_000);
+
+    const question = (await backend.getTranscript("retry-backoff")).find((item) => item.kind === "question");
+    expect(question).toMatchObject({ status: "pending", answerable: true });
+    expect((await backend.listSessions()).find((session) => session.id === "retry-backoff")?.status).toBe("waiting");
+    expect(await backend.getGoal("retry-backoff")).toMatchObject({ completed: 1 });
+
+    await backend.answerQuestion("retry-backoff", "demo-question", {
+      selected: ["Exponential backoff with jitter"],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(await backend.getGoal("retry-backoff")).toMatchObject({ completed: 3, total: 3, mode: "complete" });
+    expect((await backend.listSessions()).find((session) => session.id === "retry-backoff")?.status).toBe("idle");
+    const transcript = await backend.getTranscript("retry-backoff");
+    expect(transcript.filter((item) => item.kind === "tool").map((item) => item.status)).toEqual(
+      Array(5).fill("completed"),
+    );
+    expect(transcript.at(-1)).toMatchObject({ kind: "message", role: "assistant", streaming: false });
+    expect(events.some((event) => event.type === "tool.updated")).toBe(true);
+  });
+
+  it("answers any other request with its canned reply", async () => {
+    await backend.sendMessage("release-notes", { text: "Add a section", images: [], files: [] });
+    await vi.runAllTimersAsync();
+    expect((await backend.getTranscript("release-notes")).at(-1)).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("Done."),
+    });
   });
 });

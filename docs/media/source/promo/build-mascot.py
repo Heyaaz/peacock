@@ -3,8 +3,12 @@ from pathlib import Path
 from PIL import Image
 
 root = Path(__file__).resolve().parents[4]
-src = Image.open(root / "src/assets/gajae-icon.png").convert("RGBA")
-box = (118, 120, 912, 892)
+src = Image.open(root / "src/assets/peacock-icon.png").convert("RGBA")
+# The icon sits on a transparent margin; crop to the tile, as a square.
+left, top, right, bottom = src.getchannel("A").getbbox()
+side = max(right - left, bottom - top)
+cx, cy = (left + right) // 2, (top + bottom) // 2
+box = (cx - side // 2, cy - side // 2, cx - side // 2 + side, cy - side // 2 + side)
 crop = src.crop(box)
 w, h = crop.size
 
@@ -29,7 +33,7 @@ def grid(cols):
     return {"cols": cols, "rows": rows, "cells": out}
 
 
-data = {"dots": grid(54), "pixels": grid(30)}
+data = {"dots": grid(54)}
 blob = json.dumps(data, separators=(",", ":"))
 html = Path(__file__).with_name("promo.html")
 text = html.read_text()

@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import type {
   ArtifactContent,
+  ContextBreakdown,
   DiffSnapshot,
   EffectiveRuntimeState,
   GeneratedFilePreview,
@@ -25,8 +26,12 @@ import type {
   HistorySession,
   MessageDelivery,
   QueuedMessage,
+  SessionTreeEntry,
+  SessionUsageStats,
+  SubagentMessage,
   SubagentSnapshot,
 } from "../../shared/agent-contract";
+import { readmeSample, readmeStartSample } from "./mock-sample-readme";
 import { transcriptDelivery } from "../../shared/transcript-item-equal";
 import {
   selectTranscriptPage,
@@ -61,7 +66,7 @@ const mockModelOptions = [
 const sessions: AgentSession[] = [
   {
     id: "agent-control",
-    title: "Gajae UI",
+    title: "Peacock UI",
     subtitle: "React shell and backend boundary",
     workspace: "/tmp",
     runtime: "gjc",
@@ -295,7 +300,7 @@ const transcripts: Record<string, TranscriptItem[]> = {
       sessionId: "m1-box",
       role: "assistant",
       content:
-        "폰은 Tailscale 사설망으로만 브리지에 닿고, 인증 정보와 실행 권한은 M1에 남습니다.\n\n```mermaid\nflowchart LR\n  Phone[Phone] -->|Tailscale| Bridge[M1 bridge]\n  Bridge --> Gajae[Gajae app]\n  Gajae --> GJC[GJC session]\n```",
+        "폰은 Tailscale 사설망으로만 브리지에 닿고, 인증 정보와 실행 권한은 M1에 남습니다.\n\n```mermaid\nflowchart LR\n  Phone[Phone] -->|Tailscale| Bridge[M1 bridge]\n  Bridge --> Peacock[Peacock app]\n  Peacock --> GJC[GJC session]\n```",
       createdAt: "10:03",
     },
   ],
@@ -319,6 +324,154 @@ const transcripts: Record<string, TranscriptItem[]> = {
     },
   ],
 };
+
+/**
+ * What the mock serves: its rows, what they said, and the few strings its canned
+ * replies use. The default is the Korean sample every smoke and test reads; the
+ * README clips ask for an English one with `?sample=readme` (mock-sample-readme.ts).
+ */
+export interface MockSample {
+  sessions: AgentSession[];
+  transcripts: Record<string, TranscriptItem[]>;
+  modelOptions: typeof mockModelOptions;
+  /** The goal a session without one of its own shows. */
+  goal: GoalSnapshot;
+  /** Goals of single sessions, by id; a script moves them as it goes. */
+  goals?: Record<string, GoalSnapshot>;
+  /** Whether the new-session dialog may offer every agent, as the desktop app's does. */
+  terminalSessions?: boolean;
+  /** The folder a new session starts in; the connection names it. */
+  workspace?: string;
+  sideAnswer(question: string): string;
+  suggestion: string;
+  /** The canned reply to a message, one streamed chunk each. */
+  reply: string[];
+  ruleFollowUp(prefix: string): { description: string; output: string };
+  diffFiles(sessionId: string): DiffSnapshot["files"];
+  subagents(): SubagentSnapshot[];
+  /** What an omp chat's context window holds, for a session that offers it. */
+  contextBreakdown?(sessionId: string): ContextBreakdown | null;
+  sessionStats?(sessionId: string): SessionUsageStats;
+  sessionTree?(sessionId: string): SessionTreeEntry[];
+  subagentMessages?(sessionId: string, subagentId: string): SubagentMessage[];
+  /** A scripted run for one request, where the sample has a story to tell. */
+  script?: MockScript;
+}
+
+export interface MockScript {
+  /** Takes over a request; true when it did, so no canned reply follows. */
+  send?(host: MockScriptHost, sessionId: string, text: string): boolean;
+  /** Called once a question card is answered. */
+  answer?(host: MockScriptHost, sessionId: string, gateId: string, summary: string): void;
+}
+
+/** What a script may do to the backend that runs it. */
+export interface MockScriptHost {
+  append(item: TranscriptItem): void;
+  patchTool(sessionId: string, toolId: string, patch: Partial<ToolActivity>): void;
+  /** Streams an assistant message in chunks, then calls `done`. */
+  streamReply(sessionId: string, chunks: string[], done?: () => void): void;
+  after(sessionId: string, delayMs: number, task: () => void): void;
+  setStatus(sessionId: string, status: AgentSession["status"]): void;
+  setGoal(sessionId: string, goal: GoalSnapshot): void;
+  updateQuestion(question: TranscriptItem & { kind: "question" }): void;
+}
+
+const defaultSample: MockSample = {
+  sessions,
+  transcripts,
+  modelOptions: mockModelOptions,
+  goal: {
+    enabled: true,
+    mode: "active",
+    objective: "Peacock 데스크톱 경험 완성",
+    completed: 2,
+    total: 4,
+    tasks: [
+      { content: "세션 목록과 사이드바 정리", status: "completed" },
+      { content: "질문 카드 다듬기", status: "completed" },
+      { content: "goal 목록 펼치기", status: "in_progress" },
+      { content: "패키징 후 실제 앱 확인", status: "pending" },
+    ],
+  },
+  sideAnswer(question) {
+    return [
+      `"${question}"에 대한 답입니다. 지금 세션의 맥락으로 답했고, 이 문답은 대화 기록에 남지 않습니다.`,
+      "",
+      "| 구분 | 상태 |",
+      "| --- | --- |",
+      "| 메인 대화 | 계속 진행 중 |",
+      "| 사이드 챗 | 별도 패널 |",
+      "",
+      "- [x] 메인 세션은 멈추지 않음",
+      "- [x] 대화 본문에 추가되지 않음",
+      "- [ ] 필요하면 본문에 이어서 요청",
+    ].join("\n");
+  },
+  suggestion: "방금 바꾼 부분에 테스트도 추가해줘",
+  reply: [
+    "확인했습니다. ",
+    "이 화면은 공통 backend 이벤트만 사용하므로 ",
+    "GJC와 Hermes Gateway를 같은 UI에 연결할 수 있습니다.",
+  ],
+  ruleFollowUp: () => ({
+    description: "브랜치 상태 확인",
+    output: "## main...origin/main\n M src/app/composer.tsx\n M src/app/side-chat.tsx",
+  }),
+  diffFiles(sessionId) {
+    return [
+      {
+        id: `${sessionId}-diff-1`,
+        path: "src/router/resolve-provider.ts",
+        patch: [
+          "--- a/src/router/resolve-provider.ts",
+          "+++ b/src/router/resolve-provider.ts",
+          "@@ -1,9 +1,12 @@",
+          " import type { Provider } from \"./types\";",
+          " ",
+          "-export function pickProvider(name: string): Provider {",
+          "-  if (name.startsWith(\"openai\")) return providers.openai;",
+          "-  if (name.startsWith(\"google\")) return providers.google;",
+          "-  return providers.default;",
+          "+export function resolveProvider(name: string): Provider {",
+          "+  const [family] = name.split(\"/\");",
+          "+  const provider = providers[family] ?? providers.default;",
+          "+  if (!provider.enabled) throw new Error(`Provider disabled: ${family}`);",
+          "+  return provider;",
+          " }",
+          " ",
+          " export const defaultProvider = providers.default;",
+        ].join("\n") + "\n",
+      },
+      {
+        id: `${sessionId}-diff-2`,
+        path: "README.md",
+        patch: "--- a/README.md\n+++ b/README.md\n@@\n+# Peacock\n",
+      },
+    ];
+  },
+  subagents: () => [
+    {
+      id: "mock-executor",
+      label: "executor",
+      status: "running",
+      detail: "UI 구현 중",
+    },
+  ],
+};
+
+function sampleNamed(name: string | null | undefined): MockSample {
+  if (name === "readme") return readmeSample;
+  if (name === "readme-start") return readmeStartSample;
+  return defaultSample;
+}
+
+function cloneGoal(goal: GoalSnapshot): GoalSnapshot {
+  return {
+    ...goal,
+    ...(goal.tasks ? { tasks: goal.tasks.map((task) => ({ ...task })) } : {}),
+  };
+}
 
 function cloneSession(session: AgentSession): AgentSession {
   return {
@@ -347,14 +500,11 @@ function cloneItem(item: TranscriptItem): TranscriptItem {
 
 export class MockAgentBackend implements AgentBackend {
   private readonly listeners = new Set<(event: AgentEvent) => void>();
-  private readonly sessionStore = sessions.map(cloneSession);
+  private readonly sample: MockSample;
+  private readonly sessionStore: AgentSession[];
   private readonly queuedStore = new Map<string, QueuedMessage[]>();
-  private readonly transcriptStore = new Map(
-    Object.entries(transcripts).map(([sessionId, items]) => [
-      sessionId,
-      items.map(cloneItem),
-    ]),
-  );
+  private readonly goalStore = new Map<string, GoalSnapshot>();
+  private readonly transcriptStore: Map<string, TranscriptItem[]>;
   private readonly transcriptChangeBaselines = new Map<string, TranscriptItem[]>();
   private readonly timers = new Map<
     string,
@@ -363,6 +513,24 @@ export class MockAgentBackend implements AgentBackend {
   private nextId = 100;
   private capabilitiesEmitted = new Set<string>();
   private readonly gitStores = new Map<string, GitStatusSnapshot>();
+
+  /** `sample` picks what the mock serves: the default Korean one, or the README's English one. */
+  constructor(sample?: string | null) {
+    this.sample = sampleNamed(sample);
+    this.sessionStore = this.sample.sessions.map(cloneSession);
+    this.transcriptStore = new Map(
+      Object.entries(this.sample.transcripts).map(([sessionId, items]) => [
+        sessionId,
+        items.map(cloneItem),
+      ]),
+    );
+    for (const [sessionId, goal] of Object.entries(this.sample.goals ?? {}))
+      this.goalStore.set(sessionId, cloneGoal(goal));
+  }
+
+  get terminalSessions(): boolean {
+    return this.sample.terminalSessions === true;
+  }
 
   /**
    * Pads the first session to `count` entries.
@@ -425,7 +593,7 @@ export class MockAgentBackend implements AgentBackend {
       // rather than reading as a runtime that is genuinely attached.
       label: "샘플 데이터 (Mock)",
       detail: "UI 미리보기용 가짜 데이터입니다. 실제 GJC에 연결되지 않았습니다.",
-      workspace: "agent-control",
+      workspace: this.sample.workspace ?? "agent-control",
       modelPreset: "codex-medium",
     };
   }
@@ -438,7 +606,7 @@ export class MockAgentBackend implements AgentBackend {
     const id = `session-${this.nextId++}`;
     const session: AgentSession = {
       id,
-      title: input.title?.trim() || "New Gajae session",
+      title: input.title?.trim() || "New Peacock session",
       subtitle:
         input.workspace.split("/").filter(Boolean).at(-1) || input.workspace,
       workspace: input.workspace,
@@ -640,7 +808,7 @@ export class MockAgentBackend implements AgentBackend {
               category: "model",
               type: "select",
               currentValue: "codex-medium",
-              options: mockModelOptions,
+              options: this.sample.modelOptions,
             },
             {
               id: "thinking",
@@ -677,23 +845,12 @@ export class MockAgentBackend implements AgentBackend {
       throw new Error(`Unknown session: ${sessionId}`);
     await new Promise((resolve) => setTimeout(resolve, 2800));
     const asked = question.split("\n").at(-1)?.replace(/^Follow-up question:\s*/u, "") ?? question;
-    return [
-      `"${asked}"에 대한 답입니다. 지금 세션의 맥락으로 답했고, 이 문답은 대화 기록에 남지 않습니다.`,
-      "",
-      "| 구분 | 상태 |",
-      "| --- | --- |",
-      "| 메인 대화 | 계속 진행 중 |",
-      "| 사이드 챗 | 별도 패널 |",
-      "",
-      "- [x] 메인 세션은 멈추지 않음",
-      "- [x] 대화 본문에 추가되지 않음",
-      "- [ ] 필요하면 본문에 이어서 요청",
-    ].join("\n");
+    return this.sample.sideAnswer(asked);
   }
 
   async suggestNextInput(): Promise<string | null> {
     await new Promise((resolve) => setTimeout(resolve, 400));
-    return "방금 바꾼 부분에 테스트도 추가해줘";
+    return this.sample.suggestion;
   }
 
   async cycleThinking(sessionId: string): Promise<string | undefined> {
@@ -743,7 +900,7 @@ export class MockAgentBackend implements AgentBackend {
           category: "model",
           type: "select",
           currentValue: session.model ?? "codex-medium",
-          options: mockModelOptions,
+          options: this.sample.modelOptions,
         },
         {
           id: "thinking",
@@ -873,6 +1030,8 @@ export class MockAgentBackend implements AgentBackend {
       this.startRetryDemo(sessionId);
       return "prompt";
     }
+    if (this.sample.script?.send?.(this.scriptHost(), sessionId, value))
+      return "prompt";
     this.streamSampleAnswer(sessionId);
     return "prompt";
   }
@@ -906,6 +1065,11 @@ export class MockAgentBackend implements AgentBackend {
   }
 
   private streamSampleAnswer(sessionId: string): void {
+    this.streamReply(sessionId, this.sample.reply);
+  }
+
+  /** Streams an assistant message in chunks and returns the session to idle, unread. */
+  private streamReply(sessionId: string, chunks: string[], done?: () => void): void {
     const assistantMessage: ChatMessage = {
       id: `message-${this.nextId++}`,
       kind: "message",
@@ -917,12 +1081,6 @@ export class MockAgentBackend implements AgentBackend {
     };
 
     this.schedule(sessionId, 360, () => this.append(assistantMessage));
-
-    const chunks = [
-      "확인했습니다. ",
-      "이 화면은 공통 backend 이벤트만 사용하므로 ",
-      "GJC와 Hermes Gateway를 같은 UI에 연결할 수 있습니다.",
-    ];
 
     chunks.forEach((delta, index) => {
       this.schedule(sessionId, 650 + index * 420, () => {
@@ -941,6 +1099,7 @@ export class MockAgentBackend implements AgentBackend {
           streaming: message.streaming,
         });
         if (!message.streaming) {
+          done?.();
           this.updateStatus(sessionId, "idle");
           const session = this.sessionStore.find(
             (candidate) => candidate.id === sessionId,
@@ -964,6 +1123,27 @@ export class MockAgentBackend implements AgentBackend {
     });
   }
 
+  /** The few things a sample's script may do to this backend. */
+  private scriptHost(): MockScriptHost {
+    return {
+      append: (item) => this.append(item),
+      patchTool: (sessionId, toolId, patch) => {
+        const tool = this.transcriptStore
+          .get(sessionId)
+          ?.find((item) => item.id === toolId);
+        if (tool?.kind !== "tool") return;
+        Object.assign(tool, patch);
+        this.emit({ type: "tool.updated", tool: cloneItem(tool) as ToolActivity });
+      },
+      streamReply: (sessionId, chunks, done) => this.streamReply(sessionId, chunks, done),
+      after: (sessionId, delayMs, task) => this.schedule(sessionId, delayMs, task),
+      setStatus: (sessionId, status) => this.updateStatus(sessionId, status),
+      setGoal: (sessionId, goal) => this.goalStore.set(sessionId, cloneGoal(goal)),
+      updateQuestion: (question) =>
+        this.emit({ type: "question.updated", question: cloneItem(question) as typeof question }),
+    };
+  }
+
   async cancelRun(sessionId: string): Promise<void> {
     this.clearTimers(sessionId);
     this.updateStatus(sessionId, "idle");
@@ -983,6 +1163,7 @@ export class MockAgentBackend implements AgentBackend {
     question.answerSummary = summary;
     question.error = undefined;
     this.emit({ type: "question.updated", question: cloneItem(question) as typeof question });
+    this.sample.script?.answer?.(this.scriptHost(), sessionId, gateId, summary);
   }
 
   async resolveToolCall(toolId: string, decision: ToolDecision): Promise<void> {
@@ -1004,16 +1185,17 @@ export class MockAgentBackend implements AgentBackend {
 
   /** After a saved allow rule, a matching command arrives and is decided without a card. */
   private followWithRuleMatch(sessionId: string, prefix: string): void {
+    const followUp = this.sample.ruleFollowUp(prefix);
     this.schedule(sessionId, 900, () =>
       this.append({
         id: `tool-auto-${this.nextId++}`,
         kind: "tool",
         sessionId,
         name: "bash",
-        description: "브랜치 상태 확인",
+        description: followUp.description,
         command: JSON.stringify({ command: `${prefix} --branch` }),
         status: "completed",
-        output: "## main...origin/main\n M src/app/composer.tsx\n M src/app/side-chat.tsx",
+        output: followUp.output,
         autoDecision: { decision: "allow", prefix },
         createdAt: "now",
       }),
@@ -1045,36 +1227,7 @@ export class MockAgentBackend implements AgentBackend {
       sessionId,
       workspace: session.workspace,
       refreshedAt: "now",
-      files: [
-        {
-          id: `${sessionId}-diff-1`,
-          path: "src/router/resolve-provider.ts",
-          patch: [
-            "--- a/src/router/resolve-provider.ts",
-            "+++ b/src/router/resolve-provider.ts",
-            "@@ -1,9 +1,12 @@",
-            " import type { Provider } from \"./types\";",
-            " ",
-            "-export function pickProvider(name: string): Provider {",
-            "-  if (name.startsWith(\"openai\")) return providers.openai;",
-            "-  if (name.startsWith(\"google\")) return providers.google;",
-            "-  return providers.default;",
-            "+export function resolveProvider(name: string): Provider {",
-            "+  const [family] = name.split(\"/\");",
-            "+  const provider = providers[family] ?? providers.default;",
-            "+  if (!provider.enabled) throw new Error(`Provider disabled: ${family}`);",
-            "+  return provider;",
-            " }",
-            " ",
-            " export const defaultProvider = providers.default;",
-          ].join("\n") + "\n",
-        },
-        {
-          id: `${sessionId}-diff-2`,
-          path: "README.md",
-          patch: "--- a/README.md\n+++ b/README.md\n@@\n+# Gajae\n",
-        },
-      ],
+      files: this.sample.diffFiles(sessionId),
     };
   }
 
@@ -1113,19 +1266,7 @@ export class MockAgentBackend implements AgentBackend {
   async getGoal(sessionId: string): Promise<GoalSnapshot> {
     if (!this.sessionStore.some((session) => session.id === sessionId))
       throw new Error(`Unknown session: ${sessionId}`);
-    return {
-      enabled: true,
-      mode: "active",
-      objective: "Gajae 데스크톱 경험 완성",
-      completed: 2,
-      total: 4,
-      tasks: [
-        { content: "세션 목록과 사이드바 정리", status: "completed" },
-        { content: "질문 카드 다듬기", status: "completed" },
-        { content: "goal 목록 펼치기", status: "in_progress" },
-        { content: "패키징 후 실제 앱 확인", status: "pending" },
-      ],
-    };
+    return cloneGoal(this.goalStore.get(sessionId) ?? this.sample.goal);
   }
 
   async operateGoal(
@@ -1154,14 +1295,25 @@ export class MockAgentBackend implements AgentBackend {
   async listSubagents(sessionId: string): Promise<SubagentSnapshot[]> {
     if (!this.sessionStore.some((session) => session.id === sessionId))
       throw new Error(`Unknown session: ${sessionId}`);
-    return [
-      {
-        id: "mock-executor",
-        label: "executor",
-        status: "running",
-        detail: "UI 구현 중",
-      },
-    ];
+    return this.sample.subagents();
+  }
+
+  async getContextBreakdown(sessionId: string): Promise<ContextBreakdown | null> {
+    return this.sample.contextBreakdown?.(sessionId) ?? null;
+  }
+
+  async getSessionStats(sessionId: string): Promise<SessionUsageStats> {
+    const stats = this.sample.sessionStats?.(sessionId);
+    if (!stats) throw new Error(`No usage for session: ${sessionId}`);
+    return stats;
+  }
+
+  async getSessionTree(sessionId: string): Promise<SessionTreeEntry[]> {
+    return this.sample.sessionTree?.(sessionId) ?? [];
+  }
+
+  async getSubagentMessages(sessionId: string, subagentId: string): Promise<SubagentMessage[]> {
+    return this.sample.subagentMessages?.(sessionId, subagentId) ?? [];
   }
 
   async refreshRuntimeState(sessionId: string): Promise<EffectiveRuntimeState> {

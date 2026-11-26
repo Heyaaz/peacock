@@ -85,7 +85,8 @@ async function selectBackend(): Promise<AgentBackend> {
   if (forceMock || (!desktop && !browserOrigin)) {
     if (import.meta.env.DEV || __GAJAE_INCLUDE_MOCK__) {
       const { MockAgentBackend } = await import('./backend/mock-agent-backend')
-      const mock = new MockAgentBackend()
+      // `?sample=readme` is the English sample the README clips record on.
+      const mock = new MockAgentBackend(params.get('sample'))
       // The inspector smoke needs a session long enough that mounting every row would be
       // visible, to prove the transcript is windowed.
       const seed = Number.parseInt(params.get('seedTranscript') ?? '', 10)

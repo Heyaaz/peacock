@@ -10,21 +10,23 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/gajae-promo.gif" alt="Peacock in thirty seconds" width="860">
+  <img src="docs/media/peacock-promo.gif" alt="Peacock in thirty seconds" width="860">
 </p>
 
 Peacock is an Electron app for running coding agents without living in a terminal.
 Pick the agent per session: Claude Code, omp (Oh My Pi), Codex, GJC, or a plain
 shell. Peacock never embeds an agent. Claude Code, omp and Codex run as their own
-CLI in a terminal that herdr-core keeps alive across app restarts. For Claude
-Code and omp, Peacock also offers a chat view built from the agent's own session
-file and answers their tool approvals from a card. GJC sessions go through GJC's public
+CLI in a terminal that herdr-core keeps alive across app restarts. Claude Code
+and omp report their turns and tool approvals back, so an approval waits on a
+card in the window or on a paired phone, and omp also opens on a chat view that
+Peacock drives over omp's RPC mode. GJC sessions go through GJC's public
 `gjc sdk session` CLI and the session files GJC already writes, so a request
 started in the app can be checked from the terminal and the other way round.
 
-The richest features (questions, goals, side chat, model picker) are GJC's.
-Other agents get their terminal, status where the agent reports it, and remote
-access; Claude Code and omp also the chat view, tool approvals, global search
+GJC's chat is the richest: questions, goals, side chat, next-input suggestions
+and the model picker. omp's chat has most of those and adds context, subagent
+and conversation-tree views. Claude Code and Codex get their terminal and remote
+access; Claude Code, like omp, also gets status, approval cards, global search
 and parallel runs.
 
 ## Demo
@@ -33,16 +35,30 @@ and parallel runs.
   <img src="docs/media/demo.gif" alt="A request runs, asks a question, and finishes" width="860">
 </p>
 
-The app running on its built-in sample data. A request reads code and runs the
-tests, stops to ask which retry policy to use, then edits and finishes while the
-goal above the composer ticks to 3/3. Full quality:
-[demo.mp4](docs/media/demo.mp4), [promo.mp4](docs/media/gajae-promo.mp4).
+The app running on its built-in sample data, in a GJC session. A request reads
+code and runs the tests, stops to ask which retry policy to use, then edits and
+finishes while the goal above the composer ticks to 3/3. Full quality:
+[demo.mp4](docs/media/demo.mp4), [promo.mp4](docs/media/peacock-promo.mp4).
 
 ## Feature tour
 
 Each clip is the real app on its built-in sample data.
 
 <table>
+  <tr>
+    <td width="50%" valign="top">
+      <strong>Pick the agent per session</strong><br>
+      <img src="docs/media/feature-agents.gif" alt="Choosing an agent in the new session dialog">
+      <sub>Claude Code, omp, Codex, GJC or a shell. omp also opens on its chat, the
+      others on their terminal or conversation.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <strong>omp chat at a glance</strong><br>
+      <img src="docs/media/feature-omp.gif" alt="omp's todo list, context breakdown and conversation tree">
+      <sub>The running step and todo list, a context breakdown with the session's
+      cost, and the conversation tree.</sub>
+    </td>
+  </tr>
   <tr>
     <td width="50%" valign="top">
       <strong>Approve once, skip the rest</strong><br>
@@ -80,7 +96,7 @@ Each clip is the real app on its built-in sample data.
     <td width="50%" valign="top">
       <strong>Model picker</strong><br>
       <img src="docs/media/feature-model-picker.gif" alt="Searching and starring models in the model picker">
-      <sub>Switch tabs, search, and star favorites.</sub>
+      <sub>Search, set the thinking level and Fast mode, and star favorites.</sub>
     </td>
   </tr>
   <tr>
@@ -107,16 +123,17 @@ Each clip is the real app on its built-in sample data.
   choice in Settings). Queued messages can be reordered or removed, and Esc
   stops the turn.
 - **Questions and plan approvals.** When GJC asks (a deep interview, a ralplan
-  approval), the choices appear as a card above the composer. Press 1–9 or type
-  your own answer.
-- **Tool approvals.** With `매번 확인`, a command waits on its card until you
-  allow or reject it, from the window or a paired phone. A rejection can tell the
-  agent what to do instead. Needs GJC 0.19.3 or later.
+  approval) or omp does, the choices appear as a card above the composer. Press
+  1–9 or type your own answer.
+- **Tool approvals.** With **Ask before commands**, a command waits on its card
+  until you allow or reject it, from the window or a paired phone. A rejection
+  can tell the agent what to do instead. Needs GJC 0.19.3 or later; Claude Code
+  and omp approvals arrive on the same card.
 - **Project command rules.** Save a command prefix from an approval card as
   always allow or always reject for that project. Matching commands are decided
   without a card, in every session of the project. An allow rule never covers a
   command that chains, pipes or redirects; that one still asks. Review and
-  delete rules in Settings.
+  delete rules in Settings > Approvals.
 - **Side chat.** `/btw` or ⌘⇧B asks about the session in a side panel while it
   keeps working. Nothing is added to the transcript.
 - **Next-input suggestion.** When a turn ends, the composer offers a likely next
@@ -126,9 +143,15 @@ Each clip is the real app on its built-in sample data.
   send the comments back as a review. A folder holding several repositories
   shows each one's changes.
 - **Goals.** An active goal stays pinned above the composer with its progress.
-  Open it to see each task.
-- **Model picker.** Tabs, search and favorites for GJC's models, with the Fast
-  tier toggle in the same menu.
+  Open it to see each task. omp's goal mode shows up the same way.
+- **Model picker.** Search, favorites and the thinking level for the agent's
+  models, with GJC's Fast tier toggle in the same menu.
+- **omp chat.** A status line with the running step, elapsed time and todo list,
+  and a context bar that opens a breakdown by category with the session's cost
+  and tokens. Queued messages can be sent now or dropped, subagents can be
+  stopped or steered, and Fast and slow modes, auto-compaction and auto-retry
+  switch from the same chat. `!` runs a shell command, the conversation tree
+  forks or rewrites from any message, and the chat exports as HTML.
 - **Projects sidebar.** Sessions group by repository, worktrees included.
   Anything waiting on you sits at the top. Switch to a by-status view any time.
 - **Any coding agent.** New sessions open the agent you chose last (on first
@@ -166,7 +189,8 @@ curl -fsSL https://raw.githubusercontent.com/Heyaaz/peacock/main/install.sh | sh
 
 The installer downloads the latest release, checks its SHA-256, puts
 `Peacock.app` in `/Applications` (or `~/Applications` if that is not writable)
-and opens it. Run it again to update.
+and opens it. Run it again to update, or use the Update button that appears
+beside Settings when a release is out.
 
 Peacock was called Gajae before. On its first launch it copies Gajae's data
 folder (`~/Library/Application Support/Agent Control`) to
@@ -198,8 +222,9 @@ keeps opening GJC.
 
 ## Quick start
 
-1. Press **⌘T** (or **+**), pick the agent and a folder. The dialog starts on
-   the agent you chose last.
+1. Press **⌘T** to open a session on your default agent in the current folder, or
+   **+** to pick the agent and the folder. The dialog starts on the agent you
+   chose last.
 2. Type a request and press **Enter**. Drop files in to send them as local
    paths; images go to the model as images.
 3. While it runs, keep typing to queue the next request (or steer it in, if
@@ -212,6 +237,7 @@ keeps opening GJC.
 | `⌘T` | New session |
 | `⌘1`–`⌘9` | Select a session in sidebar order |
 | `⌘K` | Search sessions and messages |
+| `⌘F` | Find in the conversation |
 | `⌥⌘U` | Inbox |
 | `⌃⌥Space` | Quick input from any app |
 | `⌘⇧B` | Side chat |

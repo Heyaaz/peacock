@@ -54,6 +54,6 @@ if (encode) {
     if (r.status !== 0) throw new Error('ffmpeg failed');
   };
   const input = ['-y', '-framerate', String(FPS), '-i', join(framesDir, '%04d.png')];
-  run([...input, '-vf', 'scale=960:540:flags=lanczos', '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-movflags', '+faststart', join(outDir, 'gajae-promo.mp4')]);
-  run([...input, '-vf', 'fps=15,scale=960:540:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', '-loop', '0', join(outDir, 'gajae-promo.gif')]);
+  run([...input, '-vf', 'scale=960:540:flags=lanczos', '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-movflags', '+faststart', join(outDir, 'peacock-promo.mp4')]);
+  run([...input, '-vf', 'fps=15,scale=960:540:flags=lanczos,split[a][b];[a]palettegen=max_colors=160:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', '-loop', '0', join(outDir, 'peacock-promo.gif')]);
 }

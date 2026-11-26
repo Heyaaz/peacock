@@ -64,7 +64,7 @@ describe("backend selection when GJC is unavailable", () => {
     // The one legitimate reason to build the mock backend is an explicit request for
     // it, so the only `MockAgentBackend` in this function is the one guarded by that
     // request. A second construction is the fallback coming back.
-    expect(body.match(/new MockAgentBackend\(\)/gu)).toHaveLength(1);
+    expect(body.match(/new MockAgentBackend\(/gu)).toHaveLength(1);
     // Deciding on the connection state is what made the swap possible.
     expect(body).not.toContain("getConnection");
     expect(body).not.toContain('"connected"');
@@ -77,7 +77,7 @@ describe("backend selection when GJC is unavailable", () => {
     const body = selectBackendBody(entrySource);
     expect(body).toContain("backend");
     expect(body).toContain("mock");
-    expect(body).toContain("new MockAgentBackend()");
+    expect(body).toMatch(/new MockAgentBackend\(/u);
   });
 });
 
