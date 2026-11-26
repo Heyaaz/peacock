@@ -73,6 +73,22 @@ describe("OmpLiveRows", () => {
     expect(isLiveRowId(SESSION, notice!.id)).toBe(true);
   });
 
+  it("records an image next to its text so delivery can be confirmed", () => {
+    const live = new OmpLiveRows(SESSION);
+    live.apply({
+      type: "message_start",
+      messageId: "msg-img",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "look" },
+          { type: "image", data: "blob:sha256:abc", mimeType: "image/webp" },
+        ],
+      },
+    });
+    expect(live.items()[0]).toMatchObject({ kind: "message", role: "user", content: "look", imageCount: 1 });
+  });
+
   it("keeps only what the session file will not hold when a turn is read back", () => {
     const live = new OmpLiveRows(SESSION);
     live.apply({ type: "message_start", messageId: "msg-1", message: { role: "user", content: [{ type: "text", text: "hi" }] } });

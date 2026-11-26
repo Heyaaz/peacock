@@ -737,6 +737,12 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   images?: ImageAttachment[];
+  /**
+   * Images the runtime kept but this row cannot render (omp stores them as blob
+   * references). Delivery matching only needs their presence; optimistic rows
+   * carry the bytes while the window shows them.
+   */
+  imageCount?: number;
   createdAt: string;
   streaming?: boolean;
 }

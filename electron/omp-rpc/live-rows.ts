@@ -186,6 +186,7 @@ export class OmpLiveRows {
       sessionId: this.sessionId,
       role: "user",
       content,
+      ...(pictures > 0 ? { imageCount: pictures } : {}),
       createdAt: clockLabel(message.timestamp),
       streaming: false,
     };

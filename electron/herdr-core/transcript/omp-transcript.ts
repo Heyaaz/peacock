@@ -206,8 +206,13 @@ export function createOmpTranscriptParser(sessionId: string): TranscriptParser {
       // a new prompt means the calls of the turn before it will never answer
       for (const id of pending.values()) rows.update<ToolActivity>(id, (tool) => ({ ...tool, status: "cancelled" }));
       pending.clear();
-      if (prompt.length > 0) putRow(messageRow(rows, rows.id(entryId), "user", prompt, ts));
-      else if (pictures > 0) putRow(messageRow(rows, rows.id(entryId), "user", pictures === 1 ? "[image]" : `[${pictures} images]`, ts));
+      if (prompt.length > 0)
+        putRow({
+          ...messageRow(rows, rows.id(entryId), "user", prompt, ts),
+          ...(pictures > 0 ? { imageCount: pictures } : {}),
+        });
+      else if (pictures > 0)
+        putRow(messageRow(rows, rows.id(entryId), "user", pictures === 1 ? "[image]" : `[${pictures} images]`, ts));
       return;
     }
 

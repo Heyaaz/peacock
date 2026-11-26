@@ -61,6 +61,22 @@ describe("message delivery tracker", () => {
     ]);
   });
 
+  it("confirms an image submission against a row that only reports the image count", () => {
+    const delivered: Array<{ sessionId: string; input: MessageInput }> = [];
+    const tracker = new MessageDeliveryTracker({
+      onDelivered: (delivery) => delivered.push(delivery),
+    });
+    tracker.submit(
+      "session-1",
+      input("look", { images: [{ id: "i", name: "a.png", mimeType: "image/png", data: "AAAA" }] }),
+      [],
+      0,
+      attachedRunning,
+    );
+    tracker.observeUserEvent("session-1", user("u-img", "look", { imageCount: 1 }), 1);
+    expect(delivered).toHaveLength(1);
+  });
+
   it("requires a paged absence check to include the submission boundary", () => {
     const tracker = new MessageDeliveryTracker();
     const fence = user("before-submit", "previous request");

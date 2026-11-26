@@ -96,7 +96,8 @@ function transcriptRequest(
     .replace(/\[Files:\s*[^\]]*\]/giu, "")
     .replace(/\[Images:\s*[^\]]*\]/giu, "");
   const hasImages = pathsFromContent(item.content, "images").length > 0 ||
-    /<local-images>/u.test(item.content) || Boolean(item.images?.length);
+    /<local-images>/u.test(item.content) || Boolean(item.images?.length) ||
+    (item.imageCount ?? 0) > 0;
   return {
     text: normalizeComposerText(content.replace(/^\/(?:steer|queue)(?:\s+|$)/iu, "").trim()),
     files: pathsFromContent(item.content, "files"),

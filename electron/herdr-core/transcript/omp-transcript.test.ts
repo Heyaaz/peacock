@@ -51,6 +51,17 @@ describe("omp transcript", () => {
     ]);
   });
 
+  it("keeps the image count of a prompt whose text sits beside the pictures", () => {
+    const items = parse(HEAD + entry("e1", "c0", {
+      role: "user",
+      content: [
+        { type: "text", text: "look" },
+        { type: "image", data: "blob:sha256:abc", mimeType: "image/webp" },
+      ],
+    }));
+    expect(items).toMatchObject([{ id: `${SID}:e1`, role: "user", content: "look", imageCount: 1 }]);
+  });
+
   it("passes over records that hold no row", () => {
     expect(ompLineMayHoldRow(JSON.stringify({ type: "model_usage" }))).toBe(false);
     expect(ompLineMayHoldRow(JSON.stringify({ type: "message" }))).toBe(true);

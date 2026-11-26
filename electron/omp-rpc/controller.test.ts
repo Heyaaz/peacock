@@ -73,7 +73,7 @@ function setup(options: { installed?: boolean; rules?: Record<string, "allow" | 
         answer({
           sessionFile: openFile,
           sessionId: "01a2103a-b2a8-7412-b3ed-0106bbece8c3",
-          model: { provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash" },
+          model: { provider: "opencodex", id: "deepseek-flash", name: "DeepSeek Flash", input: ["text"] },
           thinkingLevel: "low",
           configuredThinkingLevel: "low",
           thinkingLevels: ["off", "auto", "low", "high"],
@@ -439,6 +439,20 @@ describe("OmpRpcController", () => {
       message: "look\n\nAttached file: /tmp/notes.md",
       images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
     });
+  });
+
+  it("says once that the active model cannot read pictures instead of failing silently", async () => {
+    const context = setup();
+    const session = await newChat(context);
+    const image = { id: "i", name: "a.png", mimeType: "image/png", data: "AAAA" };
+    await context.controller.sendMessage(session.id, { text: "look", images: [image], files: [] });
+    await context.controller.sendMessage(session.id, { text: "again", images: [image], files: [] });
+    const warnings = context.events.filter(
+      (event) => event.type === "transcript.appended" && event.item.kind === "notice" && event.item.title === "이미지 미지원",
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ item: { tone: "warning" } });
+    expect(context.processes[0]!.child.sent("prompt")[0]).toMatchObject({ images: [{ data: "AAAA" }] });
   });
 
   it("renames and deletes, ending the chat's omp", async () => {

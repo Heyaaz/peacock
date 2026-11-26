@@ -1045,7 +1045,9 @@ function sameUserRequest(
     return remoteNames === localNames;
   if (local.images?.length) {
     const remoteHasImages =
-      /<local-images>/u.test(remote.content) || Boolean(remote.images?.length);
+      /<local-images>/u.test(remote.content) ||
+      Boolean(remote.images?.length) ||
+      (remote.imageCount ?? 0) > 0;
     return remoteHasImages && (!localText || remoteText === localText);
   }
   return false;

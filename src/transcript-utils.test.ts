@@ -1122,6 +1122,33 @@ describe("cacheTranscript", () => {
     expect(row?.kind === "message" ? row.images : undefined).toEqual(images);
   });
 
+  it("confirms an image echo against a persisted row that only records the count", () => {
+    const images = [
+      { id: "img-1", name: "shot.png", mimeType: "image/png", data: "abc" },
+    ];
+    const echo = {
+      ...message,
+      id: "local-prompt-image-count",
+      role: "user" as const,
+      content: "이거 봐줘",
+      images,
+    };
+    const settled = cacheTranscript({ "session-1": [echo] }, "session-1", [
+      {
+        ...message,
+        id: "shared-message-image-count",
+        role: "user" as const,
+        content: "이거 봐줘",
+        imageCount: 1,
+      },
+    ]);
+    expect(settled["session-1"].map((item) => item.id)).toEqual([
+      "shared-message-image-count",
+    ]);
+    const [row] = settled["session-1"];
+    expect(row?.kind === "message" ? row.images : undefined).toEqual(images);
+  });
+
   it("keeps images on a same-id row when a full sync rebuilds it", () => {
     const images = [
       { id: "img-9", name: "chart.png", mimeType: "image/png", data: "xyz" },
