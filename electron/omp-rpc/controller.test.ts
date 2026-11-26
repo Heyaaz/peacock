@@ -441,20 +441,6 @@ describe("OmpRpcController", () => {
     });
   });
 
-  it("says once that the active model cannot read pictures instead of failing silently", async () => {
-    const context = setup();
-    const session = await newChat(context);
-    const image = { id: "i", name: "a.png", mimeType: "image/png", data: "AAAA" };
-    await context.controller.sendMessage(session.id, { text: "look", images: [image], files: [] });
-    await context.controller.sendMessage(session.id, { text: "again", images: [image], files: [] });
-    const warnings = context.events.filter(
-      (event) => event.type === "transcript.appended" && event.item.kind === "notice" && event.item.title === "이미지 미지원",
-    );
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatchObject({ item: { tone: "warning" } });
-    expect(context.processes[0]!.child.sent("prompt")[0]).toMatchObject({ images: [{ data: "AAAA" }] });
-  });
-
   it("names each image's local path so the agent can open it when the model cannot see it", async () => {
     const context = setup();
     const session = await newChat(context);

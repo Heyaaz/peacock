@@ -197,8 +197,6 @@ interface ChatRuntime {
   shellRuns: number;
   /** The idle recap asked for after a finished turn, while the chat stays quiet. */
   recapTimer?: ReturnType<typeof setTimeout>;
-  /** The model whose lack of image input was already reported in this chat. */
-  warnedImages?: string;
 }
 
 /** A side question waiting for its answer (`btw`). */
@@ -425,7 +423,6 @@ export class OmpRpcController implements AgentRuntimeController {
     const client = await this.ensureProcess(sessionId);
     const chat = this.chat(sessionId);
     const images = await this.images(input);
-    this.noticeUnsupportedImages(sessionId, input.images.length);
     const message = this.promptText(body, input);
     if (chat.working && (steer || queue)) {
       await client.call({ type: steer ? "steer" : "follow_up", message, ...(images ? { images } : {}) });
@@ -1516,7 +1513,6 @@ export class OmpRpcController implements AgentRuntimeController {
     if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
     const client = await this.ensureProcess(sessionId);
     const images = await this.images(input);
-    this.noticeUnsupportedImages(sessionId, input.images.length);
     await client.call({ type: "steer", message: this.promptText(input.text.trim(), input), ...(images ? { images } : {}) });
     return "steer";
   }
@@ -1526,7 +1522,6 @@ export class OmpRpcController implements AgentRuntimeController {
     if (!this.chat(sessionId).working) return this.sendMessage(sessionId, input);
     const client = await this.ensureProcess(sessionId);
     const images = await this.images(input);
-    this.noticeUnsupportedImages(sessionId, input.images.length);
     await client.call({ type: "follow_up", message: this.promptText(input.text.trim(), input), ...(images ? { images } : {}) });
     return "prompt";
   }
@@ -1869,29 +1864,6 @@ export class OmpRpcController implements AgentRuntimeController {
 
   /** Attachments go with the prompt: pictures as omp's images, other files named by their path. */
   protected checkAttachments(_sessionId: string, _input: ResolvedMessageInput): void {}
-
-  /**
-   * omp drops images the active model cannot read, and the turn then looks like it
-   * ignored the attachment. Say so once per model instead of leaving it silent.
-   */
-  private noticeUnsupportedImages(sessionId: string, images: number): void {
-    if (images === 0) return;
-    const chat = this.chats.get(sessionId);
-    const model = record(chat?.state?.model);
-    const input = Array.isArray(model.input)
-      ? model.input.filter((entry): entry is string => typeof entry === "string")
-      : undefined;
-    if (!input || input.includes("image")) return;
-    const key = `${string(model.provider) ?? ""}/${string(model.id) ?? ""}`;
-    if (!key || chat?.warnedImages === key) return;
-    if (chat) chat.warnedImages = key;
-    this.addNotice(
-      sessionId,
-      "이미지 미지원",
-      "현재 모델은 이미지를 직접 보지 못합니다. 첨부 파일 경로를 메시지에 함께 보냈으니, 필요하면 도구로 열어 확인하세요. 픽셀을 보려면 비전 모델로 바꾸세요.",
-      "warning",
-    );
-  }
 
   private async images(input: ResolvedMessageInput): Promise<{ type: "image"; data: string; mimeType: string }[] | undefined> {
     if (input.images.length === 0) return undefined;

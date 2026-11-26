@@ -13,15 +13,15 @@ function render(agentKind: AgentKindId | null): string {
 
 /** The label beside this mark already names the agent; the mark itself has to say which one. */
 describe("AgentMark", () => {
-  it("marks each agent differently", () => {
-    expect(render("omp")).toContain("lucide-pi");
-    expect(render("gjc")).toContain("lucide-shrimp");
-    expect(render("claude")).toContain("lucide-asterisk");
-    expect(render("codex")).toContain("lucide-hexagon");
-    expect(render("shell")).toContain("lucide-square-terminal");
+  it("draws the agent's own mark, not a shared bot", () => {
+    for (const kind of ["omp", "gjc", "claude", "codex", "shell"] as const)
+      expect(render(kind)).toContain(`data-agent="${kind}"`);
+    expect(render("omp")).toContain("<svg");
+    expect(render("gjc")).toContain("🦀");
   });
 
   it("falls back to the generic bot when the agent is unknown", () => {
+    expect(render(null)).toContain('data-agent="unknown"');
     expect(render(null)).toContain("lucide-bot");
   });
 
@@ -51,6 +51,6 @@ describe("AgentMark", () => {
     );
     expect(markup).toContain("Oh My Pi");
     expect(markup).toContain("13:15");
-    expect(markup).toContain("lucide-pi");
+    expect(markup).toContain('data-agent="omp"');
   });
 });
