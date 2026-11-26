@@ -102,11 +102,11 @@ describe("createWorktree", () => {
     expect(worktree).toEqual({
       sourceWorkspace: repo,
       path: path.join(parent, "repo.gajae-worktrees", "abc-1"),
-      branch: "gajae/abc-1",
+      branch: "peacock/abc-1",
       managed: true,
       createdBranch: true,
     });
-    expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("gajae/abc-1");
+    expect(git(worktree.path, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("peacock/abc-1");
     expect(existsSync(path.join(worktree.path, "tracked.txt"))).toBe(true);
   });
 
@@ -257,10 +257,10 @@ describe("a worktree for a terminal or chat session", () => {
     expect(git(repo, "branch", "--list", "mine")).toContain("mine");
   });
 
-  it("makes a worktree for GJC under gajae/ unless asked otherwise", async () => {
+  it("makes a worktree for GJC under peacock/ unless asked otherwise", async () => {
     const { repo } = repository();
     const gjc = await createWorktree({ workspace: repo, suffix: () => "s-1" });
-    expect(gjc.worktree.branch).toBe("gajae/s-1");
+    expect(gjc.worktree.branch).toBe("peacock/s-1");
     const other = await createWorktree({ workspace: repo, suffix: () => "s-2", branchPrefix: "team" });
     expect(other.worktree.branch).toBe("team/s-2");
   });

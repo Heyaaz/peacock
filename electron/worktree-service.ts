@@ -149,7 +149,7 @@ export async function createWorktree(
   const root = await repositoryRoot(git, request.workspace);
   if (!root) throw new Error("Workspace is not a git repository");
   const suffix = request.suffix();
-  const branch = request.branch?.trim() || `${request.branchPrefix ?? "gajae"}/${suffix}`;
+  const branch = request.branch?.trim() || `${request.branchPrefix ?? "peacock"}/${suffix}`;
   const worktreePath = path.join(worktreeHome(root), suffix);
   const branchExisted = await localBranchExists(git, root, branch);
   const onOneRemote =

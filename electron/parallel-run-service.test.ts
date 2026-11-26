@@ -95,18 +95,18 @@ describe("ParallelRunService with a partial failure", () => {
     const group = service.list()[0]!;
     expect(group.state).toEqual({ kind: "running" });
     expect(group.attempts.map((attempt) => [attempt.branch, attempt.state.kind])).toEqual([
-      ["gajae/best-of-abcdef12-1", "started"],
-      ["gajae/best-of-abcdef12-2", "failed"],
-      ["gajae/best-of-abcdef12-3", "started"],
+      ["peacock/best-of-abcdef12-1", "started"],
+      ["peacock/best-of-abcdef12-2", "failed"],
+      ["peacock/best-of-abcdef12-3", "started"],
     ]);
     expect(group.attempts[1]!.state).toEqual({
       kind: "failed",
       reason: "unknown model profile codex-medium",
     });
     expect(created.map((input) => [input.modelPreset, input.isolation, input.worktreeBranch])).toEqual([
-      ["codex-pro", "worktree", "gajae/best-of-abcdef12-1"],
-      ["codex-medium", "worktree", "gajae/best-of-abcdef12-2"],
-      ["codex-eco", "worktree", "gajae/best-of-abcdef12-3"],
+      ["codex-pro", "worktree", "peacock/best-of-abcdef12-1"],
+      ["codex-medium", "worktree", "peacock/best-of-abcdef12-2"],
+      ["codex-eco", "worktree", "peacock/best-of-abcdef12-3"],
     ]);
     expect(host.sendMessage).toHaveBeenCalledTimes(2);
     expect(host.sendMessage).toHaveBeenNthCalledWith(1, "s-1", {
@@ -669,13 +669,13 @@ describe("ParallelRunService with a terminal agent (P6)", () => {
       ["herdr", "claude", worktree("3"), "workspace", { permissionMode: "acceptEdits", model: "opus" }],
     ]);
     expect(gitCalls.filter((call) => call[1] === "worktree" && call[2] === "add").map((call) => call.slice(3))).toEqual([
-      ["-b", "gajae/best-of-abcdef12-1", worktree("1")],
-      ["-b", "gajae/best-of-abcdef12-2", worktree("2")],
-      ["-b", "gajae/best-of-abcdef12-3", worktree("3")],
+      ["-b", "peacock/best-of-abcdef12-1", worktree("1")],
+      ["-b", "peacock/best-of-abcdef12-2", worktree("2")],
+      ["-b", "peacock/best-of-abcdef12-3", worktree("3")],
     ]);
     // the attempt whose session could not be made leaves no worktree or branch behind
     expect(gitCalls).toContainEqual(["/repo", "worktree", "remove", "--force", worktree("3")]);
-    expect(gitCalls).toContainEqual(["/repo", "branch", "-D", "gajae/best-of-abcdef12-3"]);
+    expect(gitCalls).toContainEqual(["/repo", "branch", "-D", "peacock/best-of-abcdef12-3"]);
     expect(group.attempts.map((attempt) => attempt.state.kind)).toEqual(["started", "started", "failed"]);
     expect(group.attempts[0]!.state).toEqual({ kind: "started", sessionId: "terminal-1", worktreePath: worktree("1") });
     expect(host.sendWhenReady).toHaveBeenCalledTimes(2);

@@ -146,7 +146,7 @@ export class ParallelRunService {
     }
     const root = await this.repositoryRoot(input.workspace);
     const id = this.options.newId?.() ?? randomUUID();
-    const base = input.branch ?? `gajae/best-of-${id.slice(0, 8)}`;
+    const base = input.branch ?? `peacock/best-of-${id.slice(0, 8)}`;
     const attempts = input.presets.map((preset, index) => {
       const attemptId = String(index + 1);
       return {

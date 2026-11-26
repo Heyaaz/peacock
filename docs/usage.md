@@ -398,8 +398,8 @@ or let the project do it for you.
 
 - **Where.** The worktree is made next to the repository, in
   `<repo>.gajae-worktrees/<id>`, and the session opens in it. The branch is the one
-  typed in the dialog, or a new `peacock/<id>` branch from `HEAD` for Claude Code, omp,
-  Codex and a shell (GJC keeps its own `gajae/<id>`). A branch that must already exist,
+  typed in the dialog, or a new `peacock/<id>` branch from `HEAD` for every agent.
+  A branch that must already exist,
   and a fork's pull request, are still GJC's, so a request started from an issue or a CI
   run opens GJC. A terminal session (Claude Code, Codex, a shell, omp on its terminal) needs
   herdr-core for this, and the window reports it when herdr-core is not running; an omp chat
@@ -785,7 +785,7 @@ compare, and an agent that is not installed cannot start. For a terminal agent:
   and untracked files). Cleanup ends a removed attempt's terminal and deletes
   its session; the agent's own transcript file stays. A run of 2-4 attempts gives each
 attempt its own managed worktree, a new branch (`<branch>-1`, `-2`, … or
-`gajae/best-of-<id>-N` without a name) and its own model preset, and the first
+`peacock/best-of-<id>-N` without a name) and its own model preset, and the first
 request is sent to each attempt once. More than one attempt always uses worktrees.
 A CI fix does not offer the option, because its attempts would start from `HEAD`
 instead of the failing branch, and a branch name that already exists is refused

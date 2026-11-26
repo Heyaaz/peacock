@@ -2808,7 +2808,7 @@ describe("GjcSdkController CLI seam", () => {
         expect(new SessionMetadataStore(path.join(parent, "user-data")).getWorktree("made")?.createdBranch).toBe(true);
         cli.rawGlobal.mockResolvedValueOnce({ sessionId: "unnamed" } as never);
         const unnamed = await controller.createSession({ runtime: "gjc", workspace: dir, isolation: "worktree" });
-        expect(unnamed.worktree).toMatchObject({ createdBranch: true, branch: expect.stringMatching(/^gajae\//u) });
+        expect(unnamed.worktree).toMatchObject({ createdBranch: true, branch: expect.stringMatching(/^peacock\//u) });
       } finally {
         controller.dispose();
         await rm(parent, { recursive: true, force: true });
