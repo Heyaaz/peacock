@@ -4,7 +4,6 @@ import {
   ROTATING_WORK_LABELS,
   elapsedTurnMs,
   gajaeEmoticonFor,
-  type GajaeEmoticon,
   type TurnActivityKind,
   type TurnApproval,
   type TurnClock,
@@ -14,27 +13,9 @@ import { t, useLanguage } from "../i18n";
 import { LoginHintContext } from "./login-hint";
 import { formatDuration } from "./format";
 import type { SessionRetry } from "../backend/types";
-import { PeacockMark } from "./peacock-mark";
 
 
 const LABEL_ROTATE_MS = 2400;
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-/** The turn's state as the mark: its pose (the animation the avatar's class sets) and color. */
-function GajaeSprite({ emoticon, size }: { emoticon: GajaeEmoticon; size: 40 | 20 }) {
-  return (
-    <span className={`gajae-sprite gajae-sprite--${size} gajae-sprite--${emoticon}`} aria-hidden="true">
-      <PeacockMark />
-    </span>
-  );
-}
 
 /**
  * How long the running turn has worked, when it last produced anything once it has
@@ -139,7 +120,9 @@ export interface GajaeProgressRowProps {
 }
 
 /**
- * The gajae at the end of the current turn.
+ * The current turn's state at the end of the conversation: its phrase, elapsed
+ * time and any action it is waiting on. A running phrase shimmers; no mark or
+ * sprite animates beside it.
  *
  * Kind and label are the only inputs that come from the transcript. The rotating
  * phrase updates inside this row, so a label swap does not re-render the conversation.
@@ -163,33 +146,14 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
   const loginCause = kind === "error" && needsSignIn && openLogin !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const [labelIndex, setLabelIndex] = useState(0);
-  const [summary, setSummary] = useState(
-    () => kind === "done" && prefersReducedMotion(),
-  );
-  const [summaryKind, setSummaryKind] = useState(kind);
-  if (kind !== summaryKind) {
-    setSummaryKind(kind);
-    setSummary(kind === "done" && prefersReducedMotion());
-  }
   const rotates = (kind === "thinking" || kind === "tool") && label === undefined;
   const emoticon = gajaeEmoticonFor(kind);
   const shimmer = kind === "thinking" || kind === "tool";
-  const motion =
-    kind === "thinking" ||
-    kind === "tool" ||
-    kind === "approval" ||
-    (kind === "done" && !summary);
   const shownLabel = loginCause
     ? t("로그인한 AI가 없어 실행하지 못했어요")
     : rotates
     ? t(ROTATING_WORK_LABELS[labelIndex] ?? ROTATING_WORK_LABELS[0])
     : (label ?? (kind === "done" ? t("완료") : ""));
-
-  useEffect(() => {
-    if (kind !== "done" || summary || prefersReducedMotion()) return;
-    const timer = window.setTimeout(() => setSummary(true), 1000);
-    return () => window.clearTimeout(timer);
-  }, [kind, summary]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -233,29 +197,12 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
   return (
     <div
       ref={rootRef}
-      className={[
-        "gajae-progress",
-        `gajae-progress--${kind}`,
-        motion ? "is-motion" : "",
-        summary ? "is-summary" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className={`gajae-progress gajae-progress--${kind}`}
       style={{ height: GAJAE_PROGRESS_ROW_HEIGHT }}
       data-kind={kind}
       data-emoticon={emoticon}
     >
-      <div className="gajae-progress-live" aria-hidden={summary || undefined}>
-        <span className={`gajae-avatar gajae-avatar--${emoticon}`}>
-          <GajaeSprite emoticon={emoticon} size={40} />
-          {kind === "waiting" && (
-            <>
-              <span className="gajae-z gajae-z-1">z</span>
-              <span className="gajae-z gajae-z-2">z</span>
-              <span className="gajae-z gajae-z-3">Z</span>
-            </>
-          )}
-        </span>
+      <div className="gajae-progress-live">
         <span
           className={`gajae-progress-label${shimmer ? " is-shimmer" : ""}`}
           aria-live="polite"
@@ -304,14 +251,6 @@ export const GajaeProgressRow = memo(function GajaeProgressRow({
           <button type="button" className="gajae-progress-button" onClick={onRetry}>
             {t("다시 시도")} </button>
         )}
-      </div>
-      <div
-        className="gajae-progress-summary"
-        aria-hidden={summary ? undefined : true}
-        aria-live={summary ? "polite" : undefined}
-      >
-        <GajaeSprite emoticon="celebrate" size={20} />
-        <span>{t("완료")}</span>
       </div>
     </div>
   );
